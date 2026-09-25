@@ -1,27 +1,26 @@
 import { useEffect, useRef, useState, type PointerEvent, type CSSProperties } from 'react';
-import { ArrowLeft, Camera, ChartNoAxesCombined, Home, Plus, ReceiptText, Settings } from 'lucide-react';
+import { ArrowLeft, Calculator, ChevronLeft, ChevronRight, Plus, ReceiptText, Settings } from 'lucide-react';
 import { animateDockPress, DockSurface } from './kondo-dock-surface';
 
 export type DockTab = 'home' | 'ledger' | 'import' | 'report' | 'settings';
 export const dockTabs = [
-  { key: 'home', label: 'ホーム', icon: Home },
+  { key: 'home', label: '精算', icon: Calculator },
   { key: 'ledger', label: '明細', icon: ReceiptText },
-  { key: 'import', label: '取り込み', icon: Camera },
-  { key: 'report', label: 'レポート', icon: ChartNoAxesCombined },
   { key: 'settings', label: '設定', icon: Settings }
 ] as const;
 
 type DockContext = { label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean };
-type DockAdd = {label:string;onClick:()=>void};
-type Props = {tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext};
+type DockAdd = {label:string;options:{label:string;onClick:()=>void}[]};
+type Props = {tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext;month:string;onPrevMonth:()=>void;onNextMonth:()=>void};
 
-export function FloatingDock({tab,onSelect,add,context}:Props) {
+export function FloatingDock({tab,onSelect,add,context,month,onPrevMonth,onNextMonth}:Props) {
   const [preview,setPreview]=useState<number|null>(null);
+  const [menuOpen,setMenuOpen]=useState(false);
   const root=useRef<HTMLElement>(null);
   const pointer=useRef<{id:number;startX:number;startY:number}|null>(null);
   const animation=useRef<Animation|undefined>(undefined);
   const swallowClick=useRef(false);
-  const selected=dockTabs.findIndex(item=>item.key===tab);
+  const selected=Math.max(0,dockTabs.findIndex(item=>item.key===tab));
   useEffect(()=>()=>{animation.current?.cancel();},[]);
   useEffect(()=>{
     const viewport=window.visualViewport;
@@ -64,11 +63,11 @@ export function FloatingDock({tab,onSelect,add,context}:Props) {
   }
   if(context)return <div className="floating-nav-host context-host"><nav className="kondo-context-dock" aria-label={context.label}><button className="context-back" onClick={context.onBack} aria-label="戻る"><ArrowLeft size={22}/></button><button className="context-action" onClick={context.onAction} disabled={context.disabled}>{context.actionLabel}</button></nav></div>;
   return <>
-    {add&&<button className="dock-add" aria-label={add.label} onClick={add.onClick}><Plus size={23}/></button>}
+    {add&&<div className="dock-add-wrap">{menuOpen&&<div className="dock-add-menu">{add.options.map(option=><button key={option.label} onClick={()=>{setMenuOpen(false);option.onClick();}}>{option.label}</button>)}</div>}<button className="dock-add" aria-label={add.label} aria-expanded={menuOpen} onClick={()=>setMenuOpen(value=>!value)}><Plus size={23}/></button></div>}
     <div className="floating-nav-host"><nav ref={root} className="kondo-floating-dock" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={release} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
       <DockSurface split={false}/>
       <span className="dock-selection" aria-hidden="true"/>
-      {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={item.label} onClick={()=>onSelect(item.key)}><item.icon size={20} strokeWidth={1.8}/><span>{item.label}</span></button>)}
-    </nav></div>
+      {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={item.label} onClick={()=>onSelect(item.key)}><item.icon size={22} strokeWidth={1.8}/></button>)}
+    </nav><div className="dock-month" aria-label="表示月"><button aria-label="前月" onClick={onPrevMonth}><ChevronLeft size={18}/></button><span>{month.slice(0,4)}-{month.slice(5)}</span><button aria-label="翌月" onClick={onNextMonth}><ChevronRight size={18}/></button></div></div>
   </>;
 }

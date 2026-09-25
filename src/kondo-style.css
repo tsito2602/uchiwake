@@ -194,3 +194,68 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 @media (prefers-reduced-motion: reduce) {
   .dock-selection, .dock-add, .primary, .secondary { transition: none; }
 }
+
+/* Settlement sketch: compact black amount, stacked cards and a floating month control. */
+.shell { max-width: 760px; }
+.page-top { align-items: center; margin-bottom: 20px; }
+.page-top h1 { font-size: 26px; }
+.hero { min-height: 214px; padding: 26px; background: #171717; color: #fff; border: 0; box-shadow: none; }
+.hero-main { padding: 0 0 22px; }
+.hero-prefix, .hero-main p { color: #bbb; font-size: 14px; }
+.hero-money { font-size: clamp(46px, 10vw, 70px); letter-spacing: -.065em; margin: 10px 0 0; }
+.hero-foot { color: #c9c9c9; border-color: #ffffff36; align-items: center; font-size: 14px; }
+.hero-foot strong { color: white; font-size: 18px; }
+.settlement-section { margin-top: 26px; }
+.settlement-section .section-head { margin-bottom: 12px; }
+.settlement-list { display: grid; gap: 12px; }
+.settlement-list .row, .settlement-empty-row, .record-link { width: 100%; min-height: 112px; padding: 19px 20px; background: var(--content-card); border: 1px solid var(--line); border-radius: 22px; }
+.settlement-list .row { gap: 12px; }
+.settlement-list .row-symbol { background: #fff; }
+.settlement-list .row-content strong { font-size: 16px; }
+.settlement-list .row-content small { font-size: 13px; }
+.settlement-list .row-money { font-size: 22px; }
+.settlement-list .row-edit { font-size: 13px; }
+.settlement-empty-row { display: flex; align-items: center; gap: 14px; text-align: left; color: var(--ink); cursor: pointer; }
+.settlement-empty-row span { flex: 1; font-weight: 650; font-size: 16px; }
+.settlement-empty-row strong { font-size: 22px; }
+.record-section { margin-top: 12px; }
+.record-link { display: flex; justify-content: space-between; align-items: flex-start; font-size: 19px; font-weight: 650; text-align: left; color: var(--ink); cursor: pointer; }
+.record-link:hover, .settlement-empty-row:hover { background: #ebebeb; }
+.dock-add-wrap { display: none; }
+.desktop-tabs { border-bottom: 1px solid var(--line); margin-bottom: 25px; }
+.desktop-tabs button { border-bottom: 2px solid transparent; }
+.desktop-tabs button[aria-current="page"] { border-bottom-color: var(--ink); }
+
+@media (max-width: 759px) {
+  .shell { padding-top: 24px; }
+  .desktop-add-bill { display: none; }
+  .page-top { margin-bottom: 17px; }
+  .page-top h1 { font-size: 22px; }
+  .page-top .month-switch { display: none; }
+  .hero { min-height: 194px; padding: 24px 21px; }
+  .hero-money { font-size: clamp(42px, 11vw, 60px); }
+  .hero-foot { flex-wrap: nowrap; }
+  .settlement-list .row, .settlement-empty-row, .record-link { min-height: 104px; padding: 17px; }
+  .settlement-list .row-money, .settlement-empty-row strong { font-size: 18px; }
+  .settlement-list .row-content strong { font-size: 15px; }
+  .floating-nav-host { left: 12px; right: 78px; gap: 8px; justify-content: flex-start; }
+  .kondo-floating-dock { width: min(47%, 184px); min-width: 142px; grid-template-columns: repeat(3, minmax(0, 1fr)); flex: 0 0 auto; padding: 0 7px; }
+  .dock-selection { width: calc((100% - 8px) / 3 + 8px); }
+  .kondo-floating-dock button svg { transform: none; }
+  .dock-month { display: flex; align-items: center; justify-content: space-between; min-width: 0; flex: 1; height: var(--dock-height); border: 1px solid var(--dock-border-top); border-radius: 999px; background: #ffffffa3; -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); pointer-events: auto; box-shadow: 0 5px 20px #10203014; font-size: 13px; font-weight: 650; }
+  .dock-month button { display: grid; place-items: center; width: 33px; height: 100%; border: 0; background: none; color: var(--ink); }
+  .dock-month span { white-space: nowrap; }
+  .dock-add-wrap { position: fixed; z-index: 45; right: max(12px, env(safe-area-inset-right)); bottom: calc(var(--dock-bottom-gap) + env(safe-area-inset-bottom) + var(--dock-keyboard-inset, 0px)); display: block; }
+  .dock-add { position: static; display: grid; width: var(--dock-height); height: var(--dock-height); box-shadow: 0 5px 20px #10203022; }
+  .dock-add-menu { position: absolute; bottom: 68px; right: 0; width: 220px; padding: 6px; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 12px 30px #0002; }
+  .dock-add-menu button { width: 100%; min-height: 48px; text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; background: transparent; font-size: 14px; }
+  .dock-add-menu button:hover { background: var(--soft); }
+  .context-host { right: 12px; }
+}
+@media (max-width: 360px) {
+  .floating-nav-host { right: 72px; }
+  .kondo-floating-dock { min-width: 126px; }
+  .dock-month { font-size: 12px; }
+  .dock-month button { width: 25px; }
+}
+@media (min-width: 760px) { .dock-month { display: none; } }
