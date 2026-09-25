@@ -472,6 +472,12 @@ export function FluidDockSurface({
     const radius = h / 2;
     let islands: DockIsland[];
     if (tabs) {
+      // Keep the material canvas stable when the compact tabs become full-width
+      // context controls. A canvas resize would bypass Kondo's contour morph.
+      const bounds = node.getBoundingClientRect();
+      const scale = bounds.width / w || 1;
+      const tabLeft = (tabs.getBoundingClientRect().left - bounds.left) / scale;
+      const tabWidth = tabs.offsetWidth;
       const side = h;
       const inset = side + 10;
       islands =
@@ -481,7 +487,9 @@ export function FluidDockSurface({
               { left: inset, width: w - 2 * inset, radius },
               { left: w - radius * 2, width: radius * 2, radius },
             ]
-          : joinedDock(w, radius);
+          : joinedDock(tabWidth, radius).map(island => ({
+              ...island, left: island.left + tabLeft,
+            }));
     } else {
       const bounds = node.getBoundingClientRect();
       const scale = bounds.width / w || 1;

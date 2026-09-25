@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { ArrowDownLeft, Home, Trash2, X } from 'lucide-react';
 import { billKinds, type Bill, type BillKind } from './domain';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
@@ -31,27 +31,15 @@ const yen=(amount:number)=>`¥${amount.toLocaleString('ja-JP')}`;
 
 export function BillPanel({bill,view,onView,origin,closing,onExited,actionLabel,onAction,actionDisabled,rentRuleMonth,month,demo,busy,rentStartMonth,rentAmount,onRentStartMonth,onRentAmount,onChange,onClose,onDelete,onDeleteRentRule}:Props) {
   const panel=useRef<HTMLElement>(null);
-  const previousSize=useRef<{width:number;height:number}|null>(null);
   usePanelMorph(panel,origin,closing,onExited,onClose);
   const isRent=bill.kind==='rent';
   const title=isRent?'家賃':bill.title||'引落';
   const amount=Number(bill.amount)||0;
-  const lastView=useRef(view);
-  useLayoutEffect(()=>{
-    const after=panel.current?.getBoundingClientRect();
-    if(lastView.current===view){if(after)previousSize.current={width:after.width,height:after.height};return;}
-    lastView.current=view;
-    if(!previousSize.current||!panel.current||!after)return;
-    const before=previousSize.current;
-    previousSize.current={width:after.width,height:after.height};
-    if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-    panel.current.animate([{width:`${before.width}px`,height:`${before.height}px`},{width:`${after.width}px`,height:`${after.height}px`}],{duration:420,easing:'cubic-bezier(.22,1,.36,1)'});
-  },[view]);
 
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
+    <div className="card-panel-scrim" aria-hidden="true"/>
     <section className="card-panel bill-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="bill-panel-title" ref={panel}>
-      <div className="card-panel-grip" aria-hidden="true"/>
-      <header className="card-panel-header"><span className="card-panel-icon">{isRent?<Home size={22}/>:<ArrowDownLeft size={22}/>}</span><div><h2 id="bill-panel-title">{view==='fixed'?'基本家賃':title}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</span></div><button className="card-panel-close" aria-label="閉じる" onClick={onClose}><X size={20}/></button></header>
+      <header className="card-panel-header"><span className="card-panel-icon">{isRent?<Home size={22}/>:<ArrowDownLeft size={22}/>}</span><div><h2 tabIndex={-1} id="bill-panel-title">{view==='fixed'?'基本家賃':title}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</span></div><button className="card-panel-close" aria-label="閉じる" onClick={onClose}><X size={20}/></button></header>
       <div className="card-panel-scroll">
         {view==='summary'?<div className="card-panel-total"><span>引落額</span><strong>{amount?yen(amount):'—'}</strong>{bill.note&&<p className="bill-panel-note">{bill.note}</p>}{isRent&&!demo&&<button className="bill-panel-fixed-link" onClick={()=>onView('fixed')}>基本家賃を設定</button>}</div>:view==='edit'?<div className="bill-panel-form">
           <label className="field"><span>引落月</span><input type="month" value={bill.due_month||month} onChange={event=>onChange({...bill,due_month:event.target.value})}/></label>
