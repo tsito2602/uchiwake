@@ -462,63 +462,29 @@ export function FluidDockSurface({
       ".thumb-dock-content:not([data-outgoing])",
     );
     const tabs = content?.querySelector<HTMLElement>(".safari-dock");
-    controls.current = ["back", "primary", "actions"].map(
-      (role) =>
-        content?.querySelector<HTMLElement>(
-          `.context-island.context-${role}`,
-        ) ?? null,
-    );
+    // All three browse surfaces participate in the same persistent material:
+    // tabs -> back, month + add -> primary action (and the reverse on close).
+    controls.current = tabs
+      ? [tabs, content?.querySelector<HTMLElement>(".dock-month") ?? null,
+          content?.querySelector<HTMLElement>(".dock-add") ?? null]
+      : ["back", "primary", "actions"].map(role =>
+          content?.querySelector<HTMLElement>(`.context-island.context-${role}`) ?? null);
     const h = node.clientHeight || 56;
     const radius = h / 2;
-    let islands: DockIsland[];
-    if (tabs) {
-      // Keep the material canvas stable when the compact tabs become full-width
-      // context controls. A canvas resize would bypass Kondo's contour morph.
-      const bounds = node.getBoundingClientRect();
-      const scale = bounds.width / w || 1;
-      const tabLeft = (tabs.getBoundingClientRect().left - bounds.left) / scale;
-      const tabWidth = tabs.offsetWidth;
-      const side = h;
-      const inset = side + 10;
-      islands =
-        tabs.dataset.wide === "false"
-          ? [
-              { left: 0, width: radius * 2, radius },
-              { left: inset, width: w - 2 * inset, radius },
-              { left: w - radius * 2, width: radius * 2, radius },
-            ]
-          : joinedDock(tabWidth, radius).map(island => ({
-              ...island, left: island.left + tabLeft,
-            }));
-    } else {
-      const bounds = node.getBoundingClientRect();
-      const scale = bounds.width / w || 1;
-      const slots = controls.current.map((element) => {
-        return element
-          ? {
-              left:
-                Math.round(
-                  ((element.getBoundingClientRect().left - bounds.left) /
-                    scale +
-                    (element.getBoundingClientRect().width / scale -
-                      element.offsetWidth) /
-                      2) *
-                    100,
-                ) / 100,
-              width: element.offsetWidth,
-              radius,
-            }
-          : null;
-      });
-      islands = slots.some(Boolean)
-        ? dockSlots(w, slots)
-        : joinedDock(w, radius);
-    }
-    islands = islands.map((island, i) => ({
-      ...island,
-      slot: tabs ? -1 : i,
-      tint: !tabs && i === 1 && controls.current[1] ? 1 : 0,
-    }));
+    const bounds = node.getBoundingClientRect();
+    const scale = bounds.width / w || 1;
+    const slots = controls.current.map(element => element ? {
+      left: Math.round(((element.getBoundingClientRect().left - bounds.left) / scale +
+        (element.getBoundingClientRect().width / scale - element.offsetWidth) / 2) * 100) / 100,
+      width: element.offsetWidth,
+      radius,
+    } : null);
+    const islands = (slots.some(Boolean) ? dockSlots(w, slots) : joinedDock(w, radius))
+      .map((island, i) => ({
+        ...island,
+        slot: i,
+        tint: controls.current[i] && (tabs ? i === 2 : i === 1) ? 1 : 0,
+      }));
     node.style.setProperty(
       "--safari-press-scale",
       String(Math.max(1, Math.min(1.06, (window.innerWidth - 8) / w))),

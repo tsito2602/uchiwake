@@ -415,17 +415,17 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
   .settlement-list .settlement-item-amount { font-size: clamp(23px, 6vw, 28px); }
   .floating-nav-host { left: max(12px,env(safe-area-inset-left)); right: max(12px,env(safe-area-inset-right)); justify-content: center; }
   .kondo-floating-dock { width: min(100%,420px); flex: 0 1 420px; }
-  .browse-dock { display: flex; gap: 8px; height: 100%; padding-right: 66px; }
+  .browse-dock { display: flex; gap: 8px; height: 100%; }
   .browse-dock .safari-dock { width: min(47%,184px); min-width: 140px; flex: 0 0 auto; }
+  .browse-dock.has-add .safari-dock { width: min(calc((100% - 66px) * .47),184px); }
   .safari-dock { grid-template-columns: repeat(3,minmax(0,1fr)); padding: 0 7px; }
   .dock-selection { left: 3px; width: calc((100% - 14px) / 3 + 8px); transform: translateX(calc(var(--selection-tab) * (100% - 8px))); }
   .safari-dock button svg { transform: none; }
-  .dock-month { display: flex; flex: 1; min-width: 0; height: var(--dock-height); align-items: center; justify-content: space-between; border: 1px solid var(--dock-border-top); border-radius: 999px; background: #ffffffa3; -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 7px 20px #00000018, 0 1px 3px #0000000d, inset 0 1px 0 #ffffffbd; pointer-events: auto; font-size: 13px; font-weight: 650; }
+  .dock-month { display: flex; flex: 1; min-width: 0; height: var(--dock-height); align-items: center; justify-content: space-between; border: 0; border-radius: 999px; background: transparent; pointer-events: auto; font-size: 13px; font-weight: 650; }
   .dock-month button { display: grid; place-items: center; width: 33px; height: 100%; padding: 0; border: 0; background: none; color: var(--ink); }
   .dock-month span { white-space: nowrap; }
-  .dock-add-wrap { display: block; position: fixed; z-index: 45; right: max(12px,calc((100vw - 420px) / 2),env(safe-area-inset-right)); bottom: calc(var(--dock-bottom-gap) + env(safe-area-inset-bottom) + var(--dock-keyboard-inset,0px)); }
-  .dock-add { display: grid; position: static; width: var(--dock-height); height: var(--dock-height); }
-  .dock-add-menu { position: absolute; bottom: 68px; right: 0; width: 220px; padding: 6px; border: 1px solid var(--line); border-radius: 18px; background: white; box-shadow: 0 12px 30px #0002; }
+  .browse-dock .dock-add { display: grid; position: relative; flex: 0 0 var(--dock-height); width: var(--dock-height); height: var(--dock-height); right: auto; bottom: auto; background: transparent; box-shadow: none; }
+  .dock-add-menu { position: absolute; z-index: 2; pointer-events: auto; bottom: 68px; right: 0; width: 220px; padding: 6px; border: 1px solid var(--line); border-radius: 18px; background: white; box-shadow: 0 12px 30px #0002; }
   .dock-add-menu button { width: 100%; min-height: 48px; padding: 10px 12px; text-align: left; border: 0; border-radius: 12px; background: none; font-size: 14px; }
   .dock-add-menu button:hover { background: var(--soft); }
 }
