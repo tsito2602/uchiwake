@@ -316,23 +316,28 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .settlement-hero .hero-label { color: #a4a4a4; }
 .hero-secondary { display: flex; align-items: baseline; gap: 9px; margin-top: 13px; color: #9a9a9a; font-size: 12px; font-weight: 500; }
 .hero-secondary strong { color: #686868; font-size: 17px; font-weight: 650; letter-spacing: -.035em; }
-.settlement-chart { height: 153px; display: flex; flex-direction: column; margin-top: 36px; }
+.settlement-chart { height: 122px; display: flex; flex-direction: column; margin-top: 36px; }
 .chart-bars { height: 122px; display: flex; gap: 5px; align-items: end; overflow-x: auto; scrollbar-width: none; }
 .chart-bars::-webkit-scrollbar { display: none; }
 .chart-bar { flex: 1 0 4px; min-width: 4px; height: 100%; display: flex; align-items: end; justify-content: center; padding: 0; border: 0; background: none; cursor: pointer; }
 .chart-bar span { display: block; width: min(5px,100%); height: var(--bar-height); background: #c9c9c9; border-radius: 2px 2px 0 0; }
 .chart-bar.no-data span { background: #e6e6e6; }
 .chart-bar.current span, .chart-bar:hover span { background: #171717; }
-.chart-axis { display: flex; justify-content: space-between; margin-top: 7px; color: #a9a9a9; font-size: 12px; }
 .chart-ranges { display: flex; justify-content: center; gap: 10px; margin-top: 12px; }
 .chart-ranges button { min-width: 49px; padding: 8px 10px; color: #aaa; border: 0; border-radius: 999px; background: none; font-size: 13px; font-weight: 650; cursor: pointer; }
 .chart-ranges button[aria-pressed="true"] { color: var(--ink); background: #f4f4f4; }
 .settlement-section { margin-top: 32px; }
 .settlement-list { display: grid; gap: 12px; border: 0; }
-.settlement-list .settlement-item { display: flex; width: 100%; min-height: 128px; padding: 20px; text-align: left; color: var(--ink); border: 1px solid #ededed; border-radius: 24px; background: #fff; cursor: pointer; }
-.settlement-list .settlement-item > div { flex: 1; }
-.settlement-list .settlement-item > strong { font-size: 23px; }
+.settlement-list .settlement-item { display: flex; align-items: flex-start; width: 100%; min-height: 128px; padding: 20px; text-align: left; color: var(--ink); border: 1px solid #ededed; border-radius: 24px; background: #fff; cursor: pointer; }
+.settlement-list .settlement-item-icon { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 12px; background: #f5f5f5; color: #333; }
+.settlement-list .settlement-item-copy { display: flex; flex: 1; flex-direction: column; justify-content: space-between; min-width: 0; min-height: 84px; gap: 4px; }
+.settlement-list .settlement-item-label { color: #858585; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settlement-list .settlement-item-copy small { font-size: 11px; }
+.settlement-list .settlement-item-amount { margin-top: auto; font-size: clamp(23px, 5vw, 30px); line-height: 1.1; font-weight: 740; letter-spacing: -.045em; }
+.settlement-list .settlement-item > svg { flex: 0 0 auto; margin-top: 12px; color: #aaa; }
 .settlement-list .settlement-item:hover { background: #fafafa; }
+.demo-view-banner { width: fit-content; margin-bottom: 20px; padding: 8px 13px; border-radius: 999px; background: #f2f2f2; color: #555; font-size: 12px; font-weight: 650; }
+.demo-settings .mode-options { margin-top: 17px; }
 .dock-add-wrap, .dock-month { display: none; }
 
 @media (max-width: 759px) {
@@ -340,7 +345,8 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
   .settlement-hero { min-height: 0; padding: 8px 0 0; }
   .settlement-hero .hero-money { font-size: clamp(42px,11vw,60px); }
   .settlement-list .settlement-item { min-height: 115px; padding: 18px; }
-  .settlement-list .settlement-item > strong { font-size: 19px; }
+  .settlement-list .settlement-item-copy { min-height: 77px; }
+  .settlement-list .settlement-item-amount { font-size: clamp(23px, 6vw, 28px); }
   .floating-nav-host { left: 12px; right: 78px; justify-content: flex-start; gap: 8px; }
   .kondo-floating-dock { width: min(47%,184px); min-width: 140px; flex: 0 0 auto; }
   .safari-dock { grid-template-columns: repeat(3,minmax(0,1fr)); padding: 0 7px; }

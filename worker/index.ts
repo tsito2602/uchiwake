@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { billKinds, categories, type BillKind } from '../src/domain';
 import { embeddedAssets } from './generated-assets';
+import { demoHistory, demoState } from './demo-data';
 
-type Bindings = { DB: D1Database; RECEIPTS: R2Bucket; APP_ENV: string; APP_PASSWORD?: string; OPENAI_API_KEY?: string; OPENAI_MODEL: string };
+type Bindings = { DB: D1Database; APP_ENV: string; APP_PASSWORD?: string; OPENAI_API_KEY?: string; OPENAI_MODEL: string };
 const app = new Hono<{ Bindings: Bindings }>();
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const datePattern = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -43,20 +44,21 @@ app.use('*', async (c, next) => {
 app.get('/api/state', async c => {
   const month = c.req.query('month') || '';
   if (!monthPattern.test(month)) return error('月を確認してください');
-  const [bills, expenses, statements, entries, cards, rentRules] = await Promise.all([
+  if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json(demoState(month)):error('見つかりません',404);
+  const [bills, statements, entries, cards, rentRules] = await Promise.all([
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
-    c.env.DB.prepare('SELECT id,spent_on,title,category,amount,note,receipt_key FROM expenses WHERE spent_on >= ? AND spent_on < ? ORDER BY spent_on DESC, created_at DESC').bind(`${month}-01`, nextMonth(month) + '-01').all(),
     c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at FROM card_statements WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
     c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(month).all(),
     c.env.DB.prepare('SELECT id,name,active FROM shared_cards ORDER BY created_at,id').all(),
     c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules ORDER BY effective_month DESC').all()
   ]);
-  return c.json({ month, bills: bills.results, expenses: expenses.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
+  return c.json({ month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
 });
 
 app.get('/api/settlement-history', async c => {
   const month=c.req.query('month')||'';
   if (!monthPattern.test(month)) return error('月を確認してください');
+  if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json({months:demoHistory(month)}):error('見つかりません',404);
   const [year,value]=month.split('-').map(Number);
   const start=new Date(Date.UTC(year,value-60,1)).toISOString().slice(0,7);
   const [bills,statements,rentRules,rentOverrides]=await Promise.all([
@@ -74,11 +76,6 @@ app.get('/api/settlement-history', async c => {
     return {month:key,amount:Math.ceil(((amounts.get(key)||0)+rent)/2)};
   })});
 });
-
-function nextMonth(month: string) {
-  const [year, m] = month.split('-').map(Number);
-  return m === 12 ? `${year + 1}-01` : `${year}-${String(m + 1).padStart(2, '0')}`;
-}
 
 app.post('/api/cards', async c => {
   const body=await c.req.json().catch(()=>null) as {name?:unknown}|null;
@@ -130,50 +127,6 @@ app.put('/api/bills/:id', async c => {
 app.delete('/api/bills/:id', async c => {
   const result = await c.env.DB.prepare('DELETE FROM bills WHERE id=?').bind(c.req.param('id')).run();
   return result.meta.changes ? c.json({ ok: true }) : error('対象が見つかりません',404);
-});
-
-app.post('/api/expenses', async c => {
-  if (Number(c.req.header('Content-Length')) > 6_000_000) return error('画像は4MB以下にしてください',413);
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body || !datePattern.test(String(body.spent_on)) || !safeString(body.title) || !categories.includes(body.category as typeof categories[number]) || !validAmount(body.amount)) return error('支出の入力を確認してください');
-  let receipt_key: string | null = null;
-  if (body.image) {
-    const image = parseImage(body.image);
-    if (!image) return error('JPEG・PNG・WebPの4MB以下の画像を選んでください');
-    receipt_key = `receipts/${crypto.randomUUID()}`;
-    await c.env.RECEIPTS.put(receipt_key, image.bytes, { httpMetadata: { contentType: image.mime } });
-  }
-  const expense = { id: crypto.randomUUID(), spent_on: String(body.spent_on), title: safeString(body.title), category: body.category as string, amount: Number(body.amount), note: safeString(body.note,500), receipt_key };
-  try {
-    await c.env.DB.prepare('INSERT INTO expenses (id,spent_on,title,category,amount,note,receipt_key) VALUES (?,?,?,?,?,?,?)').bind(expense.id,expense.spent_on,expense.title,expense.category,expense.amount,expense.note,receipt_key).run();
-  } catch (e) {
-    if (receipt_key) await c.env.RECEIPTS.delete(receipt_key);
-    throw e;
-  }
-  return c.json(expense,201);
-});
-
-app.put('/api/expenses/:id', async c => {
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body || !datePattern.test(String(body.spent_on)) || !safeString(body.title) || !categories.includes(body.category as typeof categories[number]) || !validAmount(body.amount)) return error('支出の入力を確認してください');
-  const result = await c.env.DB.prepare('UPDATE expenses SET spent_on=?,title=?,category=?,amount=?,note=? WHERE id=?').bind(body.spent_on,safeString(body.title),body.category,body.amount,safeString(body.note,500),c.req.param('id')).run();
-  return result.meta.changes ? c.json({ ok: true }) : error('対象が見つかりません',404);
-});
-
-app.delete('/api/expenses/:id', async c => {
-  const item = await c.env.DB.prepare('SELECT receipt_key FROM expenses WHERE id=?').bind(c.req.param('id')).first<{receipt_key:string|null}>();
-  if (!item) return error('対象が見つかりません',404);
-  await c.env.DB.prepare('DELETE FROM expenses WHERE id=?').bind(c.req.param('id')).run();
-  if (item.receipt_key) await c.env.RECEIPTS.delete(item.receipt_key);
-  return c.json({ ok:true });
-});
-
-app.get('/api/expenses/:id/receipt', async c => {
-  const item = await c.env.DB.prepare('SELECT receipt_key FROM expenses WHERE id=?').bind(c.req.param('id')).first<{receipt_key:string|null}>();
-  if (!item?.receipt_key) return error('画像がありません',404);
-  const object = await c.env.RECEIPTS.get(item.receipt_key);
-  if (!object) return error('画像がありません',404);
-  return new Response(object.body,{headers:{'Content-Type':object.httpMetadata?.contentType || 'application/octet-stream','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 });
 
 function parseImage(value: unknown): { mime:string; bytes:Uint8Array } | null {
@@ -251,42 +204,13 @@ app.post('/api/statement/analyze', async c => {
   const response=await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL,[
     {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。画像は最大3枚で、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${categories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
     ...imageParts
-  ],false,{text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500});
+  ],{text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500});
   if (!response) return error('明細を読み取れませんでした。手入力で仕分けできます',502);
   let parsed: {confirmed_total?:unknown;entries?:unknown};
   try {parsed=JSON.parse(response);} catch {return error('AIの結果を確認できませんでした',502);}
   if (!Array.isArray(parsed.entries) || parsed.entries.length>50) return error('行数が多いため明細を分けてください',502);
   const entries=parsed.entries.map((raw:unknown)=>{const entry=(raw&&typeof raw==='object'?raw:{}) as Record<string,unknown>;return {spent_on:datePattern.test(String(entry.spent_on))?entry.spent_on:'',title:safeString(entry.title),category:categories.includes(entry.category as typeof categories[number])?entry.category:'その他・要確認',amount:Number.isSafeInteger(entry.amount)&&Math.abs(Number(entry.amount))<=100_000_000?Number(entry.amount):0};});
   return c.json({entries,confirmed_total:validAmount(parsed.confirmed_total)?Number(parsed.confirmed_total):0});
-});
-
-app.post('/api/receipt/analyze', async c => {
-  if (Number(c.req.header('Content-Length')) > 6_000_000) return error('画像は4MB以下にしてください',413);
-  const body = await c.req.json().catch(() => null) as { image?:unknown; mode?:unknown; scenario?:unknown } | null;
-  if (body?.mode !== 'demo' && body?.mode !== 'live') return error('読取モードを選択してください');
-  const image = parseImage(body?.image);
-  if (!image) return error('JPEG・PNG・WebPの4MB以下の画像を選んでください');
-  if (body.mode === 'demo') {
-    if (c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
-    const examples = {
-      supermarket: { title:'デモ：スーパー', amount:1980, category:'食費' },
-      restaurant: { title:'デモ：カフェ', amount:1240, category:'外食費' },
-      unclear: { title:'', amount:0, category:'その他・要確認' }
-    } as const;
-    if (typeof body.scenario !== 'string' || !(body.scenario in examples)) return error('デモの例を選んでください');
-    const sample = examples[body.scenario as keyof typeof examples];
-    const spent_on = new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-    return c.json({ ...sample, spent_on, note:'デモ読取のサンプルです。画像の内容は読み取っていません。', demo:true });
-  }
-  if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
-  const result = await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL, [
-    { type:'input_text', text:`日本のレシート1枚から店舗名、合計金額（円の整数）、購入日（YYYY-MM-DD）、費目を読み取る。費目は ${categories.join('、')} のいずれか。推測が必要な箇所は空文字か0、費目は「その他・要確認」。個別の商品額を合計金額として使わない。JSONのみ返す: {"title":"","amount":0,"spent_on":"","category":"その他・要確認"}` },
-    { type:'input_image',image_url:body!.image,detail:'high' }
-  ],true);
-  if (!result) return error('AIの読み取りに失敗しました。手入力できます',502);
-  let parsed: Record<string,unknown>;
-  try { parsed = JSON.parse(result.replace(/^```(?:json)?\s*|\s*```$/g,'')); } catch { return error('AIの結果を確認できませんでした',502); }
-  return c.json({ title:safeString(parsed.title), amount:validAmount(parsed.amount) ? Number(parsed.amount) : 0, spent_on:datePattern.test(String(parsed.spent_on)) ? parsed.spent_on : '', category:categories.includes(parsed.category as typeof categories[number]) ? parsed.category : 'その他・要確認' });
 });
 
 app.post('/api/report/comment', async c => {
@@ -308,10 +232,8 @@ app.post('/api/report/comment', async c => {
   return result ? c.json({comment:result.slice(0,300)}) : error('コメントを作成できませんでした',502);
 });
 
-async function openai(key:string,model:string,content:unknown[],receipt=false,extra:Record<string,unknown>={}): Promise<string|null> {
-  const schema = { type:'object',properties:{title:{type:'string'},amount:{type:'integer'},spent_on:{type:'string'},category:{type:'string',enum:[...categories]}},required:['title','amount','spent_on','category'],additionalProperties:false };
-  const format = receipt ? {text:{format:{type:'json_schema',name:'receipt',strict:true,schema}}} : {};
-  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},max_output_tokens:500,...format,...extra})});
+async function openai(key:string,model:string,content:unknown[],extra:Record<string,unknown>={}): Promise<string|null> {
+  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},max_output_tokens:500,...extra})});
   if (!response.ok) { console.error(JSON.stringify({event:'openai_error',status:response.status})); return null; }
   const data = await response.json() as {output?:Array<{content?:Array<{type:string;text?:string}>}>};
   return data.output?.flatMap(item=>item.content||[]).filter(item=>item.type==='output_text').map(item=>item.text||'').join('') || null;
