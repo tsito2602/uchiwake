@@ -279,9 +279,9 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .home-actions button:only-child { grid-column: 1 / -1; }
 
 /* The settlement amount remains visible even before any withdrawal is entered. */
-.hero { background: #181818; color: #fff; border-color: #181818; box-shadow: none; }
-.hero-label { color: #ccc; }
-.hero-money { color: #fff; }
+.hero { background: #fff; color: var(--ink); border: 0; box-shadow: none; }
+.hero-label { color: #a4a4a4; }
+.hero-money { color: var(--ink); }
 .hero-total { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 17px; border-top: 1px solid #ffffff38; color: #ccc; font-size: 13px; }
 .hero-total strong { color: #fff; font-size: 16px; }
 .setting-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; border: 0; background: none; color: #333; font-size: 14px; font-weight: 650; }
@@ -304,38 +304,38 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .intro { margin-top: 18px; }
 @media(max-width: 759px) { .settings-section { padding: 18px; } .settings-form { flex-direction: column; align-items: stretch; } .settings-form .field { flex: none; } }
 
-/* The settlement sketch: amount, history bars, stacked cards and floating controls. */
+/* Fuse-inspired settlement: amount and history sit directly on the white canvas. */
 .desktop-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); margin-bottom: 22px; border-bottom: 1px solid var(--line); }
 .desktop-tabs button[aria-current="page"] { border-bottom-color: var(--ink); }
 .home-page-top h1 { display: none; }
-.settlement-hero { min-height: 375px; padding: 27px; }
-.settlement-hero h2 { color: #fff; font-size: 21px; }
-.settlement-hero .hero-money { margin: 22px 0 2px; font-size: clamp(46px,10vw,70px); letter-spacing: -.065em; }
-.settlement-hero .hero-label { color: #c4c4c4; }
-.settlement-chart { height: 127px; display: flex; flex-direction: column; margin-top: 17px; }
-.chart-bars { height: 100px; display: flex; gap: 5px; align-items: end; overflow-x: auto; scrollbar-width: none; }
+.settlement-hero { min-height: 0; padding: 8px 0 0; border-radius: 0; }
+.settlement-hero h2 { color: var(--ink); font-size: 21px; }
+.settlement-hero .hero-money { margin: 37px 0 2px; font-size: clamp(46px,10vw,70px); letter-spacing: -.065em; }
+.settlement-hero .hero-label { color: #a4a4a4; }
+.settlement-chart { height: 153px; display: flex; flex-direction: column; margin-top: 36px; }
+.chart-bars { height: 122px; display: flex; gap: 5px; align-items: end; overflow-x: auto; scrollbar-width: none; }
 .chart-bars::-webkit-scrollbar { display: none; }
-.chart-bar { flex: 1 0 5px; min-width: 5px; height: 100%; display: flex; align-items: end; padding: 0; border: 0; background: none; cursor: pointer; }
-.chart-bar span { display: block; width: 100%; height: var(--bar-height); background: #999; border-radius: 2px 2px 0 0; }
-.chart-bar.no-data span { background: #ffffff45; }
-.chart-bar.current span, .chart-bar:hover span { background: #fff; }
-.chart-axis { display: flex; justify-content: space-between; margin-top: 7px; color: #aaa; font-size: 12px; }
-.chart-ranges { display: flex; gap: 4px; margin-top: 10px; }
-.chart-ranges button { min-width: 46px; padding: 7px 10px; color: #aaa; border: 0; border-radius: 7px; background: none; font-size: 13px; cursor: pointer; }
-.chart-ranges button[aria-pressed="true"] { color: #fff; background: #ffffff28; }
-.settlement-section { margin-top: 22px; }
+.chart-bar { flex: 1 0 4px; min-width: 4px; height: 100%; display: flex; align-items: end; justify-content: center; padding: 0; border: 0; background: none; cursor: pointer; }
+.chart-bar span { display: block; width: min(5px,100%); height: var(--bar-height); background: #c9c9c9; border-radius: 2px 2px 0 0; }
+.chart-bar.no-data span { background: #e6e6e6; }
+.chart-bar.current span, .chart-bar:hover span { background: #171717; }
+.chart-axis { display: flex; justify-content: space-between; margin-top: 7px; color: #a9a9a9; font-size: 12px; }
+.chart-ranges { display: flex; justify-content: center; gap: 10px; margin-top: 12px; }
+.chart-ranges button { min-width: 49px; padding: 8px 10px; color: #aaa; border: 0; border-radius: 999px; background: none; font-size: 13px; font-weight: 650; cursor: pointer; }
+.chart-ranges button[aria-pressed="true"] { color: var(--ink); background: #f4f4f4; }
+.settlement-section { margin-top: 32px; }
 .settlement-list { display: grid; gap: 12px; border: 0; }
-.settlement-list .settlement-item { display: flex; width: 100%; min-height: 128px; padding: 20px; text-align: left; color: var(--ink); border: 1px solid var(--line); border-radius: 22px; background: var(--content-card); cursor: pointer; }
+.settlement-list .settlement-item { display: flex; width: 100%; min-height: 128px; padding: 20px; text-align: left; color: var(--ink); border: 1px solid #ededed; border-radius: 24px; background: #fff; cursor: pointer; }
 .settlement-list .settlement-item > div { flex: 1; }
 .settlement-list .settlement-item > strong { font-size: 23px; }
-.settlement-list .settlement-item:hover, .record-link:hover { background: #eaeaea; }
+.settlement-list .settlement-item:hover, .record-link:hover { background: #fafafa; }
 .record-section { margin-top: 12px; }
-.record-link { display: flex; width: 100%; min-height: 110px; align-items: flex-start; justify-content: space-between; padding: 20px; color: var(--ink); border: 1px solid var(--line); border-radius: 22px; background: var(--content-card); text-align: left; font-size: 19px; font-weight: 650; cursor: pointer; }
+.record-link { display: flex; width: 100%; min-height: 110px; align-items: flex-start; justify-content: space-between; padding: 20px; color: var(--ink); border: 1px solid #ededed; border-radius: 24px; background: #fff; text-align: left; font-size: 19px; font-weight: 650; cursor: pointer; }
 .dock-add-wrap, .dock-month { display: none; }
 
 @media (max-width: 759px) {
   .home-page-top { display: none; }
-  .settlement-hero { min-height: 365px; padding: 23px 21px; }
+  .settlement-hero { min-height: 0; padding: 8px 0 0; }
   .settlement-hero .hero-money { font-size: clamp(42px,11vw,60px); }
   .settlement-list .settlement-item { min-height: 115px; padding: 18px; }
   .settlement-list .settlement-item > strong { font-size: 19px; }
