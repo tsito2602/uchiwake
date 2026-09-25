@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, Camera, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, CreditCard, Home, ListFilter, Plus, ReceiptText, Settings, Trash2, X } from 'lucide-react';
 import { billKinds, categories, categoryTotals, summary, type Bill, type BillKind, type Category, type Expense, type EntryDraft, type CardStatement, type State } from './domain';
+import { FloatingDock, dockTabs, type DockTab } from './floating-dock';
 import './styles.css';
+import './kondo-style.css';
 
-type Tab = 'home'|'ledger'|'import'|'report'|'settings';
+type Tab = DockTab;
 type Editing = { type:'bill'; data:Partial<Bill> } | { type:'expense'; data:Partial<Expense>; image?:string; demo?:boolean };
 type AiMode = 'demo'|'live';
 const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
@@ -137,8 +139,12 @@ function App() {
   }
   const addBill=()=>setEditing({type:'bill',data:{due_month:month,kind:'rent',title:'家賃',amount:0,note:''}});
   const addExpense=()=>setEditing({type:'expense',data:{spent_on:today(),category:'その他・要確認',title:'',amount:0,note:''}});
+  const selectTab=(value:Tab)=>{setTab(value);setNotice('');window.scrollTo({top:0,behavior:'smooth'});};
+  const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount);
+  const dockContext=editing?{label:'項目の編集',onBack:()=>setEditing(null),actionLabel:busy?'保存中…':'保存する',onAction:()=>void save(),disabled:busy||!editing.data.title||!editing.data.amount}:tab==='import'&&draft?{label:'カード明細の確認',onBack:()=>setDraft(null),actionLabel:busy?'保存中…':'保存して計算',onAction:()=>void saveStatement(),disabled:busy||!canSaveDraft}:undefined;
+  const dockAdd=!dockContext&&tab==='home'?{label:'家賃を追加',onClick:addBill}:!dockContext&&tab==='ledger'?{label:'カード明細を取り込む',onClick:()=>selectTab('import')}:undefined;
   return <>
-    <header className="topbar"><div className="topbar-inner"><div className="brand"><span className="brand-mark">u.</span><span>uchiwake</span></div><span className="topbar-right"><span className="online-dot"/> ふたりの家計</span></div></header>
+    <header className="topbar"><div className="topbar-inner"><div className="brand"><span className="brand-mark">u.</span><span>uchiwake</span></div><span className="topbar-right"><span className="online-dot"/> ふたりの家計</span></div><nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18} strokeWidth={1.7}/>{item.label}</button>)}</nav></header>
     <main className="shell">
       <div className="page-top"><div><div className="eyebrow">SHARED HOUSEHOLD / 家計の内訳</div><h1>{({home:'ホーム',ledger:'家計簿',import:'取り込み',report:'レポート',settings:'設定'} as const)[tab]}</h1></div><div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div></div>
       {notice&&<div className="notice" role="alert"><span>{notice}</span><button aria-label="閉じる" onClick={()=>setNotice('')}><X size={16}/></button></div>}
@@ -171,7 +177,7 @@ function App() {
           <div className="statement-reconcile"><span>明細行の合計 <strong>{yen(rowsTotal)}</strong></span><Field label="実際のカード引落額（円）"><input type="number" min="1" step="1" inputMode="numeric" value={draft.confirmed_total||''} onChange={e=>{setDraft({...draft,confirmed_total:Number(e.target.value)});setTotalChecked(false);}}/></Field></div>
           {rowsTotal!==draft.confirmed_total&&<p className="notice">明細行の合計とカード引落額が一致しません。未入力・重複・返金を確認してください。</p>}
           <label className="confirm-line"><input type="checkbox" checked={totalChecked} onChange={e=>setTotalChecked(e.target.checked)}/> 元のカード明細と引落額・すべての行を照合した</label>
-          <div className="form-actions"><button className="primary" disabled={busy||!totalChecked||!draft.entries.length||rowsTotal!==draft.confirmed_total||rowsTotal<=0||!draft.title.trim()||draft.entries.some(e=>!e.title.trim()||!e.amount)} onClick={()=>void saveStatement()}>{busy?'保存中…':'明細を保存して入金額を計算'} <Check size={17}/></button></div>
+          <div className="form-actions draft-save"><button className="primary" disabled={busy||!canSaveDraft} onClick={()=>void saveStatement()}>{busy?'保存中…':'明細を保存して入金額を計算'} <Check size={17}/></button></div>
         </section>}
       </>}
       {tab==='report'&&<>
@@ -185,7 +191,7 @@ function App() {
       {tab==='settings'&&<><section className="section"><div className="eyebrow">HOW IT WORKS</div><h2>入金額の考え方</h2><div className="steps"><div><span>01</span><p>共有カードの明細画像をまとめて読み込み、行を仕分けて請求の引落額と照合</p></div><div><span>02</span><p>銀行引落の家賃を追加</p></div><div><span>03</span><p>カード引落額と家賃などを合計して2人で折半。カード明細は二重に加算しません</p></div></div></section><section className="section"><div className="eyebrow">ABOUT</div><h2>uchiwake</h2><p className="subtle">MVP / ステージング環境。画像から抽出した行・請求額は、元の明細と照合してから保存してください。画像自体は保存しません。</p></section></>}
       </>}
     </main>
-    <nav className="dock" aria-label="メインメニュー">{([['home',Home,'ホーム'],['ledger',ReceiptText,'家計簿'],['import',Camera,'取り込み'],['report',ChartNoAxesCombined,'レポート'],['settings',Settings,'設定']] as const).map(([key,Icon,label])=><button key={key} className={tab===key?'active':''} onClick={()=>{setTab(key);setNotice('');window.scrollTo(0,0);}}><Icon size={20} strokeWidth={tab===key?2.3:1.8}/><span>{label}</span></button>)}</nav>
+    <FloatingDock tab={tab} onSelect={selectTab} add={dockAdd} context={dockContext}/>
     {editing&&<div className="modal-backdrop" onClick={()=>setEditing(null)}><div className="modal" role="dialog" aria-modal="true" aria-label={editing.type==='bill'?'引落予定の編集':'支出の編集'} onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">{editing.type==='bill'?'WITHDRAWAL':'TRANSACTION'}</div><h2>{editing.data.id?'編集する':editing.type==='bill'?'引落予定を追加':'支出を追加'}</h2></div><button className="icon-button" aria-label="閉じる" onClick={()=>setEditing(null)}><X size={20}/></button></div><div className="form">
       {editing.type==='bill'?<>
         <Field label="引落月"><input type="month" value={editing.data.due_month||month} onChange={e=>setEditing({...editing,data:{...editing.data,due_month:e.target.value}})}/></Field>
