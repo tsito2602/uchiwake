@@ -21,6 +21,7 @@ async function api<T>(path:string,options?:RequestInit):Promise<T> {
 function App() {
   const [month,setMonth]=useState(today().slice(0,7));
   const [tab,setTab]=useState<Tab>('home');
+  const [showTotalFirst,setShowTotalFirst]=useState(false);
   const [state,setState]=useState<State|null>(null);
   const [editing,setEditing]=useState<Editing|null>(null);
   const [busy,setBusy]=useState(false);
@@ -50,6 +51,8 @@ function App() {
   const categoryMagnitude=breakdown.reduce((sum,item)=>sum+Math.abs(item.amount),0);
   const cardTotal=(state?.statements||[]).reduce((sum,item)=>sum+item.confirmed_total,0);
   const otherBills=(state?.bills||[]).filter(item=>item.kind==='utilities'||item.kind==='other');
+  const hasSettlementData=!!(state?.statements.length||otherBills.length||rent.amount);
+  const settlementAmount=(amount:number)=>hasSettlementData?yen(amount):'—';
   const rowsTotal=draft?.entries.reduce((sum,row)=>sum+Number(row.amount||0),0)||0;
   async function save() {
     if (!editing) return;
@@ -154,17 +157,22 @@ function App() {
       {notice&&<div className="notice" role="alert"><span>{notice}</span><button aria-label="閉じる" onClick={()=>setNotice('')}><X size={16}/></button></div>}
       {!state?<div className="empty loading">{notice?'データを表示できませんでした。':'読み込んでいます…'}{notice&&<div><button className="secondary" onClick={()=>void load()}>再読み込み</button></div>}</div>:<>
       {tab==='home'&&<>
-        <section className="hero settlement-hero"><h2>精算</h2><div className="hero-money">{yen(totals.perPerson)}</div><span className="hero-label">ひとりあたり</span>
+        <section className="hero settlement-hero"><h2>精算</h2>
+          <button type="button" className="settlement-amount-toggle" aria-label="ひとりあたりと支払い合計の表示を切り替える" aria-pressed={showTotalFirst} onClick={()=>setShowTotalFirst(value=>!value)}>
+            <span className="hero-money">{settlementAmount(showTotalFirst?totals.total:totals.perPerson)}</span>
+            <span className="hero-label">{showTotalFirst?'支払い合計':'ひとりあたり'}</span>
+            <span className="hero-secondary"><span>{showTotalFirst?'ひとりあたり':'支払い合計'}</span><strong>{settlementAmount(showTotalFirst?totals.perPerson:totals.total)}</strong></span>
+          </button>
           <div className="settlement-chart" role="group" aria-label="月別のひとりあたりの精算額"><div className="chart-bars">{chart.map(item=><button key={item.month} className={`chart-bar ${item.month===month?'current':''} ${item.amount?'':'no-data'}`} style={{'--bar-height':`${item.amount?Math.max(8,item.amount/chartMax*100):3}%`} as React.CSSProperties} aria-label={`${monthText(item.month)} ${yen(item.amount)}`} title={`${monthText(item.month)} ${yen(item.amount)}`} onClick={()=>setMonth(item.month)}><span/></button>)}</div><div className="chart-axis"><span>{chart[0]?monthText(chart[0].month):''}</span><span>{monthText(month)}</span></div></div>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
         </section>
         <section className="section settlement-section"><div className="settlement-list">
-          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item" key={card.id} onClick={()=>{setSelectedCardId(card.id);selectTab(items.length?'ledger':'import');}}><div><strong>{card.name}</strong><small>{items.length?`${items.length}件の明細`:'明細は未登録'}</small></div><strong>{yen(items.reduce((sum,item)=>sum+item.confirmed_total,0))}</strong><ChevronRight size={17}/></button>})}
+          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item" key={card.id} onClick={()=>{setSelectedCardId(card.id);selectTab(items.length?'ledger':'import');}}><div><strong>{card.name}</strong>{items.length>0&&<small>{items.length}件の明細</small>}</div><strong>{items.length?yen(items.reduce((sum,item)=>sum+item.confirmed_total,0)):'—'}</strong><ChevronRight size={17}/></button>})}
           {state.statements.filter(item=>!item.card_id||!state.cards.some(card=>card.id===item.card_id)).map(item=><button className="settlement-item" key={item.id} onClick={()=>selectTab('ledger')}><div><strong>{item.title}</strong><small>以前の明細</small></div><strong>{yen(item.confirmed_total)}</strong><ChevronRight size={17}/></button>)}
-          {!state.cards.length&&<button className="settlement-item" onClick={()=>selectTab('settings')}><div><strong>共有カード</strong><small>カードを設定</small></div><strong>¥0</strong><ChevronRight size={17}/></button>}
-          <button className="settlement-item" onClick={addBill}><div><strong>家賃</strong><small>{rent.overridden?'今月の金額':rent.amount?'基本家賃':'設定で毎月の金額を登録'}</small></div><strong>{yen(rent.amount)}</strong><ChevronRight size={17}/></button>
+          {!state.cards.length&&<button className="settlement-item" onClick={()=>selectTab('settings')}><div><strong>共有カード</strong></div><strong>—</strong><ChevronRight size={17}/></button>}
+          <button className="settlement-item" onClick={addBill}><div><strong>家賃</strong></div><strong>{rent.amount?yen(rent.amount):'—'}</strong><ChevronRight size={17}/></button>
           {otherBills.map(b=><button className="settlement-item" key={b.id} onClick={()=>setEditing({type:'bill',data:b})}><div><strong>{b.title}</strong><small>その他の引落</small></div><strong>{yen(b.amount)}</strong><ChevronRight size={17}/></button>)}
-        </div></section><section className="section record-section"><button className="record-link" onClick={()=>selectTab('ledger')}>記録 <ChevronRight size={20}/></button></section>
+        </div></section>
         {state.bills.some(b=>b.kind==='card')&&<details className="legacy-details"><summary>以前のカード請求の入力を確認</summary>{state.bills.filter(b=>b.kind==='card').map(b=><BillRow key={b.id} bill={b} onEdit={()=>setEditing({type:'bill',data:b})}/>)}</details>}
       </>}
       {tab==='ledger'&&<>{state.statements.length? <>

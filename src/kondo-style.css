@@ -310,8 +310,12 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .home-page-top h1 { display: none; }
 .settlement-hero { min-height: 0; padding: 8px 0 0; border-radius: 0; }
 .settlement-hero h2 { color: var(--ink); font-size: 21px; }
-.settlement-hero .hero-money { margin: 37px 0 2px; font-size: clamp(46px,10vw,70px); letter-spacing: -.065em; }
+.settlement-amount-toggle { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 0; color: inherit; border: 0; background: none; text-align: left; cursor: pointer; }
+.settlement-amount-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 5px; border-radius: 4px; }
+.settlement-hero .hero-money { display: block; margin: 37px 0 2px; font-size: clamp(46px,10vw,70px); letter-spacing: -.065em; }
 .settlement-hero .hero-label { color: #a4a4a4; }
+.hero-secondary { display: flex; align-items: baseline; gap: 9px; margin-top: 13px; color: #9a9a9a; font-size: 12px; font-weight: 500; }
+.hero-secondary strong { color: #686868; font-size: 17px; font-weight: 650; letter-spacing: -.035em; }
 .settlement-chart { height: 153px; display: flex; flex-direction: column; margin-top: 36px; }
 .chart-bars { height: 122px; display: flex; gap: 5px; align-items: end; overflow-x: auto; scrollbar-width: none; }
 .chart-bars::-webkit-scrollbar { display: none; }
@@ -328,9 +332,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .settlement-list .settlement-item { display: flex; width: 100%; min-height: 128px; padding: 20px; text-align: left; color: var(--ink); border: 1px solid #ededed; border-radius: 24px; background: #fff; cursor: pointer; }
 .settlement-list .settlement-item > div { flex: 1; }
 .settlement-list .settlement-item > strong { font-size: 23px; }
-.settlement-list .settlement-item:hover, .record-link:hover { background: #fafafa; }
-.record-section { margin-top: 12px; }
-.record-link { display: flex; width: 100%; min-height: 110px; align-items: flex-start; justify-content: space-between; padding: 20px; color: var(--ink); border: 1px solid #ededed; border-radius: 24px; background: #fff; text-align: left; font-size: 19px; font-weight: 650; cursor: pointer; }
+.settlement-list .settlement-item:hover { background: #fafafa; }
 .dock-add-wrap, .dock-month { display: none; }
 
 @media (max-width: 759px) {
