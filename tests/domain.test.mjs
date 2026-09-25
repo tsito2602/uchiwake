@@ -8,3 +8,6 @@ test('引落額だけを合計し、端数1円はふたりの間で分ける',()
 test('購入明細は費目別に集計でき、引落額に混ぜない',()=>{
   assert.deepEqual(categoryTotals([{category:'食費',amount:1200},{category:'食費',amount:800},{category:'交通費',amount:400}]),[{category:'食費',amount:2000},{category:'交通費',amount:400}]);
 });
+test('返金で差し引かれた費目も内訳に表示する',()=>{
+  assert.deepEqual(categoryTotals([{category:'日用品費',amount:800},{category:'日用品費',amount:-1000}]),[{category:'日用品費',amount:-200}]);
+});

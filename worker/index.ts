@@ -43,11 +43,13 @@ app.use('*', async (c, next) => {
 app.get('/api/state', async c => {
   const month = c.req.query('month') || '';
   if (!monthPattern.test(month)) return error('月を確認してください');
-  const [bills, expenses] = await Promise.all([
+  const [bills, expenses, statements, entries] = await Promise.all([
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
-    c.env.DB.prepare('SELECT id,spent_on,title,category,amount,note,receipt_key FROM expenses WHERE spent_on >= ? AND spent_on < ? ORDER BY spent_on DESC, created_at DESC').bind(`${month}-01`, nextMonth(month) + '-01').all()
+    c.env.DB.prepare('SELECT id,spent_on,title,category,amount,note,receipt_key FROM expenses WHERE spent_on >= ? AND spent_on < ? ORDER BY spent_on DESC, created_at DESC').bind(`${month}-01`, nextMonth(month) + '-01').all(),
+    c.env.DB.prepare('SELECT id,due_month,title,confirmed_total,created_at FROM card_statements WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
+    c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(month).all()
   ]);
-  return c.json({ month, bills: bills.results, expenses: expenses.results, ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
+  return c.json({ month, bills: bills.results, expenses: expenses.results, statements:statements.results, entries:entries.results, ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
 });
 
 function nextMonth(month: string) {
@@ -133,6 +135,72 @@ function parseImage(value: unknown): { mime:string; bytes:Uint8Array } | null {
   } catch { return null; }
 }
 
+// One reviewed import is one card withdrawal. The total must match the saved rows.
+app.post('/api/statements', async c => {
+  if (Number(c.req.header('Content-Length')) > 100_000) return error('明細行は50件以下にしてください',413);
+  const body = await c.req.json().catch(() => null) as {due_month?:unknown;title?:unknown;confirmed_total?:unknown;entries?:unknown} | null;
+  const entries = body?.entries;
+  if (!body || !monthPattern.test(String(body.due_month)) || !safeString(body.title) || !validAmount(body.confirmed_total) || !Array.isArray(entries) || entries.length < 1 || entries.length > 50) return error('カード明細の入力を確認してください');
+  const checked = entries.map((row:unknown) => {
+    const item = row as Record<string,unknown> | null;
+    return { spent_on:safeString(item?.spent_on,10),title:safeString(item?.title),category:item?.category,amount:item?.amount };
+  });
+  if (checked.some(row => (row.spent_on && !datePattern.test(row.spent_on)) || !row.title || !categories.includes(row.category as typeof categories[number]) || !Number.isSafeInteger(row.amount) || Number(row.amount) === 0 || Math.abs(Number(row.amount)) > 100_000_000)) return error('明細行の入力を確認してください');
+  const total=checked.reduce((sum,row)=>sum+Number(row.amount),0);
+  if (total !== Number(body.confirmed_total)) return error('カード引落額と明細行の合計が一致しません');
+  const id=crypto.randomUUID();
+  await c.env.DB.batch([
+    c.env.DB.prepare('INSERT INTO card_statements (id,due_month,title,confirmed_total) VALUES (?,?,?,?)').bind(id,body.due_month,safeString(body.title),total),
+    ...checked.map(row=>c.env.DB.prepare('INSERT INTO card_entries (id,statement_id,spent_on,title,category,amount) VALUES (?,?,?,?,?,?)').bind(crypto.randomUUID(),id,row.spent_on,row.title,row.category,Number(row.amount)))
+  ]);
+  return c.json({id,due_month:body.due_month,confirmed_total:total},201);
+});
+
+app.delete('/api/statements/:id', async c => {
+  const id=c.req.param('id');
+  const existing=await c.env.DB.prepare('SELECT id FROM card_statements WHERE id=?').bind(id).first();
+  if (!existing) return error('対象が見つかりません',404);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM card_entries WHERE statement_id=?').bind(id),
+    c.env.DB.prepare('DELETE FROM card_statements WHERE id=?').bind(id)
+  ]);
+  return c.json({ok:true});
+});
+
+app.put('/api/card-entries/:id/category', async c => {
+  const body=await c.req.json().catch(()=>null) as {category?:unknown}|null;
+  if (!categories.includes(body?.category as typeof categories[number])) return error('費目を選んでください');
+  const result=await c.env.DB.prepare('UPDATE card_entries SET category=? WHERE id=?').bind(body!.category,c.req.param('id')).run();
+  return result.meta.changes ? c.json({ok:true}) : error('対象が見つかりません',404);
+});
+
+app.post('/api/statement/analyze', async c => {
+  if (Number(c.req.header('Content-Length')) > 18_000_000) return error('画像の合計サイズを確認してください',413);
+  const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown}|null;
+  if (!body || (body.mode !== 'demo' && body.mode !== 'live') || !Array.isArray(body.images) || body.images.length < 1 || body.images.length > 3 || !body.images.every(image=>parseImage(image))) return error('JPEG・PNG・WebPの画像を1〜3枚選んでください');
+  if (body.mode === 'demo') {
+    if (c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
+    return c.json({confirmed_total:6840,entries:[
+      {spent_on:'',title:'デモ：スーパー',amount:2980,category:'食費'},
+      {spent_on:'',title:'デモ：ドラッグストア',amount:1660,category:'日用品費'},
+      {spent_on:'',title:'デモ：電車',amount:2200,category:'交通費'}
+    ],demo:true});
+  }
+  if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
+  const imageParts=body.images.map(image=>({type:'input_image',image_url:image,detail:'high'}));
+  const schema={type:'object',properties:{confirmed_total:{type:'integer'},entries:{type:'array',items:{type:'object',properties:{spent_on:{type:'string'},title:{type:'string'},category:{type:'string',enum:[...categories]},amount:{type:'integer'}},required:['spent_on','title','category','amount'],additionalProperties:false}}},required:['confirmed_total','entries'],additionalProperties:false};
+  const response=await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL,[
+    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。画像は最大3枚で、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${categories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
+    ...imageParts
+  ],false,{text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500});
+  if (!response) return error('明細を読み取れませんでした。手入力で仕分けできます',502);
+  let parsed: {confirmed_total?:unknown;entries?:unknown};
+  try {parsed=JSON.parse(response);} catch {return error('AIの結果を確認できませんでした',502);}
+  if (!Array.isArray(parsed.entries) || parsed.entries.length>50) return error('行数が多いため明細を分けてください',502);
+  const entries=parsed.entries.map((raw:unknown)=>{const entry=(raw&&typeof raw==='object'?raw:{}) as Record<string,unknown>;return {spent_on:datePattern.test(String(entry.spent_on))?entry.spent_on:'',title:safeString(entry.title),category:categories.includes(entry.category as typeof categories[number])?entry.category:'その他・要確認',amount:Number.isSafeInteger(entry.amount)&&Math.abs(Number(entry.amount))<=100_000_000?Number(entry.amount):0};});
+  return c.json({entries,confirmed_total:validAmount(parsed.confirmed_total)?Number(parsed.confirmed_total):0});
+});
+
 app.post('/api/receipt/analyze', async c => {
   if (Number(c.req.header('Content-Length')) > 6_000_000) return error('画像は4MB以下にしてください',413);
   const body = await c.req.json().catch(() => null) as { image?:unknown; mode?:unknown; scenario?:unknown } | null;
@@ -168,7 +236,7 @@ app.post('/api/report/comment', async c => {
   if (!monthPattern.test(month)) return error('月を確認してください');
   if (body?.mode !== 'demo' && body?.mode !== 'live') return error('コメントのモードを選択してください');
   if (body.mode === 'demo' && c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
-  const rows = await c.env.DB.prepare('SELECT category,SUM(amount) AS amount FROM expenses WHERE spent_on >= ? AND spent_on < ? GROUP BY category').bind(`${month}-01`,nextMonth(month)+'-01').all<{category:string;amount:number}>();
+  const rows = await c.env.DB.prepare('SELECT e.category,SUM(e.amount) AS amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? GROUP BY e.category').bind(month).all<{category:string;amount:number}>();
   if (!rows.results.length) return c.json({comment:'この月の支出を登録すると、傾向を表示できます。',demo:body.mode==='demo'});
   if (body.mode === 'demo') {
     const sorted = [...rows.results].sort((a,b)=>b.amount-a.amount);
@@ -181,10 +249,10 @@ app.post('/api/report/comment', async c => {
   return result ? c.json({comment:result.slice(0,300)}) : error('コメントを作成できませんでした',502);
 });
 
-async function openai(key:string,model:string,content:unknown[],receipt=false): Promise<string|null> {
+async function openai(key:string,model:string,content:unknown[],receipt=false,extra:Record<string,unknown>={}): Promise<string|null> {
   const schema = { type:'object',properties:{title:{type:'string'},amount:{type:'integer'},spent_on:{type:'string'},category:{type:'string',enum:[...categories]}},required:['title','amount','spent_on','category'],additionalProperties:false };
   const format = receipt ? {text:{format:{type:'json_schema',name:'receipt',strict:true,schema}}} : {};
-  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},max_output_tokens:500,...format})});
+  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},max_output_tokens:500,...format,...extra})});
   if (!response.ok) { console.error(JSON.stringify({event:'openai_error',status:response.status})); return null; }
   const data = await response.json() as {output?:Array<{content?:Array<{type:string;text?:string}>}>};
   return data.output?.flatMap(item=>item.content||[]).filter(item=>item.type==='output_text').map(item=>item.text||'').join('') || null;
