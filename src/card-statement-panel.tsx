@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { ArrowRight, CreditCard, X } from 'lucide-react';
-import type { CardEntry, CardStatement } from './domain';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowRight, ChevronLeft, CreditCard, Trash2, X } from 'lucide-react';
+import { categories, type CardEntry, type CardStatement, type Category } from './domain';
 
 type Props = {
   title: string;
@@ -10,15 +10,35 @@ type Props = {
   demo: boolean;
   onClose: () => void;
   onImport: () => void;
-  onOpenLedger: () => void;
+  onChangeCategory: (id:string,category:Category) => void;
+  onDeleteStatement: (id:string) => void;
 };
 
 const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
 
-export function CardStatementPanel({title,month,statements,entries,demo,onClose,onImport,onOpenLedger}:Props) {
+export function CardStatementPanel({title,month,statements,entries,demo,onClose,onImport,onChangeCategory,onDeleteStatement}:Props) {
   const panel=useRef<HTMLElement>(null);
   const closeButton=useRef<HTMLButtonElement>(null);
+  const previousSize=useRef<{width:number;height:number}|null>(null);
+  const onCloseRef=useRef(onClose);
+  onCloseRef.current=onClose;
+  const [view,setView]=useState<'summary'|'details'>('summary');
   const total=statements.reduce((sum,item)=>sum+item.confirmed_total,0);
+  const cardEntries=entries.filter(entry=>statements.some(statement=>statement.id===entry.statement_id));
+  const changeView=(next:'summary'|'details')=>{
+    const rect=panel.current?.getBoundingClientRect();
+    previousSize.current=rect?{width:rect.width,height:rect.height}:null;
+    setView(next);
+  };
+
+  useLayoutEffect(()=>{
+    if(!previousSize.current||!panel.current)return;
+    const before=previousSize.current;
+    const after=panel.current.getBoundingClientRect();
+    previousSize.current=null;
+    if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    panel.current.animate([{width:`${before.width}px`,height:`${before.height}px`},{width:`${after.width}px`,height:`${after.height}px`}],{duration:420,easing:'cubic-bezier(.22,1,.36,1)'});
+  },[view]);
 
   useEffect(()=>{
     const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
@@ -26,31 +46,32 @@ export function CardStatementPanel({title,month,statements,entries,demo,onClose,
     document.body.style.overflow='hidden';
     closeButton.current?.focus();
     const onKeyDown=(event:KeyboardEvent)=>{
-      if(event.key==='Escape')onClose();
+      if(event.key==='Escape')onCloseRef.current();
       if(event.key!=='Tab')return;
-      const buttons=panel.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])');
-      if(!buttons?.length)return;
-      if(event.shiftKey&&document.activeElement===buttons[0]){event.preventDefault();buttons[buttons.length-1].focus();}
-      else if(!event.shiftKey&&document.activeElement===buttons[buttons.length-1]){event.preventDefault();buttons[0].focus();}
+      const controls=panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled])');
+      if(!controls?.length)return;
+      if(event.shiftKey&&document.activeElement===controls[0]){event.preventDefault();controls[controls.length-1].focus();}
+      else if(!event.shiftKey&&document.activeElement===controls[controls.length-1]){event.preventDefault();controls[0].focus();}
     };
     document.addEventListener('keydown',onKeyDown);
     return()=>{document.removeEventListener('keydown',onKeyDown);document.body.style.overflow=originalOverflow;previous?.focus();};
-  },[onClose]);
+  },[]);
 
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
-    <section className="card-panel" role="dialog" aria-modal="true" aria-labelledby="card-panel-title" ref={panel}>
+    <section className="card-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="card-panel-title" ref={panel}>
       <div className="card-panel-grip" aria-hidden="true"/>
-      <header className="card-panel-header"><span className="card-panel-icon"><CreditCard size={22}/></span><div><h2 id="card-panel-title">{title}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</span></div><button ref={closeButton} className="card-panel-close" aria-label="明細を閉じる" onClick={onClose}><X size={20}/></button></header>
+      <header className="card-panel-header">{view==='details'?<button className="card-panel-back" aria-label="カードの概要へ戻る" onClick={()=>changeView('summary')}><ChevronLeft size={21}/></button>:<span className="card-panel-icon"><CreditCard size={22}/></span>}<div><h2 id="card-panel-title">{view==='details'?'カード明細':title}</h2><span>{view==='details'?title:`${Number(month.slice(0,4))}年${Number(month.slice(5))}月`}</span></div><button ref={closeButton} className="card-panel-close" aria-label="明細を閉じる" onClick={onClose}><X size={20}/></button></header>
       <div className="card-panel-scroll">
         {statements.length?<>
           <div className="card-panel-total"><span>カードの引落額</span><strong>{yen(total)}</strong></div>
-          {statements.map(statement=><div className="card-panel-statement" key={statement.id}>
-            <div className="card-panel-statement-title"><strong>{statements.length>1?statement.title:'利用明細'}</strong><span>{yen(statement.confirmed_total)}</span></div>
-            {entries.filter(entry=>entry.statement_id===statement.id).map(entry=><div className="card-panel-entry" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.category}{entry.spent_on?` · ${Number(entry.spent_on.slice(5,7))}/${Number(entry.spent_on.slice(8,10))}`:''}</small></div><span>{yen(entry.amount)}</span></div>)}
+          {view==='summary'?<div className="card-panel-statement"><div className="card-panel-statement-title"><strong>利用明細</strong><span>{cardEntries.length}件</span></div>{cardEntries.slice(0,3).map(entry=><div className="card-panel-entry" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.category}</small></div><span>{yen(entry.amount)}</span></div>)}{cardEntries.length>3&&<p className="card-panel-more">ほか {cardEntries.length-3} 件</p>}</div>:statements.map(statement=><div className="card-panel-statement" key={statement.id}>
+            <div className="card-panel-statement-title"><strong>{statement.title}</strong><span>{yen(statement.confirmed_total)}</span></div>
+            {entries.filter(entry=>entry.statement_id===statement.id).map(entry=><div className="card-panel-entry" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.spent_on||'利用日不明'}</small>{demo?<small>{entry.category}</small>:<select aria-label={`${entry.title}の費目`} value={entry.category} onChange={event=>onChangeCategory(entry.id,event.target.value as Category)}>{categories.map(category=><option key={category}>{category}</option>)}</select>}</div><span>{yen(entry.amount)}</span></div>)}
+            {!demo&&<button className="card-panel-delete" onClick={()=>onDeleteStatement(statement.id)}><Trash2 size={16}/> この明細を削除</button>}
           </div>)}
         </>:<div className="card-panel-empty"><p>この月の明細はまだありません。</p>{!demo&&<button onClick={onImport}>明細を取り込む <ArrowRight size={17}/></button>}</div>}
       </div>
-      {statements.length>0&&<footer className="card-panel-footer"><button onClick={onOpenLedger}>{demo?'明細画面を見る':'明細画面で編集'} <ArrowRight size={17}/></button></footer>}
+      {statements.length>0&&<footer className="card-panel-footer"><button onClick={()=>changeView(view==='summary'?'details':'summary')}>{view==='summary'?(demo?'すべての明細を見る':'明細を確認・編集'):'カードの概要へ戻る'} {view==='summary'?<ArrowRight size={17}/>:<ChevronLeft size={17}/>}</button></footer>}
     </section>
   </div>;
 }
