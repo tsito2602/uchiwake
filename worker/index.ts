@@ -142,7 +142,7 @@ app.post('/api/receipt/analyze', async c => {
   const result = await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL, [
     { type:'input_text', text:`日本のレシート1枚から店舗名、合計金額（円の整数）、購入日（YYYY-MM-DD）、費目を読み取る。費目は ${categories.join('、')} のいずれか。推測が必要な箇所は空文字か0、費目は「その他・要確認」。個別の商品額を合計金額として使わない。JSONのみ返す: {"title":"","amount":0,"spent_on":"","category":"その他・要確認"}` },
     { type:'input_image',image_url:body!.image,detail:'high' }
-  ]);
+  ],true);
   if (!result) return error('AIの読み取りに失敗しました。手入力できます',502);
   let parsed: Record<string,unknown>;
   try { parsed = JSON.parse(result.replace(/^```(?:json)?\s*|\s*```$/g,'')); } catch { return error('AIの結果を確認できませんでした',502); }
@@ -159,8 +159,10 @@ app.post('/api/report/comment', async c => {
   return result ? c.json({comment:result.slice(0,300)}) : error('コメントを作成できませんでした',502);
 });
 
-async function openai(key:string,model:string,content:unknown[]): Promise<string|null> {
-  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,max_output_tokens:500})});
+async function openai(key:string,model:string,content:unknown[],receipt=false): Promise<string|null> {
+  const schema = { type:'object',properties:{title:{type:'string'},amount:{type:'integer'},spent_on:{type:'string'},category:{type:'string',enum:[...categories]}},required:['title','amount','spent_on','category'],additionalProperties:false };
+  const format = receipt ? {text:{format:{type:'json_schema',name:'receipt',strict:true,schema}}} : {};
+  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},max_output_tokens:500,...format})});
   if (!response.ok) { console.error(JSON.stringify({event:'openai_error',status:response.status})); return null; }
   const data = await response.json() as {output?:Array<{content?:Array<{type:string;text?:string}>}>};
   return data.output?.flatMap(item=>item.content||[]).filter(item=>item.type==='output_text').map(item=>item.text||'').join('') || null;
