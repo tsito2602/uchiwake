@@ -307,7 +307,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 /* The settlement sketch: amount, history bars, stacked cards and floating controls. */
 .desktop-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); margin-bottom: 22px; border-bottom: 1px solid var(--line); }
 .desktop-tabs button[aria-current="page"] { border-bottom-color: var(--ink); }
-.home-page-top { display: none; }
+.home-page-top h1 { display: none; }
 .settlement-hero { min-height: 375px; padding: 27px; }
 .settlement-hero h2 { color: #fff; font-size: 21px; }
 .settlement-hero .hero-money { margin: 22px 0 2px; font-size: clamp(46px,10vw,70px); letter-spacing: -.065em; }
@@ -334,6 +334,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .dock-add-wrap, .dock-month { display: none; }
 
 @media (max-width: 759px) {
+  .home-page-top { display: none; }
   .settlement-hero { min-height: 365px; padding: 23px 21px; }
   .settlement-hero .hero-money { font-size: clamp(42px,11vw,60px); }
   .settlement-list .settlement-item { min-height: 115px; padding: 18px; }
