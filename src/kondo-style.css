@@ -339,7 +339,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .demo-view-banner { width: fit-content; margin-bottom: 20px; padding: 8px 13px; border-radius: 999px; background: #f2f2f2; color: #555; font-size: 12px; font-weight: 650; }
 .demo-settings .mode-options { margin-top: 17px; }
 .card-panel-backdrop { position: fixed; z-index: 60; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: #11111138; -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
-.card-panel { display: flex; flex-direction: column; width: min(100%, 520px); max-height: min(80dvh, 740px); overflow: hidden; border: 1px solid #ffffffc7; border-radius: 30px; background: #fffffff0; -webkit-backdrop-filter: blur(32px) saturate(1.15); backdrop-filter: blur(32px) saturate(1.15); box-shadow: inset 0 1px 0 #fff, 0 22px 70px #0a182a30, 0 2px 12px #00000012; animation: card-panel-in 280ms var(--ease-flow) both; transition: border-radius 420ms var(--ease-flow); }
+.card-panel { display: flex; flex-direction: column; width: min(100%, 520px); max-height: min(80dvh, 740px); overflow: hidden; border: 1px solid #ffffffc7; border-radius: 30px; background: #fffffff0; -webkit-backdrop-filter: blur(32px) saturate(1.15); backdrop-filter: blur(32px) saturate(1.15); box-shadow: inset 0 1px 0 #fff, 0 22px 70px #0a182a30, 0 2px 12px #00000012; transition: border-radius 420ms var(--ease-flow); }
 .card-panel[data-view="details"], .card-panel[data-view="edit"], .card-panel[data-view="fixed"] { width: min(100%, 600px); max-height: min(88dvh, 850px); border-radius: 25px; }
 .card-panel-grip { display: none; align-self: center; width: 38px; height: 4px; margin-top: 11px; border-radius: 99px; background: #d3d3d3; }
 .card-panel-header { display: flex; align-items: center; gap: 12px; padding: 20px 22px 16px; }
@@ -372,6 +372,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .bill-panel-form { display: flex; flex-direction: column; gap: 17px; padding: 8px 0 24px; }
 .bill-panel-form .field { width: 100%; }
 .bill-panel-note { color: #888; font-size: 13px; line-height: 1.6; }
+.bill-panel-fixed-link { align-self: flex-start; margin-top: 14px; padding: 8px 0; border: 0; background: transparent; color: #535353; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .bill-panel-actions { display: flex; flex-direction: column; gap: 8px; }
 .bill-panel-actions button { justify-content: center; }
 .bill-panel-actions .bill-panel-secondary { border: 1px solid #e7e7e7; background: #fff; color: #333; }
@@ -397,14 +398,18 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .card-settings-active { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 14px; }
 .card-settings-active input { width: 20px; height: 20px; margin: 0; }
 @keyframes card-panel-in { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.panel-source[data-panel-source="true"] { opacity: 0; }
 .dock-add-wrap, .dock-month { display: none; }
 
 @media (max-width: 759px) {
+  .context-host { z-index: 70; }
+  .context-host + .dock-month { display: none; }
   .card-panel-backdrop { align-items: flex-end; padding: 12px 12px calc(var(--dock-bottom-gap) + var(--dock-height) + env(safe-area-inset-bottom) + var(--dock-keyboard-inset, 0px) + 12px); }
   .card-panel { max-height: calc(100dvh - var(--dock-bottom-gap) - var(--dock-height) - env(safe-area-inset-bottom) - var(--dock-keyboard-inset, 0px) - 46px); }
   .card-panel[data-view="details"], .card-panel[data-view="edit"], .card-panel[data-view="fixed"] { max-height: calc(100dvh - var(--dock-bottom-gap) - var(--dock-height) - env(safe-area-inset-bottom) - var(--dock-keyboard-inset, 0px) - 30px); }
   .card-panel-grip { display: block; }
   .card-panel-header { padding-top: 13px; }
+  .card-panel-close, .panel-desktop-actions { display: none; }
   .home-page-top { display: none; }
   .settlement-hero { min-height: 0; padding: 8px 0 0; }
   .settlement-hero .hero-money { font-size: clamp(42px,11vw,60px); }

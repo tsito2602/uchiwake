@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronLeft, CreditCard, Trash2, X } from 'lucide-react';
+import { useLayoutEffect, useRef } from 'react';
+import { ArrowRight, CreditCard, Trash2, X } from 'lucide-react';
 import { categories, type CardEntry, type CardStatement, type Category } from './domain';
+import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 
 type Props = {
   title: string;
@@ -8,7 +9,13 @@ type Props = {
   statements: CardStatement[];
   entries: CardEntry[];
   demo: boolean;
+  view: 'summary'|'details';
+  origin?: PanelOrigin;
+  closing?: boolean;
   onClose: () => void;
+  onExited: () => void;
+  actionLabel: string;
+  onAction: () => void;
   onImport: () => void;
   onChangeCategory: (id:string,category:Category) => void;
   onDeleteStatement: (id:string) => void;
@@ -16,51 +23,28 @@ type Props = {
 
 const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
 
-export function CardStatementPanel({title,month,statements,entries,demo,onClose,onImport,onChangeCategory,onDeleteStatement}:Props) {
+export function CardStatementPanel({title,month,statements,entries,demo,view,origin,closing,onClose,onExited,actionLabel,onAction,onImport,onChangeCategory,onDeleteStatement}:Props) {
   const panel=useRef<HTMLElement>(null);
-  const closeButton=useRef<HTMLButtonElement>(null);
   const previousSize=useRef<{width:number;height:number}|null>(null);
-  const onCloseRef=useRef(onClose);
-  onCloseRef.current=onClose;
-  const [view,setView]=useState<'summary'|'details'>('summary');
+  usePanelMorph(panel,origin,closing,onExited,onClose);
   const total=statements.reduce((sum,item)=>sum+item.confirmed_total,0);
   const cardEntries=entries.filter(entry=>statements.some(statement=>statement.id===entry.statement_id));
-  const changeView=(next:'summary'|'details')=>{
-    const rect=panel.current?.getBoundingClientRect();
-    previousSize.current=rect?{width:rect.width,height:rect.height}:null;
-    setView(next);
-  };
-
+  const lastView=useRef(view);
   useLayoutEffect(()=>{
-    if(!previousSize.current||!panel.current)return;
+    const after=panel.current?.getBoundingClientRect();
+    if(lastView.current===view){if(after)previousSize.current={width:after.width,height:after.height};return;}
+    lastView.current=view;
+    if(!previousSize.current||!panel.current||!after)return;
     const before=previousSize.current;
-    const after=panel.current.getBoundingClientRect();
-    previousSize.current=null;
+    previousSize.current={width:after.width,height:after.height};
     if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
     panel.current.animate([{width:`${before.width}px`,height:`${before.height}px`},{width:`${after.width}px`,height:`${after.height}px`}],{duration:420,easing:'cubic-bezier(.22,1,.36,1)'});
   },[view]);
 
-  useEffect(()=>{
-    const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
-    const originalOverflow=document.body.style.overflow;
-    document.body.style.overflow='hidden';
-    closeButton.current?.focus();
-    const onKeyDown=(event:KeyboardEvent)=>{
-      if(event.key==='Escape')onCloseRef.current();
-      if(event.key!=='Tab')return;
-      const controls=panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled])');
-      if(!controls?.length)return;
-      if(event.shiftKey&&document.activeElement===controls[0]){event.preventDefault();controls[controls.length-1].focus();}
-      else if(!event.shiftKey&&document.activeElement===controls[controls.length-1]){event.preventDefault();controls[0].focus();}
-    };
-    document.addEventListener('keydown',onKeyDown);
-    return()=>{document.removeEventListener('keydown',onKeyDown);document.body.style.overflow=originalOverflow;previous?.focus();};
-  },[]);
-
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <section className="card-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="card-panel-title" ref={panel}>
       <div className="card-panel-grip" aria-hidden="true"/>
-      <header className="card-panel-header">{view==='details'?<button className="card-panel-back" aria-label="カードの概要へ戻る" onClick={()=>changeView('summary')}><ChevronLeft size={21}/></button>:<span className="card-panel-icon"><CreditCard size={22}/></span>}<div><h2 id="card-panel-title">{view==='details'?'カード明細':title}</h2><span>{view==='details'?title:`${Number(month.slice(0,4))}年${Number(month.slice(5))}月`}</span></div><button ref={closeButton} className="card-panel-close" aria-label="明細を閉じる" onClick={onClose}><X size={20}/></button></header>
+      <header className="card-panel-header"><span className="card-panel-icon"><CreditCard size={22}/></span><div><h2 id="card-panel-title">{view==='details'?'カード明細':title}</h2><span>{view==='details'?title:`${Number(month.slice(0,4))}年${Number(month.slice(5))}月`}</span></div><button className="card-panel-close" aria-label="明細を閉じる" onClick={onClose}><X size={20}/></button></header>
       <div className="card-panel-scroll">
         {statements.length?<>
           <div className="card-panel-total"><span>カードの引落額</span><strong>{yen(total)}</strong></div>
@@ -71,7 +55,7 @@ export function CardStatementPanel({title,month,statements,entries,demo,onClose,
           </div>)}
         </>:<div className="card-panel-empty"><p>この月の明細はまだありません。</p>{!demo&&<button onClick={onImport}>明細を取り込む <ArrowRight size={17}/></button>}</div>}
       </div>
-      {statements.length>0&&<footer className="card-panel-footer"><button onClick={()=>changeView(view==='summary'?'details':'summary')}>{view==='summary'?(demo?'すべての明細を見る':'明細を確認・編集'):'カードの概要へ戻る'} {view==='summary'?<ArrowRight size={17}/>:<ChevronLeft size={17}/>}</button></footer>}
+      <footer className="card-panel-footer panel-desktop-actions"><button onClick={onAction}>{actionLabel} <ArrowRight size={17}/></button></footer>
     </section>
   </div>;
 }

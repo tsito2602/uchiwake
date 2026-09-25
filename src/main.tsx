@@ -6,11 +6,14 @@ import { FloatingDock, dockTabs, type DockTab } from './floating-dock';
 import { CardStatementPanel } from './card-statement-panel';
 import { BillPanel } from './bill-panel';
 import { CardSettingsPanel } from './card-settings-panel';
+import { panelOrigin, type PanelOrigin } from './use-panel-morph';
 import './styles.css';
 import './kondo-style.css';
 
 type Tab = DockTab;
-type Editing = { type:'bill'; data:Partial<Bill>; initialView?:'summary'|'fixed'; rentRuleMonth?:string };
+type Editing = { type:'bill'; data:Partial<Bill>; view:'summary'|'edit'|'fixed'; initialView:'summary'|'fixed'; rentRuleMonth?:string; origin?:PanelOrigin; closing?:boolean };
+type OpenCard = {type:'card'|'statement';id:string;view:'summary'|'details';origin?:PanelOrigin;closing?:boolean};
+type OpenSettings = {card?:SharedCard;view:'summary'|'edit';name:string;active:boolean;origin?:PanelOrigin;closing?:boolean};
 type AiMode = 'demo'|'live';
 const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
 const monthText = (month:string) => `${Number(month.slice(0,4))}年${Number(month.slice(5))}月`;
@@ -34,8 +37,8 @@ function App() {
   const [aiMode,setAiMode]=useState<AiMode>('demo');
   const [screenshots,setScreenshots]=useState<{name:string;image:string}[]>([]);
   const [selectedCardId,setSelectedCardId]=useState('');
-  const [openCard,setOpenCard]=useState<{type:'card'|'statement';id:string}|null>(null);
-  const [cardSettings,setCardSettings]=useState<SharedCard|'new'|null>(null);
+  const [openCard,setOpenCard]=useState<OpenCard|null>(null);
+  const [cardSettings,setCardSettings]=useState<OpenSettings|null>(null);
   const [rentAmount,setRentAmount]=useState('');
   const [rentStartMonth,setRentStartMonth]=useState(month);
   const [draft,setDraft]=useState<{due_month:string;card_id:string;title:string;confirmed_total:number;entries:EntryDraft[];demo:boolean}|null>(null);
@@ -70,7 +73,7 @@ function App() {
       const id=editing.data.id;
       const targetMonth=editing.data.due_month;
       await api('/bills'+(id?`/${id}`:''),{method:id?'PUT':'POST',body:JSON.stringify(editing.data)});
-      setEditing(null);
+      setEditing(current=>current?{...current,closing:true}:null);
       if (targetMonth && targetMonth!==month) setMonth(targetMonth);
       else await load();
     } catch(e) {setNotice(String(e instanceof Error?e.message:e));}
@@ -78,7 +81,7 @@ function App() {
   }
   async function remove(id:string) {
     if (!window.confirm('この項目を削除しますか？')) return;
-    try { await api(`/bills/${id}`,{method:'DELETE'});setEditing(null);await load(); } catch(e) {setNotice(String(e instanceof Error?e.message:e));}
+    try { await api(`/bills/${id}`,{method:'DELETE'});setEditing(current=>current?{...current,closing:true}:null);await load(); } catch(e) {setNotice(String(e instanceof Error?e.message:e));}
   }
   async function chooseScreenshots(files:FileList|null) {
     if (!files?.length) return;
@@ -123,33 +126,37 @@ function App() {
   }
   async function removeStatement(id:string) {
     if(!window.confirm('このカード明細と全ての利用行を削除しますか？'))return;
-    try{await api(`/statements/${id}`,{method:'DELETE'});await load();}catch(e){setNotice(String(e instanceof Error?e.message:e));}
+    try{await api(`/statements/${id}`,{method:'DELETE'});if(openCard?.type==='statement'&&openCard.id===id)setOpenCard(null);await load();}catch(e){setNotice(String(e instanceof Error?e.message:e));}
   }
   async function changeCategory(id:string,category:Category) {
     try{await api(`/card-entries/${id}/category`,{method:'PUT',body:JSON.stringify({category})});await load();}catch(e){setNotice(String(e instanceof Error?e.message:e));}
   }
-  const addBill=()=>setEditing({type:'bill',data:state?.bills.find(b=>b.kind==='rent')||{due_month:month,kind:'rent',title:'家賃',amount:rent.amount,note:''}});
+  const addBill=(source?:HTMLElement)=>setEditing({type:'bill',view:'summary',initialView:'summary',origin:source?panelOrigin(source):undefined,data:state?.bills.find(b=>b.kind==='rent')||{due_month:month,kind:'rent',title:'家賃',amount:rent.amount,note:''}});
+  const dismissCard=()=>setOpenCard(current=>current?{...current,closing:true}:null);
+  const dismissBill=()=>setEditing(current=>current?{...current,closing:true}:null);
+  const dismissSettings=()=>setCardSettings(current=>current?{...current,closing:true}:null);
+  const openSettings=(card?:SharedCard,source?:HTMLElement)=>setCardSettings({card,view:card?'summary':'edit',name:card?.name||'',active:card?.active??true,origin:source?panelOrigin(source):undefined});
   async function createCard(name:string) {
     if(!name.trim())return;
     setBusy(true);setNotice('');
-    try{await api('/cards',{method:'POST',body:JSON.stringify({name:name.trim()})});setCardSettings(null);await load();}
+    try{await api('/cards',{method:'POST',body:JSON.stringify({name:name.trim()})});dismissSettings();await load();}
     catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   async function updateCard(card:SharedCard,name:string,active:boolean) {
     setBusy(true);setNotice('');
-    try{await api(`/cards/${card.id}`,{method:'PUT',body:JSON.stringify({name,active})});setCardSettings(null);await load();}
+    try{await api(`/cards/${card.id}`,{method:'PUT',body:JSON.stringify({name,active})});dismissSettings();await load();}
     catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   async function saveRentRule() {
     if(!rentStartMonth||!Number.isSafeInteger(Number(rentAmount))||Number(rentAmount)<=0)return;
     setBusy(true);setNotice('');
-    try{await api(`/rent-rules/${rentStartMonth}`,{method:'PUT',body:JSON.stringify({amount:Number(rentAmount)})});setRentAmount('');setEditing(null);await load();}
+    try{await api(`/rent-rules/${rentStartMonth}`,{method:'PUT',body:JSON.stringify({amount:Number(rentAmount)})});dismissBill();await load();}
     catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   async function removeRentRule(effectiveMonth:string) {
     if(!window.confirm(`${monthText(effectiveMonth)}からの基本家賃を削除しますか？`))return;
     setBusy(true);setNotice('');
-    try{await api(`/rent-rules/${effectiveMonth}`,{method:'DELETE'});setEditing(null);await load();}
+    try{await api(`/rent-rules/${effectiveMonth}`,{method:'DELETE'});dismissBill();await load();}
     catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   const selectTab=(value:Tab)=>{setOpenCard(null);setTab(value);setNotice('');window.scrollTo({top:0,behavior:'smooth'});};
@@ -159,7 +166,10 @@ function App() {
   const chartMax=Math.max(1,...chart.map(item=>item.amount));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
   const panelTitle=openCard?.type==='card'?state?.cards.find(card=>card.id===openCard.id)?.name:panelStatements[0]?.title;
-  const dockContext=tab==='import'&&draft?{label:'カード明細の確認',onBack:()=>setDraft(null),actionLabel:busy?'保存中…':'保存して計算',onAction:()=>void saveStatement(),disabled:busy||!canSaveDraft}:undefined;
+  const cardContext=openCard?{label:'カードの明細',onBack:()=>openCard.view==='details'?setOpenCard({...openCard,view:'summary'}):dismissCard(),actionLabel:!panelStatements.length?(demoView?'閉じる':'明細を取り込む'):openCard.view==='summary'?'すべての明細を見る':'概要に戻る',onAction:()=>{if(!panelStatements.length){if(demoView)dismissCard();else{if(openCard.type==='card')setSelectedCardId(openCard.id);setOpenCard(null);selectTab('import');}}else setOpenCard({...openCard,view:openCard.view==='summary'?'details':'summary'});}}:undefined;
+  const billContext=editing?{label:'引落',onBack:()=>editing.view==='summary'||(editing.view==='fixed'&&editing.initialView==='fixed')?dismissBill():setEditing({...editing,view:'summary'}),actionLabel:demoView?'閉じる':editing.view==='summary'?editing.data.kind==='rent'?'今月だけ変更':'引落を編集':busy?'保存中…':editing.view==='fixed'?'基本家賃を保存':'保存する',onAction:()=>{if(demoView)dismissBill();else if(editing.view==='summary')setEditing({...editing,view:'edit'});else if(editing.view==='fixed')void saveRentRule();else void save();},disabled:!demoView&&(busy||(editing.view==='edit'&&(!editing.data.title||!Number(editing.data.amount)))||(editing.view==='fixed'&&(!rentStartMonth||!Number.isSafeInteger(Number(rentAmount))||Number(rentAmount)<=0)))}:undefined;
+  const settingsContext=cardSettings?{label:'共有カード',onBack:()=>cardSettings.view==='edit'&&cardSettings.card?setCardSettings({...cardSettings,view:'summary'}):dismissSettings(),actionLabel:cardSettings.view==='summary'?'設定を変更':busy?'保存中…':cardSettings.card?'変更を保存':'カードを追加',onAction:()=>{if(cardSettings.view==='summary')setCardSettings({...cardSettings,view:'edit'});else if(cardSettings.card)void updateCard(cardSettings.card,cardSettings.name.trim(),cardSettings.active);else void createCard(cardSettings.name);},disabled:cardSettings.view==='edit'&&(busy||!cardSettings.name.trim()||(!!cardSettings.card&&cardSettings.name.trim()===cardSettings.card.name&&cardSettings.active===cardSettings.card.active))}:undefined;
+  const dockContext=cardContext||billContext||settingsContext||(tab==='import'&&draft?{label:'カード明細の確認',onBack:()=>setDraft(null),actionLabel:busy?'保存中…':'保存して計算',onAction:()=>void saveStatement(),disabled:busy||!canSaveDraft}:undefined);
   return <>
     <main className="shell">
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}{!demoView&&<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button>}</nav>
@@ -178,17 +188,17 @@ function App() {
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
         </section>
         <section className="section settlement-section"><div className="settlement-list">
-          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item" key={card.id} onClick={()=>{setSelectedCardId(card.id);setOpenCard({type:'card',id:card.id});}}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{card.name}</span>{items.length>0&&<small>{items.length}件の明細</small>}<strong className="settlement-item-amount">{items.length?yen(items.reduce((sum,item)=>sum+item.confirmed_total,0)):'—'}</strong></span><ChevronRight size={17}/></button>})}
-          {state.statements.filter(item=>!item.card_id||!state.cards.some(card=>card.id===item.card_id)).map(item=><button className="settlement-item" key={item.id} onClick={()=>setOpenCard({type:'statement',id:item.id})}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{item.title}</span><strong className="settlement-item-amount">{yen(item.confirmed_total)}</strong></span><ChevronRight size={17}/></button>)}
-          {!state.cards.length&&<button className="settlement-item" onClick={()=>setCardSettings('new')}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">共有カード</span><strong className="settlement-item-amount">—</strong></span><ChevronRight size={17}/></button>}
-          <button className="settlement-item" onClick={addBill}><span className="settlement-item-icon"><Home size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">家賃</span><strong className="settlement-item-amount">{rent.amount?yen(rent.amount):'—'}</strong></span><ChevronRight size={17}/></button>
-          {otherBills.map(b=><button className="settlement-item" key={b.id} onClick={()=>setEditing({type:'bill',data:b})}><span className="settlement-item-icon"><ArrowDownLeft size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{b.title}</span><strong className="settlement-item-amount">{yen(b.amount)}</strong></span><ChevronRight size={17}/></button>)}
+          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item panel-source" data-panel-source={openCard?.type==='card'&&openCard.id===card.id?'true':undefined} key={card.id} onClick={event=>{setSelectedCardId(card.id);setOpenCard({type:'card',id:card.id,view:'summary',origin:panelOrigin(event.currentTarget)});}}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{card.name}</span>{items.length>0&&<small>{items.length}件の明細</small>}<strong className="settlement-item-amount">{items.length?yen(items.reduce((sum,item)=>sum+item.confirmed_total,0)):'—'}</strong></span><ChevronRight size={17}/></button>})}
+          {state.statements.filter(item=>!item.card_id||!state.cards.some(card=>card.id===item.card_id)).map(item=><button className="settlement-item panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===item.id?'true':undefined} key={item.id} onClick={event=>setOpenCard({type:'statement',id:item.id,view:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{item.title}</span><strong className="settlement-item-amount">{yen(item.confirmed_total)}</strong></span><ChevronRight size={17}/></button>)}
+          {!state.cards.length&&<button className="settlement-item panel-source" data-panel-source={cardSettings&&!cardSettings.card?'true':undefined} onClick={event=>openSettings(undefined,event.currentTarget)}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">共有カード</span><strong className="settlement-item-amount">—</strong></span><ChevronRight size={17}/></button>}
+          <button className="settlement-item panel-source" data-panel-source={editing?.data.kind==='rent'?'true':undefined} onClick={event=>addBill(event.currentTarget)}><span className="settlement-item-icon"><Home size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">家賃</span><strong className="settlement-item-amount">{rent.amount?yen(rent.amount):'—'}</strong></span><ChevronRight size={17}/></button>
+          {otherBills.map(b=><button className="settlement-item panel-source" data-panel-source={editing?.data.id===b.id?'true':undefined} key={b.id} onClick={event=>setEditing({type:'bill',data:b,view:'summary',initialView:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><ArrowDownLeft size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{b.title}</span><strong className="settlement-item-amount">{yen(b.amount)}</strong></span><ChevronRight size={17}/></button>)}
         </div></section>
-        {state.bills.some(b=>b.kind==='card')&&<details className="legacy-details"><summary>以前のカード請求の入力を確認</summary>{state.bills.filter(b=>b.kind==='card').map(b=><BillRow key={b.id} bill={b} onEdit={()=>setEditing({type:'bill',data:b})}/>)}</details>}
+        {state.bills.some(b=>b.kind==='card')&&<details className="legacy-details"><summary>以前のカード請求の入力を確認</summary>{state.bills.filter(b=>b.kind==='card').map(b=><BillRow key={b.id} bill={b} onEdit={()=>setEditing({type:'bill',data:b,view:'summary',initialView:'summary'})}/>)}</details>}
       </>}
       {tab==='ledger'&&<>{state.statements.length? <>
         <div className="ledger-overview"><span>{monthText(month)}のカード合計</span><strong>{yen(cardTotal)}</strong><small>引落月で表示 · 費目は後から変更できます</small></div>
-        {state.statements.map(s=><button className="statement-preview" key={s.id} onClick={()=>setOpenCard({type:'statement',id:s.id})}><span className="statement-preview-heading"><CreditCard size={22}/><span><strong>{state.cards.find(card=>card.id===s.card_id)?.name||s.title}</strong><small>{state.entries.filter(e=>e.statement_id===s.id).length}件の明細</small></span><ChevronRight size={18}/></span><strong className="statement-preview-amount">{yen(s.confirmed_total)}</strong></button>)}
+        {state.statements.map(s=><button className="statement-preview panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===s.id?'true':undefined} key={s.id} onClick={event=>setOpenCard({type:'statement',id:s.id,view:'summary',origin:panelOrigin(event.currentTarget)})}><span className="statement-preview-heading"><CreditCard size={22}/><span><strong>{state.cards.find(card=>card.id===s.card_id)?.name||s.title}</strong><small>{state.entries.filter(e=>e.statement_id===s.id).length}件の明細</small></span><ChevronRight size={18}/></span><strong className="statement-preview-amount">{yen(s.confirmed_total)}</strong></button>)}
         {!!breakdown.length&&<details className="breakdown-details"><summary>費目別の合計を見る</summary><div className="bars">{[...breakdown].sort((a,b)=>b.amount-a.amount).map(item=><div className="bar-row" key={item.category}><div className="bar-label"><span>{item.category}</span><strong>{yen(item.amount)}</strong></div><div className="bar-track"><span style={{width:`${categoryMagnitude?Math.abs(item.amount)/categoryMagnitude*100:0}%`}}/></div></div>)}</div></details>}
       </>:demoView?<div className="empty">この月のデモ明細はありません。</div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
       {tab==='import'&&(demoView?<div className="empty">デモ表示中は明細を追加できません。設定から実データに戻せます。</div>:!draft?<>
@@ -209,16 +219,16 @@ function App() {
       {tab==='settings'&&<>
         {state.demo_enabled&&<section className="section settings-section demo-settings"><h2>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
         {demoView?<section className="section settings-section"><h2>デモの設定</h2><p className="subtle">{state.cards.map(card=>card.name).join('・')} ／ 基本家賃 {yen(state.rent_rules[0]?.amount||0)}</p><p className="subtle">デモ表示中は編集できません。実データに切り替えると設定を変更できます。</p></section>:<>
-        <section className="section settings-section"><h2>共有カード</h2><p className="subtle">カードを登録すると、明細を取り込む際に選べます。</p><div className="card-settings-list">{state.cards.map(card=><button type="button" className="settings-card-button" key={card.id} onClick={()=>setCardSettings(card)}><CreditCard size={21}/><span><strong>{card.name}</strong><small>{card.active?'使用中':'使用停止中'}</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={()=>setCardSettings('new')}><Plus size={17}/> カードを追加</button></section>
-        <section className="section settings-section"><h2>基本家賃</h2><p className="subtle">指定した月から毎月の精算に使います。金額が変わったら、新しい開始月を指定してください。</p><div className="rule-list">{state.rent_rules.map(rule=><button type="button" className="settings-rent-button" key={rule.effective_month} onClick={()=>{setRentStartMonth(rule.effective_month);setRentAmount(String(rule.amount));setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rule.amount},initialView:'fixed',rentRuleMonth:rule.effective_month});}}><Home size={21}/><span><strong>{yen(rule.amount)}</strong><small>{monthText(rule.effective_month)}から</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={()=>{setRentStartMonth(month);setRentAmount('');setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rent.amount},initialView:'fixed'});}}><Plus size={17}/> 基本家賃を設定</button><p className="subtle">一時的な変更は精算画面の家賃から入力できます。</p></section>
+        <section className="section settings-section"><h2>共有カード</h2><p className="subtle">カードを登録すると、明細を取り込む際に選べます。</p><div className="card-settings-list">{state.cards.map(card=><button type="button" className="settings-card-button panel-source" data-panel-source={cardSettings?.card?.id===card.id?'true':undefined} key={card.id} onClick={event=>openSettings(card,event.currentTarget)}><CreditCard size={21}/><span><strong>{card.name}</strong><small>{card.active?'使用中':'使用停止中'}</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>openSettings(undefined,event.currentTarget)}><Plus size={17}/> カードを追加</button></section>
+        <section className="section settings-section"><h2>基本家賃</h2><p className="subtle">指定した月から毎月の精算に使います。金額が変わったら、新しい開始月を指定してください。</p><div className="rule-list">{state.rent_rules.map(rule=><button type="button" className="settings-rent-button" key={rule.effective_month} onClick={event=>{setRentStartMonth(rule.effective_month);setRentAmount(String(rule.amount));setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rule.amount},view:'fixed',initialView:'fixed',rentRuleMonth:rule.effective_month,origin:panelOrigin(event.currentTarget)});}}><Home size={21}/><span><strong>{yen(rule.amount)}</strong><small>{monthText(rule.effective_month)}から</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{setRentStartMonth(month);setRentAmount('');setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rent.amount},view:'fixed',initialView:'fixed',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 基本家賃を設定</button><p className="subtle">一時的な変更は精算画面の家賃から入力できます。</p></section>
         </>}
       </>}
       </>}
     </main>
-    <FloatingDock tab={tab} onSelect={selectTab} context={dockContext} month={month} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={demoView?undefined:{label:'追加',options:[{label:'カード明細を取り込む',onClick:()=>selectTab('import')},{label:'今月の家賃を変更',onClick:addBill}]}}/>
-    {openCard&&state&&panelTitle&&<CardStatementPanel title={panelTitle} month={month} statements={panelStatements} entries={state.entries} demo={demoView} onClose={()=>setOpenCard(null)} onImport={()=>{if(openCard.type==='card')setSelectedCardId(openCard.id);selectTab('import');}} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
-    {editing&&<BillPanel bill={editing.data} initialView={editing.initialView} rentRuleMonth={editing.rentRuleMonth} month={month} demo={demoView} busy={busy} rentStartMonth={rentStartMonth} rentAmount={rentAmount} onRentStartMonth={setRentStartMonth} onRentAmount={setRentAmount} onChange={data=>setEditing({...editing,data})} onClose={()=>setEditing(null)} onSave={()=>void save()} onSaveRentRule={()=>void saveRentRule()} onDelete={()=>{if(editing.data.id)void remove(editing.data.id);}} onDeleteRentRule={()=>{if(editing.rentRuleMonth)void removeRentRule(editing.rentRuleMonth);}}/>}
-    {cardSettings&&<CardSettingsPanel card={cardSettings==='new'?undefined:cardSettings} busy={busy} onClose={()=>setCardSettings(null)} onSave={(name,active)=>{if(cardSettings==='new')void createCard(name);else void updateCard(cardSettings,name,active);}}/>}
+    <FloatingDock tab={tab} onSelect={selectTab} context={dockContext} month={month} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={demoView?undefined:{label:'追加',options:[{label:'カード明細を取り込む',onClick:()=>selectTab('import')},{label:'今月の家賃を変更',onClick:()=>addBill()}]}}/>
+    {openCard&&state&&panelTitle&&<CardStatementPanel key={`${openCard.type}-${openCard.id}`} title={panelTitle} month={month} statements={panelStatements} entries={state.entries} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>setOpenCard(null)} actionLabel={cardContext!.actionLabel} onAction={cardContext!.onAction} onImport={()=>{if(openCard.type==='card')setSelectedCardId(openCard.id);setOpenCard(null);selectTab('import');}} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
+    {editing&&<BillPanel bill={editing.data} view={editing.view} onView={view=>setEditing({...editing,view})} origin={editing.origin} closing={editing.closing} onExited={()=>setEditing(null)} actionLabel={billContext!.actionLabel} onAction={billContext!.onAction} actionDisabled={billContext!.disabled} rentRuleMonth={editing.rentRuleMonth} month={month} demo={demoView} busy={busy} rentStartMonth={rentStartMonth} rentAmount={rentAmount} onRentStartMonth={setRentStartMonth} onRentAmount={setRentAmount} onChange={data=>setEditing({...editing,data})} onClose={billContext!.onBack} onDelete={()=>{if(editing.data.id)void remove(editing.data.id);}} onDeleteRentRule={()=>{if(editing.rentRuleMonth)void removeRentRule(editing.rentRuleMonth);}}/>}
+    {cardSettings&&<CardSettingsPanel key={cardSettings.card?.id||'new'} card={cardSettings.card} view={cardSettings.view} origin={cardSettings.origin} closing={cardSettings.closing} busy={busy} name={cardSettings.name} active={cardSettings.active} actionLabel={settingsContext!.actionLabel} actionDisabled={settingsContext!.disabled} onName={name=>setCardSettings({...cardSettings,name})} onActive={active=>setCardSettings({...cardSettings,active})} onClose={settingsContext!.onBack} onExited={()=>setCardSettings(null)} onSave={()=>settingsContext!.onAction()}/>}
   </>;
 }
 function Field({label,children}:{label:string;children:React.ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
