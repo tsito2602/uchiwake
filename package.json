@@ -8,7 +8,7 @@
     "build": "vite build && node scripts/embed-assets.mjs",
     "bundle:worker": "npm run build && esbuild worker/index.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=dist/worker.mjs",
     "typecheck": "tsc --noEmit",
-    "check": "npm run build && npm run typecheck && node --test tests/*.test.mjs",
+    "check": "npm run bundle:worker && npm run typecheck && node --test tests/*.test.mjs",
     "deploy:staging": "npm run check && wrangler deploy --config wrangler.staging.jsonc",
     "db:staging": "wrangler d1 migrations apply uchiwake-staging --remote --config wrangler.staging.jsonc"
   },

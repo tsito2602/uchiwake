@@ -47,7 +47,7 @@ app.get('/api/state', async c => {
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
     c.env.DB.prepare('SELECT id,spent_on,title,category,amount,note,receipt_key FROM expenses WHERE spent_on >= ? AND spent_on < ? ORDER BY spent_on DESC, created_at DESC').bind(`${month}-01`, nextMonth(month) + '-01').all()
   ]);
-  return c.json({ month, bills: bills.results, expenses: expenses.results, ai_enabled: Boolean(c.env.OPENAI_API_KEY) });
+  return c.json({ month, bills: bills.results, expenses: expenses.results, ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
 });
 
 function nextMonth(month: string) {
@@ -134,11 +134,24 @@ function parseImage(value: unknown): { mime:string; bytes:Uint8Array } | null {
 }
 
 app.post('/api/receipt/analyze', async c => {
-  if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
   if (Number(c.req.header('Content-Length')) > 6_000_000) return error('画像は4MB以下にしてください',413);
-  const body = await c.req.json().catch(() => null) as { image?:unknown } | null;
+  const body = await c.req.json().catch(() => null) as { image?:unknown; mode?:unknown; scenario?:unknown } | null;
+  if (body?.mode !== 'demo' && body?.mode !== 'live') return error('読取モードを選択してください');
   const image = parseImage(body?.image);
   if (!image) return error('JPEG・PNG・WebPの4MB以下の画像を選んでください');
+  if (body.mode === 'demo') {
+    if (c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
+    const examples = {
+      supermarket: { title:'デモ：スーパー', amount:1980, category:'食費' },
+      restaurant: { title:'デモ：カフェ', amount:1240, category:'外食費' },
+      unclear: { title:'', amount:0, category:'その他・要確認' }
+    } as const;
+    if (typeof body.scenario !== 'string' || !(body.scenario in examples)) return error('デモの例を選んでください');
+    const sample = examples[body.scenario as keyof typeof examples];
+    const spent_on = new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    return c.json({ ...sample, spent_on, note:'デモ読取のサンプルです。画像の内容は読み取っていません。', demo:true });
+  }
+  if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
   const result = await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL, [
     { type:'input_text', text:`日本のレシート1枚から店舗名、合計金額（円の整数）、購入日（YYYY-MM-DD）、費目を読み取る。費目は ${categories.join('、')} のいずれか。推測が必要な箇所は空文字か0、費目は「その他・要確認」。個別の商品額を合計金額として使わない。JSONのみ返す: {"title":"","amount":0,"spent_on":"","category":"その他・要確認"}` },
     { type:'input_image',image_url:body!.image,detail:'high' }
@@ -150,12 +163,21 @@ app.post('/api/receipt/analyze', async c => {
 });
 
 app.post('/api/report/comment', async c => {
-  if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
-  const month = (await c.req.json().catch(() => null) as { month?:string } | null)?.month || '';
+  const body = await c.req.json().catch(() => null) as { month?:string; mode?:unknown } | null;
+  const month = body?.month || '';
   if (!monthPattern.test(month)) return error('月を確認してください');
+  if (body?.mode !== 'demo' && body?.mode !== 'live') return error('コメントのモードを選択してください');
+  if (body.mode === 'demo' && c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
   const rows = await c.env.DB.prepare('SELECT category,SUM(amount) AS amount FROM expenses WHERE spent_on >= ? AND spent_on < ? GROUP BY category').bind(`${month}-01`,nextMonth(month)+'-01').all<{category:string;amount:number}>();
-  if (!rows.results.length) return c.json({comment:'この月の支出を登録すると、傾向を表示できます。'});
-  const result = await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL,[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }]);
+  if (!rows.results.length) return c.json({comment:'この月の支出を登録すると、傾向を表示できます。',demo:body.mode==='demo'});
+  if (body.mode === 'demo') {
+    const sorted = [...rows.results].sort((a,b)=>b.amount-a.amount);
+    const total = sorted.reduce((sum,item)=>sum+item.amount,0);
+    return c.json({comment:`デモ表示（AI未使用）：${month}の支出合計は${total.toLocaleString('ja-JP')}円。最も多い費目は${sorted[0].category}の${sorted[0].amount.toLocaleString('ja-JP')}円です。`,demo:true});
+  }
+  const key = c.env.OPENAI_API_KEY;
+  if (!key) return error('AIの設定がまだありません',503);
+  const result = await openai(key,c.env.OPENAI_MODEL,[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }]);
   return result ? c.json({comment:result.slice(0,300)}) : error('コメントを作成できませんでした',502);
 });
 

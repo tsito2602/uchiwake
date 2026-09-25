@@ -4,7 +4,7 @@ export type Category = typeof categories[number];
 export type BillKind = keyof typeof billKinds;
 export type Bill = { id: string; due_month: string; title: string; kind: BillKind; amount: number; note: string };
 export type Expense = { id: string; spent_on: string; title: string; category: Category; amount: number; note: string; receipt_key: string | null };
-export type State = { bills: Bill[]; expenses: Expense[]; ai_enabled: boolean; month: string };
+export type State = { bills: Bill[]; expenses: Expense[]; ai_enabled: boolean; demo_enabled: boolean; month: string };
 export function summary(bills: Pick<Bill,'amount'>[]) {
   const total = bills.reduce((sum, bill) => sum + bill.amount, 0);
   return { total, perPerson: Math.ceil(total / 2), remainder: total % 2 };

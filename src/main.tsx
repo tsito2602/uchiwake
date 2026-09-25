@@ -5,7 +5,8 @@ import { billKinds, categories, categoryTotals, summary, type Bill, type BillKin
 import './styles.css';
 
 type Tab = 'home'|'ledger'|'import'|'report'|'settings';
-type Editing = { type:'bill'; data:Partial<Bill> } | { type:'expense'; data:Partial<Expense>; image?:string };
+type Editing = { type:'bill'; data:Partial<Bill> } | { type:'expense'; data:Partial<Expense>; image?:string; demo?:boolean };
+type AiMode = 'demo'|'live';
 const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
 const monthText = (month:string) => `${Number(month.slice(0,4))}年${Number(month.slice(5))}月`;
 const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -26,6 +27,8 @@ function App() {
   const [image,setImage]=useState('');
   const [fileName,setFileName]=useState('');
   const [preview,setPreview]=useState<string|null>(null);
+  const [aiMode,setAiMode]=useState<AiMode>('demo');
+  const [scenario,setScenario]=useState<'supermarket'|'restaurant'|'unclear'>('supermarket');
   async function load() { try { setState(await api<State>(`/state?month=${month}`)); setNotice(''); } catch(e) { setNotice(String(e instanceof Error?e.message:e)); } }
   useEffect(()=>{ setState(null); setComment(''); void load(); },[month]);
   const totals=useMemo(()=>summary(state?.bills||[]),[state]);
@@ -56,17 +59,29 @@ function App() {
     setFileName(file.name);setNotice('');
     const reader=new FileReader();reader.onload=()=>setImage(String(reader.result));reader.readAsDataURL(file);
   }
+  function useSampleImage() {
+    const canvas=document.createElement('canvas');canvas.width=640;canvas.height=800;
+    const ctx=canvas.getContext('2d');if (!ctx) return;
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,640,800);
+    ctx.fillStyle='#222';ctx.font='bold 38px sans-serif';ctx.fillText('uchiwake DEMO',70,125);
+    ctx.font='24px sans-serif';ctx.fillText('サンプル画像 / SAMPLE RECEIPT',70,195);
+    ctx.fillText('画像の文字はAIで読み取りません',70,280);
+    ctx.fillText('日付・金額・費目は選んだ例から返します',70,330);
+    ctx.fillText('--------------------------------',70,430);
+    ctx.font='bold 28px sans-serif';ctx.fillText('TEST ONLY',70,510);
+    setImage(canvas.toDataURL('image/png'));setFileName('サンプル画像');setNotice('');
+  }
   async function analyze() {
     if (!image) return;
     setBusy(true);setNotice('');
     try {
-      const result=await api<{title:string;amount:number;spent_on:string;category:Category}>('/receipt/analyze',{method:'POST',body:JSON.stringify({image})});
-      setEditing({type:'expense',data:{...result,spent_on:result.spent_on||today(),note:''},image});
+      const result=await api<{title:string;amount:number;spent_on:string;category:Category;note?:string;demo?:boolean}>('/receipt/analyze',{method:'POST',body:JSON.stringify({image,mode:aiMode,scenario})});
+      setEditing({type:'expense',data:{...result,spent_on:result.spent_on||today(),note:result.note||''},image,demo:result.demo});
     } catch(e) {setNotice(String(e instanceof Error?e.message:e));}
     finally {setBusy(false);}
   }
   async function makeComment() {
-    setBusy(true);try {const response=await api<{comment:string}>('/report/comment',{method:'POST',body:JSON.stringify({month})});setComment(response.comment);}catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
+    setBusy(true);try {const response=await api<{comment:string}>('/report/comment',{method:'POST',body:JSON.stringify({month,mode:aiMode})});setComment(response.comment);}catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   const addBill=()=>setEditing({type:'bill',data:{due_month:month,kind:'card',title:'',amount:0,note:''}});
   const addExpense=()=>setEditing({type:'expense',data:{spent_on:today(),category:'その他・要確認',title:'',amount:0,note:''}});
@@ -85,8 +100,25 @@ function App() {
         <section className="section"><div className="section-head"><div><div className="eyebrow">SPENDING</div><h2>使ったお金</h2></div><button className="text-action" onClick={()=>setTab('ledger')}>家計簿を見る <ArrowRight size={16}/></button></div><div className="mini-summary"><div><span>利用月の支出</span><strong>{yen(spending)}</strong></div><p>利用月の支出は上の入金額に足しません。カード請求の引落予定を登録して計算します。</p></div></section>
       </>}
       {tab==='ledger'&&<><div className="callout"><ReceiptText size={20}/><div><strong>{monthText(month)}の支出 {yen(spending)}</strong><p>買い物の日付で記録。引落予定とは別に集計します。</p></div></div><section className="section"><div className="section-head"><div><div className="eyebrow">TRANSACTIONS</div><h2>利用明細</h2></div><button className="primary small" onClick={addExpense}><Plus size={17}/> 手入力</button></div>{state.expenses.length?<div className="list">{state.expenses.map(e=><div className="row" key={e.id}><div className="row-symbol"><ListFilter size={19}/></div><div className="row-content"><strong>{e.title}</strong><small>{e.spent_on.replaceAll('-',' / ')} · {e.category}{e.receipt_key?' · 画像あり':''}</small></div><strong className="row-money">{yen(e.amount)}</strong><button className="row-edit" aria-label={`${e.title}を編集`} onClick={()=>setEditing({type:'expense',data:e})}>編集</button></div>)}</div>:<Empty text="支出はまだありません。レシートからも登録できます。" onClick={addExpense} label="支出を追加"/>}</section></>}
-      {tab==='import'&&<><div className="callout"><Camera size={21}/><div><strong>レシートを読み取る</strong><p>画像から日付・金額・費目の候補を作ります。保存前に確認できます。</p></div></div><section className="section"><div className="eyebrow">SCAN A RECEIPT</div><h2>画像を選ぶ</h2><label className="upload"><Camera size={30}/><strong>{fileName||'撮影または画像を選択'}</strong><span>JPEG / PNG / WebP · 4MB以下</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>readFile(e.target.files?.[0])}/></label>{image&&<div className="upload-actions"><img className="image-thumb" src={image} alt="選んだレシート"/><div><button className="primary" disabled={busy||!state.ai_enabled} onClick={()=>void analyze()}>{busy?'読み取り中…':'AIで読み取る'} <ArrowRight size={16}/></button><button className="secondary" onClick={()=>setEditing({type:'expense',data:{spent_on:today(),title:'',amount:0,category:'その他・要確認',note:''},image})}>自分で入力</button></div></div>}{!state.ai_enabled&&<p className="subtle">AI連携の設定後に読み取りを利用できます。手入力は利用できます。</p>}</section></>}
-      {tab==='report'&&<><div className="report-total"><span>利用月の支出</span><strong>{yen(spending)}</strong><p>{monthText(month)}の明細から集計</p></div><section className="section"><div className="section-head"><div><div className="eyebrow">CATEGORIES</div><h2>費目別の内訳</h2></div><ChartNoAxesCombined size={21} color="#777"/></div>{breakdown.length?<div className="bars">{breakdown.sort((a,b)=>b.amount-a.amount).map(item=><div className="bar-row" key={item.category}><div className="bar-label"><span>{item.category}</span><strong>{yen(item.amount)}</strong></div><div className="bar-track"><span style={{width:`${spending?item.amount/spending*100:0}%`}}/></div></div>)}</div>:<div className="empty">この月の支出を登録すると内訳が表示されます。</div>}</section><section className="section"><div className="section-head"><div><div className="eyebrow">MONTHLY NOTE</div><h2>今月のひとこと</h2></div></div><div className="comment"><p>{comment||'費目別の金額から、今月の傾向を短くまとめます。'}</p><button className="secondary" disabled={busy||!state.ai_enabled||!breakdown.length} onClick={()=>void makeComment()}>{busy?'作成中…':'AIコメントを作成'} <ArrowRight size={15}/></button></div></section></>}
+      {tab==='import'&&<>
+        <div className="callout"><Camera size={21}/><div><strong>レシートを読み取る</strong><p>画像から日付・金額・費目の候補を作ります。保存前に確認できます。</p></div></div>
+        <ModeSwitch mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} onChange={value=>{setAiMode(value);setComment('');setNotice('');}}/>
+        <section className="section"><div className="eyebrow">SCAN A RECEIPT</div><h2>画像を選ぶ</h2>
+          {aiMode==='demo'&&<Field label="デモの例"><select value={scenario} onChange={e=>setScenario(e.target.value as typeof scenario)}><option value="supermarket">スーパー · ¥1,980</option><option value="restaurant">カフェ · ¥1,240</option><option value="unclear">読み取り不鮮明 · 要修正</option></select></Field>}
+          <label className="upload"><Camera size={30}/><strong>{fileName||'撮影または画像を選択'}</strong><span>JPEG / PNG / WebP · 4MB以下</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>readFile(e.target.files?.[0])}/></label>
+          {aiMode==='demo'&&<button className="sample-button" onClick={useSampleImage}>画像を用意せずサンプルで試す <ArrowRight size={15}/></button>}
+          {image&&<div className="upload-actions"><img className="image-thumb" src={image} alt="選んだレシート"/><div><button className="primary" disabled={busy||(aiMode==='live'&&!state.ai_enabled)||(aiMode==='demo'&&!state.demo_enabled)} onClick={()=>void analyze()}>{busy?'処理中…':aiMode==='demo'?'無料でデモ読取':'実際のAIで読み取る'} <ArrowRight size={16}/></button><button className="secondary" onClick={()=>setEditing({type:'expense',data:{spent_on:today(),title:'',amount:0,category:'その他・要確認',note:''},image})}>自分で入力</button></div></div>}
+          {aiMode==='demo'&&<p className="subtle">画像の内容は解析しません。選んだ例の結果で、確認・編集・保存まで試せます。</p>}
+        </section>
+      </>}
+      {tab==='report'&&<>
+        <div className="report-total"><span>利用月の支出</span><strong>{yen(spending)}</strong><p>{monthText(month)}の明細から集計</p></div>
+        <section className="section"><div className="section-head"><div><div className="eyebrow">CATEGORIES</div><h2>費目別の内訳</h2></div><ChartNoAxesCombined size={21} color="#777"/></div>{breakdown.length?<div className="bars">{breakdown.sort((a,b)=>b.amount-a.amount).map(item=><div className="bar-row" key={item.category}><div className="bar-label"><span>{item.category}</span><strong>{yen(item.amount)}</strong></div><div className="bar-track"><span style={{width:`${spending?item.amount/spending*100:0}%`}}/></div></div>)}</div>:<div className="empty">この月の支出を登録すると内訳が表示されます。</div>}</section>
+        <section className="section"><div className="section-head"><div><div className="eyebrow">MONTHLY NOTE</div><h2>今月のひとこと</h2></div></div>
+          <ModeSwitch mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} onChange={value=>{setAiMode(value);setComment('');}}/>
+          <div className="comment"><p>{comment||'費目別の金額から、今月の傾向を短くまとめます。'}</p><button className="secondary" disabled={busy||(aiMode==='live'&&!state.ai_enabled)||(aiMode==='demo'&&!state.demo_enabled)||!breakdown.length} onClick={()=>void makeComment()}>{busy?'作成中…':aiMode==='demo'?'無料でデモコメントを作成':'実際のAIでコメントを作成'} <ArrowRight size={15}/></button></div>
+        </section>
+      </>}
       {tab==='settings'&&<><section className="section"><div className="eyebrow">HOW IT WORKS</div><h2>入金額の考え方</h2><div className="steps"><div><span>01</span><p>カード請求、家賃など<strong>今月引き落とされる金額</strong>を登録</p></div><div><span>02</span><p>合計を2人で折半し、共有口座への入金目安を表示</p></div><div><span>03</span><p>レシートは<strong>使った月</strong>の費目別集計に記録。入金額には重ねて足さない</p></div></div></section><section className="section"><div className="eyebrow">ABOUT</div><h2>uchiwake</h2><p className="subtle">MVP / ステージング環境。レシートのAI結果は必ず確認してから保存してください。</p></section></>}
       </>}
     </main>
@@ -105,7 +137,7 @@ function App() {
         <Field label="費目"><select value={editing.data.category||'その他・要確認'} onChange={e=>setEditing({...editing,data:{...editing.data,category:e.target.value as Category}})}>{categories.map(category=><option key={category}>{category}</option>)}</select></Field>
         <Field label="メモ（任意）"><input value={editing.data.note||''} maxLength={500} onChange={e=>setEditing({...editing,data:{...editing.data,note:e.target.value}})}/></Field>
         {editing.data.receipt_key&&<button className="text-action" onClick={async()=>{const response=await fetch(`/api/expenses/${editing.data.id}/receipt`);if(response.ok){const url=URL.createObjectURL(await response.blob());setPreview(url);}else setNotice('画像を開けませんでした');}}>保存した画像を見る <ArrowRight size={15}/></button>}
-        {editing.image&&<p className="subtle">画像も一緒に保存します。AIの金額と日付を確認してください。</p>}
+        {editing.image&&<p className={editing.demo?'demo-warning':'subtle'}>{editing.demo?'デモの値です。画像の内容は読み取っていません。保存する前に内容を確認してください。':'画像も一緒に保存します。金額と日付を確認してください。'}</p>}
       </>}
       <div className="form-actions">{editing.data.id&&<button className="delete" onClick={()=>{const {type,data}=editing;setEditing(null);void remove(type==='bill'?'bills':'expenses',data.id!);}}><Trash2 size={17}/> 削除</button>}<button className="primary" disabled={busy||!editing.data.title||!editing.data.amount} onClick={()=>void save()}>{busy?'保存中…':'保存する'} <Check size={17}/></button></div>
     </div></div></div>}
@@ -113,6 +145,9 @@ function App() {
   </>;
 }
 function Field({label,children}:{label:string;children:React.ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
+function ModeSwitch({mode,demoEnabled,liveEnabled,onChange}:{mode:AiMode;demoEnabled:boolean;liveEnabled:boolean;onChange:(value:AiMode)=>void}) {
+  return <div className="mode-panel"><div className="eyebrow">AI MODE / 動作確認</div><div className="mode-options" role="group" aria-label="AIの動作モード"><button className={mode==='demo'?'selected':''} disabled={!demoEnabled} aria-pressed={mode==='demo'} onClick={()=>onChange('demo')}>デモ・無料</button><button className={mode==='live'?'selected':''} disabled={!liveEnabled} aria-pressed={mode==='live'} onClick={()=>onChange('live')}>実際のAI・料金あり</button></div><p>{mode==='demo'?'サンプル結果を返します。OpenAI APIを呼びません。':liveEnabled?'OpenAI APIに送信します。利用料金が発生します。':'APIキーの設定後に選択できます。'}</p></div>;
+}
 function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
 function BillRow({bill,onEdit}:{bill:Bill;onEdit:()=>void}) {return <div className="row"><div className="row-symbol">{bill.kind==='card'?<CreditCard size={19}/>:bill.kind==='rent'?<Home size={19}/>:<ArrowDownLeft size={19}/>}</div><div className="row-content"><strong>{bill.title}</strong><small>{billKinds[bill.kind]}{bill.note?` · ${bill.note}`:''}</small></div><strong className="row-money">{yen(bill.amount)}</strong><button className="row-edit" onClick={onEdit} aria-label={`${bill.title}を編集`}>編集</button></div>}
 createRoot(document.getElementById('root')!).render(<App/>);
