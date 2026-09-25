@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars*
+.env*
+*.tsbuildinfo
+*.log
+worker/generated-assets.ts

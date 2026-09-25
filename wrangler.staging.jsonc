@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "uchiwake-staging",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [{ "binding": "DB", "database_name": "uchiwake-staging", "database_id": "8a984378-6b7e-412f-ac28-3c327d004a2a", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "RECEIPTS", "bucket_name": "uchiwake-receipts-staging" }],
+  "vars": { "APP_ENV": "staging", "OPENAI_MODEL": "gpt-6-luna" },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}
