@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type CSSProperties } from 'react';
 import { ArrowLeft, Calculator, ChevronLeft, ChevronRight, Plus, ReceiptText, Settings } from 'lucide-react';
-import { animateDockPress, DockSurface } from './kondo-dock-surface';
+import { animateDockPress } from './kondo-dock-surface';
+import { FluidDockSurface, type FluidDockHandle } from './kondo-fluid-dock';
+import { DockContent } from './kondo-dock-content';
 
-export type DockTab = 'home' | 'ledger' | 'import' | 'report' | 'settings';
+export type DockTab = 'home' | 'ledger' | 'import' | 'settings';
 export const dockTabs = [
   { key: 'home', label: '精算', icon: Calculator },
   { key: 'ledger', label: '明細', icon: ReceiptText },
@@ -16,11 +18,13 @@ type Props = {tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:Doc
 export function FloatingDock({tab,onSelect,add,context,month,onPrevMonth,onNextMonth}:Props) {
   const [preview,setPreview]=useState<number|null>(null);
   const [menuOpen,setMenuOpen]=useState(false);
-  const root=useRef<HTMLElement>(null);
+  const root=useRef<HTMLDivElement>(null);
+  const morph=useRef<FluidDockHandle>(null);
   const pointer=useRef<{id:number;startX:number;startY:number}|null>(null);
   const animation=useRef<Animation|undefined>(undefined);
   const swallowClick=useRef(false);
   const selected=Math.max(0,dockTabs.findIndex(item=>item.key===tab));
+  useLayoutEffect(()=>{morph.current?.measure();},[context]);
   useEffect(()=>()=>{animation.current?.cancel();},[]);
   useEffect(()=>{
     const viewport=window.visualViewport;
@@ -61,13 +65,17 @@ export function FloatingDock({tab,onSelect,add,context,month,onPrevMonth,onNextM
     release();
     if(index>=0)onSelect(dockTabs[index].key);
   }
-  if(context)return <div className="floating-nav-host context-host"><nav className="kondo-context-dock" aria-label={context.label}><button className="context-back" onClick={context.onBack} aria-label="戻る"><ArrowLeft size={22}/></button><button className="context-action" onClick={context.onAction} disabled={context.disabled}>{context.actionLabel}</button></nav></div>;
   return <>
-    {add&&<div className="dock-add-wrap">{menuOpen&&<div className="dock-add-menu">{add.options.map(option=><button key={option.label} onClick={()=>{setMenuOpen(false);option.onClick();}}>{option.label}</button>)}</div>}<button className="dock-add" aria-label={add.label} aria-expanded={menuOpen} onClick={()=>setMenuOpen(value=>!value)}><Plus size={23}/></button></div>}
-    <div className="floating-nav-host"><nav ref={root} className="kondo-floating-dock" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={release} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
-      <DockSurface split={false}/>
-      <span className="dock-selection" aria-hidden="true"/>
-      {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={item.label} onClick={()=>onSelect(item.key)}><item.icon size={22} strokeWidth={1.8}/></button>)}
-    </nav><div className="dock-month" aria-label="表示月"><button aria-label="前月" onClick={onPrevMonth}><ChevronLeft size={18}/></button><span>{month.slice(0,4)}-{month.slice(5)}</span><button aria-label="翌月" onClick={onNextMonth}><ChevronRight size={18}/></button></div></div>
+    {!context&&add&&<div className="dock-add-wrap">{menuOpen&&<div className="dock-add-menu">{add.options.map(option=><button key={option.label} onClick={()=>{setMenuOpen(false);option.onClick();}}>{option.label}</button>)}</div>}<button className="dock-add" aria-label={add.label} aria-expanded={menuOpen} onClick={()=>setMenuOpen(value=>!value)}><Plus size={23}/></button></div>}
+    <div className={`floating-nav-host${context?' context-host':''}`}><div ref={root} className="kondo-floating-dock thumb-dock" data-mode={context?'context':'browse'}>
+      <FluidDockSurface root={root} ref={morph}/>
+      <DockContent identity={context?'context':'browse'} mode={context?'context':'browse'}>
+        {context?<nav className="context-dock" aria-label={context.label}><div className="context-island context-back"><button onClick={context.onBack} aria-label="戻る"><ArrowLeft size={22}/></button></div><div className="context-island context-primary"><button className="context-action" onClick={context.onAction} disabled={context.disabled}>{context.actionLabel}</button></div></nav>
+          :<nav className="safari-dock" data-wide="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={release} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
+            <span className="dock-selection" aria-hidden="true"/>
+            {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={item.label} onClick={()=>onSelect(item.key)}><item.icon size={22} strokeWidth={1.8}/></button>)}
+          </nav>}
+      </DockContent>
+    </div>{!context&&<div className="dock-month" aria-label="表示月"><button aria-label="前月" onClick={onPrevMonth}><ChevronLeft size={18}/></button><span>{month.slice(0,4)}-{month.slice(5)}</span><button aria-label="翌月" onClick={onNextMonth}><ChevronRight size={18}/></button></div>}</div>
   </>;
 }
