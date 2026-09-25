@@ -329,7 +329,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .settlement-section { margin-top: 32px; }
 .settlement-list { display: grid; gap: 12px; border: 0; }
 .settlement-list .settlement-item { display: flex; align-items: flex-start; width: 100%; min-height: 128px; padding: 20px; text-align: left; color: var(--ink); border: 1px solid #ededed; border-radius: 24px; background: #fff; cursor: pointer; }
-.settlement-list .settlement-item-icon { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 12px; background: #fff; color: #333; }
+.settlement-list .settlement-item-icon { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 12px; background: transparent; color: #333; }
 .settlement-list .settlement-item-copy { display: flex; flex: 1; flex-direction: column; justify-content: space-between; min-width: 0; min-height: 84px; gap: 4px; }
 .settlement-list .settlement-item-label { color: #858585; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settlement-list .settlement-item-copy small { font-size: 11px; }

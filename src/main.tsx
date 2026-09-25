@@ -156,7 +156,7 @@ function App() {
   return <>
     <main className="shell">
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}{!demoView&&<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button>}</nav>
-      <div className={`page-top ${tab==='home'?'home-page-top':''}`}><h1>{draft&&tab==='import'?'明細を確認':({home:'精算',ledger:'カードの明細',import:'明細を取り込む',settings:'設定'} as const)[tab]}</h1>{!draft&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
+      <div className={`page-top ${tab==='home'?'home-page-top':''}`}><h1>{draft&&tab==='import'?'明細を確認':({home:'精算',ledger:'カードの明細',import:'明細を取り込む',settings:'設定'} as const)[tab]}</h1>{!draft&&tab!=='ledger'&&tab!=='settings'&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
       {notice&&<div className="notice" role="alert"><span>{notice}</span><button aria-label="閉じる" onClick={()=>setNotice('')}><X size={16}/></button></div>}
       {demoView&&<div className="demo-view-banner" role="status">デモ表示中 · サンプルデータ</div>}
       {!state?<div className="empty loading">{notice?'データを表示できませんでした。':'読み込んでいます…'}{notice&&<div><button className="secondary" onClick={()=>void load()}>再読み込み</button></div>}</div>:<>
