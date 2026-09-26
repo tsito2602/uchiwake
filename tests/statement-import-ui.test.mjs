@@ -4,20 +4,21 @@ import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { demoImportResult } from '../src/statement-import-flow.ts';
+import { scrollImportToLatest } from '../src/import-follow-scroll.ts';
 
 const {outputFiles}=await build({stdin:{contents:`
   import {createElement} from 'react';
   import {renderToStaticMarkup} from 'react-dom/server';
   import {ImportReview} from './src/statement-import-review';
-  import {ImportProcessing} from './src/statement-import-content';
+  import {ImportProcessing,ImportPhaseStatus} from './src/statement-import-content';
   import {StatementImportPanel} from './src/statement-import-panel';
   import {FloatingDock} from './src/floating-dock';
   import {ThinkingOrb} from 'thinking-orbs';
   export const defaultOrb=()=>renderToStaticMarkup(createElement(ThinkingOrb,{state:'breathing',size:20,theme:'dark','aria-hidden':'true'}));
   export const review=props=>renderToStaticMarkup(createElement(ImportReview,props));
-  export const processing=props=>renderToStaticMarkup(createElement(ImportProcessing,props));
+  export const processing=props=>renderToStaticMarkup(createElement(ImportPhaseStatus,{progress:props.progress}))+renderToStaticMarkup(createElement(ImportProcessing,props));
   const context=appearance=>({onBack:()=>{},onAction:()=>{},actionLabel:appearance==='breathing'?'仕分け中...':'デモで仕分ける',actionAppearance:appearance,disabled:appearance==='breathing',commit:true});
-  export const panel=(active,appearance)=>renderToStaticMarkup(createElement(StatementImportPanel,{processing:active,reviewing:false,onExited:()=>{},context:context(appearance)},'明細'));
+  export const panel=(active,appearance)=>renderToStaticMarkup(createElement(StatementImportPanel,{processing:active,progress:active?{phase:'sorting',entries:[],count:3,demo:true}:null,reviewing:false,onExited:()=>{},context:context(appearance)},'明細'));
   export const dock=appearance=>renderToStaticMarkup(createElement(FloatingDock,{tab:'home',onSelect:()=>{},panelActive:true,month:'2026-09',onMonthChange:()=>{},onPrevMonth:()=>{},onNextMonth:()=>{},context:context(appearance)}));
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
 // Resolve external React imports from the project, not from a data URL.
@@ -46,6 +47,42 @@ test('仕分け後も同じ明細行で日付・費目・金額を表示し、�
 test('手入力で始めた空の明細は編集欄を開き、削除・金額・費目を編集できる',()=>{
   const markup=review({...props,draft:{...draft,entries:[{spent_on:'',title:'',amount:0,category:'その他・要確認'}]}});
   for(const expected of ['type="date"','type="number"','<select','1件目を削除'])assert.ok(markup.includes(expected));
+});
+
+test('フェーズはスクロール領域の外に固定し、仕分け済みの全行を保持する',()=>{
+  const markup=panel(true);
+  const phase=markup.indexOf('class="import-phase-status"');
+  const viewport=markup.indexOf('class="card-panel-scroll"');
+  assert.ok(phase>0&&phase<viewport);
+  assert.ok(markup.slice(phase,viewport).includes('</section>'));
+  assert.ok(markup.includes('aria-current="step"'));
+  const entries=Array.from({length:12},(_,i)=>({...sample.entries[0],title:`店舗${i+1}`}));
+  const list=processing({progress:{phase:'sorting',entries,count:12,demo:true},settings:[]});
+  assert.equal((list.match(/data-import-entry=""/g)||[]).length,12);
+  assert.ok(list.includes('店舗1'));assert.ok(list.includes('店舗12'));
+});
+
+test('新しい明細をパネル内だけで追従し、動きを減らす設定では即時に移動する',()=>{
+  const moves=[];
+  const viewport={scrollHeight:980,clientHeight:400,scrollTo:value=>moves.push(value)};
+  scrollImportToLatest(viewport,false);
+  assert.deepEqual(moves.pop(),{top:580,behavior:'smooth'});
+  scrollImportToLatest(viewport,true);
+  assert.deepEqual(moves.pop(),{top:580,behavior:'instant'});
+  viewport.scrollHeight=200;scrollImportToLatest(viewport,false);
+  assert.equal(moves.pop().top,0);
+});
+
+test('編集できる行をアイコンで示し、確認チェックは黒いアニメーションとキーボード操作を備える',()=>{
+  const markup=review({...props,checked:true});
+  assert.equal((markup.match(/class="import-entry-edit"/g)||[]).length,3);
+  assert.ok(markup.includes('import-edit-hint'));
+  assert.match(markup,/data-checked="true"><input type="checkbox" checked=""/);
+  assert.ok(markup.includes('元の明細と内容・金額を確認した'));
+  const css=readFileSync(new URL('../src/statement-import.css',import.meta.url),'utf8');
+  assert.match(css,/input:checked \+ \.import-confirm-check \{[^}]*background: #171717;[^}]*animation: import-check-pop/);
+  assert.ok(css.includes('input:focus-visible + .import-confirm-check'));
+  assert.ok(css.includes('@keyframes import-check-draw'));
 });
 
 test('仕分け中だけ0.7倍のSoft Orbitを表示し、光とぼかしを角丸の内側に収める',()=>{

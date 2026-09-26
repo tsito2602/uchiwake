@@ -35,19 +35,28 @@ export function ImportEntryLine({entry,settings}:{entry:EntryDraft;settings:Cate
   return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:appearance.color}}>{entry.category}</span></span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
 }
 
-export function ImportProcessing({progress,settings}:{progress:ImportProgress;settings:CategoryAppearance[]}) {
+export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {
   const reading=progress.phase==='reading';
   const checking=progress.phase==='checking';
   const title=reading?'明細を読み取り中':checking?'金額を確認中':'費目ごとに仕分け中';
+  const phaseIndex=reading?0:checking?2:1;
+  return <section className="import-phase-status" aria-label="取り込みの進行">
+    <div className="import-phase-title" role="status" aria-live="polite"><span key={progress.phase} className="import-phase-title-content">{checking?<Check className="import-animated-check" size={20} aria-hidden="true"/>:<ScanLine size={20} aria-hidden="true"/>}<strong>{title}</strong></span>{progress.demo&&<small>デモ</small>}</div>
+    <ol className="import-steps">{['読み取り','仕分け','金額確認'].map((label,index)=>{
+      const state=index<phaseIndex?'done':index===phaseIndex?'current':'pending';
+      return <li key={label} data-state={state} aria-current={state==='current'?'step':undefined}><span className="import-step-marker" aria-hidden="true">{state==='done'?<Check className="import-animated-check" size={13}/>:index+1}</span><span>{label}</span><span className="import-step-track" aria-hidden="true"><i/></span></li>;
+    })}</ol>
+    <div className="import-phase-summary">{reading?<span className="import-working-line" aria-hidden="true"/>:<><span>仕分け済み <b>{progress.entries.length}</b> / {progress.count}件</span><span className="import-phase-total"><small>利用合計</small><strong>¥{progress.entries.reduce((sum,entry)=>sum+entry.amount,0).toLocaleString('ja-JP')}</strong></span></>}</div>
+  </section>;
+}
+
+export function ImportProcessing({progress,settings}:{progress:ImportProgress;settings:CategoryAppearance[]}) {
+  const reading=progress.phase==='reading';
   return <div className="import-processing">
-    <div className="import-processing-symbol" aria-hidden="true">{checking?<Check size={30}/>:<ScanLine size={30}/>}</div>
-    <div className="import-processing-heading" role="status" aria-live="polite"><h3>{title}</h3><p>{progress.demo?'サンプル明細でプレビュー':reading?'画像から店名・日付・金額を読み取っています':'読み取った明細を整理しています'}</p></div>
-    <ol className="import-steps" aria-label="取り込みの進行"><li data-state={reading?'current':'done'}>読み取り</li><li data-state={checking?'done':reading?'pending':'current'}>仕分け</li><li data-state={checking?'current':'pending'}>金額確認</li></ol>
     <div className="import-sorting-list" aria-label="仕分け結果">
-      {reading?<div className="import-skeleton" aria-hidden="true">{[0,1,2].map(index=><div key={index}><i/><span/><b/></div>)}</div>:progress.entries.slice(-4).map((entry,index)=>{
-        return <div className="import-sorted-entry" key={`${progress.entries.length-Math.min(4,progress.entries.length)+index}`}><ImportEntryLine entry={entry} settings={settings}/></div>;
+      {reading?<div className="import-skeleton" aria-hidden="true">{[0,1,2].map(index=><div key={index}><i/><span/><b/></div>)}</div>:progress.entries.map((entry,index)=>{
+        return <div className="import-sorted-entry" data-import-entry="" key={index}><ImportEntryLine entry={entry} settings={settings}/></div>;
       })}
     </div>
-    <div className="import-processing-foot">{reading?<span className="import-working-line" aria-hidden="true"/>:<><span>{progress.entries.length} / {progress.count} 件</span><strong>¥{progress.entries.reduce((sum,entry)=>sum+entry.amount,0).toLocaleString('ja-JP')}</strong></>}</div>
   </div>;
 }
