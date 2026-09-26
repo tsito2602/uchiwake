@@ -1,7 +1,6 @@
 import { ImportError, upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
 import { abortable, idleWatch } from '../src/streaming/idle';
 import { readCategorySettings, categorySchemaReady } from './category-settings';
-import { isImportModel } from '../src/import-model';
 import { statementStream } from './statement-stream';
 import { Hono } from 'hono';
 import { billKinds, categories, type BillKind } from '../src/domain';
@@ -10,7 +9,8 @@ import { embeddedAssets } from './generated-assets';
 import { defaultCardColor, validCardColor } from '../src/card-colors';
 import { demoHistory, demoState } from './demo-data';
 
-type Bindings = { DB: D1Database; APP_ENV: string; APP_PASSWORD?: string; OPENAI_API_KEY?: string; OPENAI_MODEL: string };
+type Bindings = { DB: D1Database; APP_ENV: string; APP_PASSWORD?: string; OPENAI_API_KEY?: string };
+const AI_MODEL='gpt-6-luna';
 const app = new Hono<{ Bindings: Bindings }>();
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const datePattern = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -293,7 +293,7 @@ app.put('/api/statements/:id/entries', async c => {
 });
 
 app.post('/api/statement/analyze', async c => {
-  const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown;stream?:boolean;model?:unknown}|null;
+  const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown;stream?:boolean}|null;
   if (!body || (body.mode !== 'demo' && body.mode !== 'live') || !Array.isArray(body.images) || body.images.length < 1 || !body.images.every(isSupportedImage)) return error('JPEG・PNG・WebPの画像を選んでください');
   if (body.mode === 'demo') {
     if (c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
@@ -303,12 +303,7 @@ app.post('/api/statement/analyze', async c => {
       {spent_on:'',title:'デモ：電車',amount:2200,category:'交通費'}
     ],demo:true});
   }
-  let model=c.env.OPENAI_MODEL;
-  if(body.model!==undefined){
-    if(c.env.APP_ENV!=='staging')return error('モデルの切り替えはステージング限定です');
-    if(!isImportModel(body.model))return error('使用するAIを選び直してください');
-    model=body.model;
-  }
+  const model=AI_MODEL;
   if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
   const settings=await readCategorySettings(c.env.DB);
   const allowedCategories=allCategoryAppearances(settings).map(item=>item.category);
@@ -373,7 +368,7 @@ app.post('/api/report/comment', async c => {
   }
   const key = c.env.OPENAI_API_KEY;
   if (!key) return error('AIの設定がまだありません',503);
-  const result = await openai(key,c.env.OPENAI_MODEL,[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }],{max_output_tokens:500});
+  const result = await openai(key,AI_MODEL,[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }],{max_output_tokens:500});
   return result ? c.json({comment:result.slice(0,300)}) : error('コメントを作成できませんでした',502);
 });
 

@@ -207,34 +207,22 @@ test('上流のHTTPエラーはJSONエラーとして返し、再リクエスト
   }finally{globalThis.fetch=original;}
 });
 
-test('ステージングはSolとLunaをリクエストごとに選べ、ストリームと一括受信で同じモデルを使う',async()=>{
+test('取り込みは常にLunaを使い、古い画面や環境変数のモデル指定も反映しない',async()=>{
   const original=globalThis.fetch;const called=[];
   globalThis.fetch=async(_url,options)=>{
     const body=JSON.parse(options.body);called.push(body.model);assert.equal('max_output_tokens' in body,false);
     return body.stream?new Response(delta(JSON.stringify(result))+done):Response.json({output:[{content:[{type:'output_text',text:JSON.stringify(result)}]}]});
   };
   try{
-    for(const stream of [true,false])for(const model of ['gpt-6-luna','gpt-6-sol']){
-      const response=await app.fetch(request({model,stream}),env);
+    for(const APP_ENV of ['staging','production'])for(const stream of [true,false])for(const model of [undefined,'gpt-6-sol','unknown']){
+      const response=await app.fetch(request({model,stream}),{...env,APP_ENV,OPENAI_MODEL:'gpt-6-sol'});
       assert.equal(response.status,200);
       const value=stream?await receiveStatement(response,()=>{},new AbortController().signal):await response.json();
       assert.deepEqual(value,result);
-      assert.equal(called.at(-1),model);
+      assert.equal(called.at(-1),'gpt-6-luna');
     }
-    const response=await app.fetch(request({stream:false}),{...env,APP_ENV:'production'});
-    await response.json();assert.equal(called.at(-1),env.OPENAI_MODEL);
   }finally{globalThis.fetch=original;}
 });
-
-test('本番のモデル上書きと選択肢外のモデルはAIへ送信する前に拒否する',async()=>{
-  const original=globalThis.fetch;
-  globalThis.fetch=async()=>assert.fail('must not call AI');
-  try{
-    for(const model of ['gpt-6-sol','gpt-6-luna'])assert.equal((await app.fetch(request({model}),{...env,APP_ENV:'production'})).status,400);
-    for(const model of ['unknown','',null,7])assert.equal((await app.fetch(request({model}),env)).status,400);
-  }finally{globalThis.fetch=original;}
-});
-
 
 test('4枚以上・1枚4MB超・合計18MB超の画像を省略せずAIへ渡す',async()=>{
   const original=globalThis.fetch;

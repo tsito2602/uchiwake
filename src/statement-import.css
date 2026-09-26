@@ -5,15 +5,18 @@
 .import-border-beam { position: absolute; inset: 0; z-index: 4; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
 .import-border-beam * { pointer-events: none; }
 .import-setup { display: flex; flex-direction: column; gap: 20px; padding-top: 10px; }
-.import-card-select { display: flex; align-items: center; gap: 14px; padding: 17px 18px; border: 1px solid #e9e9e9; border-radius: 20px; background: #ffffffb8; }
+.import-card-select { position: relative; display: flex; align-items: center; gap: 14px; padding: 17px 18px; border: 1px solid #e9e9e9; border-radius: 20px; background: #ffffffb8; cursor: pointer; }
 .import-card-select > svg { flex-shrink: 0; }
-.import-card-select > svg:last-child { color: #888; pointer-events: none; margin-left: -35px; }
-.import-card-select label { flex: 1; min-width: 0; }
-.import-card-select label > span { display: block; color: #999; font-size: 11px; margin-bottom: 5px; }
-.import-card-select select { appearance: none; border: 0; background: transparent; color: #171717; font-size: 16px; font-weight: 650; width: 100%; padding: 0 28px 0 0; text-overflow: ellipsis; }
-.import-month { display: flex; justify-content: space-between; padding: 0 3px; font-size: 13px; }
+.import-card-select > svg:last-of-type { color: #888; pointer-events: none; }
+.import-card-copy { flex: 1; min-width: 0; }
+.import-card-copy > span { display: block; color: #999; font-size: 11px; margin-bottom: 5px; }
+.import-card-copy > strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #171717; font-size: 16px; font-weight: 650; }
+.import-card-select select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; border-radius: inherit; opacity: 0; font-size: 16px; cursor: pointer; }
+.import-card-select:focus-within { outline: 2px solid var(--brand); outline-offset: 3px; }
+.card-panel .import-card-select select:focus-visible { outline: none; }
+.import-month { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 3px; font-size: 13px; }
 .import-month > span { color: #999; }
-.import-month > strong { font-weight: 550; }
+.import-month > .dock-month-picker { flex: 0 1 148px; height: 44px; border: 1px solid #e9e9e9; border-radius: 12px; background: #ffffffb8; font-weight: 550; }
 .import-mode { display: flex; padding: 4px; border-radius: 16px; background: #eaeaea80; }
 .import-mode button { flex: 1; min-width: 0; min-height: 40px; border: 0; border-radius: 12px; background: transparent; color: #888; font-size: 13px; font-weight: 600; transition: background .2s,color .2s,box-shadow .2s; }
 .import-mode button[aria-pressed="true"] { color: #171717; background: #fff; box-shadow: 0 2px 6px #0000000a; }
@@ -163,9 +166,6 @@
   .import-animated-check path { stroke-dashoffset: 0; }
   .import-entry-button,.import-entry-edit { transition: none; }
 }
-
-.import-model-select { display: flex; flex-direction: column; gap: 8px; }
-.import-model-select > span { padding: 0 3px; font-size: 12px; color: #777; }
 
 .import-review-group { min-width:0; display:grid; gap:10px; }
 .import-review-group + .import-review-group { margin-top:20px; }

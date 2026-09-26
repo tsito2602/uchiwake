@@ -1,4 +1,4 @@
-import { importModels, type ImportModel } from './import-model';
+import { NativeMonthPicker } from './native-month-picker';
 import { Camera, Check, ChevronDown, CreditCard, FileImage, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
 import type { CategoryAppearance, SharedCard, EntryDraft } from './domain';
 import { categoryAppearance } from './category-appearance';
@@ -6,17 +6,16 @@ import { CategoryIcon } from './category-icon';
 import type { ImportProgress } from './statement-import-flow';
 import { ImportThinking } from './import-thinking';
 
-export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnabled,demoView=false,onCard,onMode,onFiles,onRemove,onManual,model,onModel}:{
+export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnabled,demoView=false,onCard,onMonth,onMode,onFiles,onRemove,onManual}:{
   cards:SharedCard[];cardId:string;month:string;images:{name:string;image:string}[];
-  mode:'demo'|'live';demoEnabled:boolean;liveEnabled:boolean;demoView?:boolean;model:ImportModel;onModel:(model:ImportModel)=>void;
+  mode:'demo'|'live';demoEnabled:boolean;liveEnabled:boolean;demoView?:boolean;onMonth:(month:string)=>void;
   onCard:(id:string)=>void;onMode:(mode:'demo'|'live')=>void;onFiles:(files:FileList|null)=>void;onRemove:(index:number)=>void;onManual:()=>void;
 }) {
   const card=cards.find(item=>item.id===cardId);
   return <div className="import-setup">
-    <div className="import-card-select"><CreditCard size={24} color={card?.color}/><label><span>取り込むカード</span><select aria-label="取り込むカード" value={cardId} onChange={event=>onCard(event.target.value)}>{cards.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><ChevronDown size={18}/></div>
-    <div className="import-month"><span>引落月</span><strong>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</strong></div>
+    <label className="import-card-select"><CreditCard size={24} color={card?.color} aria-hidden="true"/><span className="import-card-copy" aria-hidden="true"><span>取り込むカード</span><strong>{card?.name}</strong></span><ChevronDown size={18} aria-hidden="true"/><select aria-label="取り込むカード" value={cardId} onChange={event=>onCard(event.target.value)}>{cards.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <div className="import-month"><span>引落月</span><NativeMonthPicker value={month} onChange={onMonth} label="引落年月を選択"/></div>
     {demoEnabled&&<div className="import-mode" role="group" aria-label="読み取り方法"><button aria-pressed={mode==='live'} onClick={()=>onMode('live')}>画像を読み取る</button><button aria-pressed={mode==='demo'} onClick={()=>onMode('demo')}>デモで試す</button></div>}
-    {demoEnabled&&mode==='live'&&<div className="import-model-select"><span>使用するAI</span><div className="import-mode" role="group" aria-label="使用するAI">{importModels.map(item=><button type="button" key={item.id} aria-pressed={model===item.id} onClick={()=>onModel(item.id)}>{item.label}</button>)}</div></div>}
     {mode==='live'&&!liveEnabled&&<p className="import-hint" role="status">AIの接続設定を確認できません。Cloudflareの実行環境にOPENAI_API_KEYを設定し、画面を再読み込みしてください。</p>}
     {mode==='live'&&liveEnabled&&demoView&&<p className="import-hint">実際のAIで画像を読み取ります。デモ表示中のため、結果は保存されません。</p>}
     {mode==='demo'?<div className="import-demo-sample">

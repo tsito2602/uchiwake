@@ -1,4 +1,3 @@
-import { isImportModel, type ImportModel } from './import-model';
 import { streamStatement } from './statement-import-stream';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -56,11 +55,7 @@ function App() {
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const [aiMode,setAiMode]=useState<AiMode>('demo');
-  const [importModel,setImportModel]=useState<ImportModel>(()=>{
-    const saved=window.sessionStorage.getItem('uchiwake-import-model');
-    return isImportModel(saved)?saved:'gpt-6-luna';
-  });
-  const changeImportModel=(model:ImportModel)=>{setImportModel(model);window.sessionStorage.setItem('uchiwake-import-model',model);};
+  const [importMonth,setImportMonth]=useState(month);
   const [screenshots,setScreenshots]=useState<{name:string;image:string}[]>([]);
   const [selectedCardId,setSelectedCardId]=useState('');
   const [importPanel,setImportPanel]=useState<{origin?:PanelOrigin;closing?:boolean}|null>(null);
@@ -146,10 +141,10 @@ function App() {
     setBusy(true);setNotice('');
     try {
       const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:setImportProgress,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-        analyze:(onEntry,onReasoning)=>isDemo?Promise.resolve(demoImportResult(month)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry,state?.demo_enabled?importModel:undefined,onReasoning)});
+        analyze:(onEntry,onReasoning)=>isDemo?Promise.resolve(demoImportResult(importMonth)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry,onReasoning)});
       const sum=result.entries.reduce((a,b)=>a+b.amount,0);
       const card=state?.cards.find(item=>item.id===selectedCardId);
-      setDraft({due_month:month,card_id:selectedCardId,title:`${monthText(month)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,demo:!!result.demo,model:!isDemo&&state?.demo_enabled?importModel:undefined});setTotalChecked(false);
+      setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,demo:!!result.demo});setTotalChecked(false);
       if(!result.entries.length)setNotice('利用行を読み取れませんでした。明細行を手入力してください。');
     }catch(e){if(!controller.signal.aborted)setNotice(String(e instanceof Error?e.message:e));}
     finally{if(importRequest.current===controller){importRequest.current=null;setImportProgress(null);setBusy(false);}}
@@ -245,7 +240,7 @@ function App() {
     setAiMode(state?.demo_enabled&&(demoView||!state?.ai_enabled)?'demo':'live');
     const source=document.querySelector<HTMLElement>('.dock-add')??document.activeElement;
     setNotice('');setDraft(null);setScreenshots([]);setTotalChecked(false);
-    importDestination.current=null;
+    importDestination.current=null;setImportMonth(month);
     setImportPanel({origin:source instanceof HTMLElement?panelOrigin(source):undefined});
   };
   const selectTab=(value:Tab)=>{
@@ -322,8 +317,8 @@ function App() {
   const importContext:DockContext|undefined=importPanel?{
     label:draft?'カード明細の確認':'明細の取り込み',commit:true,
     actionAppearance:importProgress?'breathing':!draft&&state?.cards.some(card=>card.active)?'studio':undefined,
-    onBack:()=>{if(importRequest.current){cancelImport();return;}if(busy)return;if(draft){setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
-    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'仕分け中...':aiMode==='demo'?'デモで仕分ける':'取り込みを始める',
+    onBack:()=>{if(importRequest.current){cancelImport();return;}if(busy)return;if(draft){setImportMonth(draft.due_month);setSelectedCardId(draft.card_id);setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
+    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'Thinking...':aiMode==='demo'?'デモで仕分ける':'取り込みを始める',
     onAction:()=>{if(busy)return;if(draft)void saveStatement();else if(!state?.cards.some(card=>card.active))selectTab('settings');else void analyzeStatement();},
     disabled:busy||!!((demoView||draft?.demo)&&draft)||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:(aiMode==='live'&&(!screenshots.length||!state.ai_enabled))||(aiMode==='demo'&&!state.demo_enabled)))
   }:undefined;
@@ -388,7 +383,7 @@ function App() {
     {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
       {notice&&<div className="notice" role="alert">{notice}</div>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
-        {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={month} images={screenshots} mode={aiMode} model={importModel} onModel={changeImportModel} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setScreenshots([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseScreenshots(files);}} onRemove={index=>setScreenshots(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:month,card_id:selectedCardId,title:`${monthText(month)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
+        {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={importMonth} onMonth={setImportMonth} images={screenshots} mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setScreenshots([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseScreenshots(files);}} onRemove={index=>setScreenshots(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
       </>:<ImportReview draft={draft} cards={state.cards} settings={state.category_settings} busy={busy} checked={totalChecked} onChange={value=>{setDraft(value);setTotalChecked(false);}} onChecked={setTotalChecked}/>)}
     </StatementImportPanel>}
     {editing&&<BillPanel bill={editing.data} view={editing.view} onView={openFixedRent} deleteAction={deleteBillAction} origin={editing.origin} closing={editing.closing} onExited={()=>setEditing(null)} actionLabel={billContext!.actionLabel} onAction={billContext!.onAction} actionDisabled={billContext!.disabled} month={month} demo={demoView} busy={busy} rentStartMonth={rentStartMonth} rentAmount={rentAmount} onRentStartMonth={setRentStartMonth} onRentAmount={setRentAmount} onChange={data=>setEditing({...editing,data})} onClose={billContext!.onBack}/>}

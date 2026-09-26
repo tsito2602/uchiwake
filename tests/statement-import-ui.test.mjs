@@ -18,7 +18,7 @@ const {outputFiles}=await build({stdin:{contents:`
   export const setup=props=>renderToStaticMarkup(createElement(ImportSetup,props));
   export const review=props=>renderToStaticMarkup(createElement(ImportReview,props));
   export const processing=props=>renderToStaticMarkup(createElement(ImportPhaseStatus,{progress:props.progress}))+renderToStaticMarkup(createElement(ImportProcessing,props));
-  const context=appearance=>({onBack:()=>{},onAction:()=>{},actionLabel:appearance==='breathing'?'仕分け中...':'デモで仕分ける',actionAppearance:appearance,disabled:appearance==='breathing',commit:true});
+  const context=appearance=>({onBack:()=>{},onAction:()=>{},actionLabel:appearance==='breathing'?'Thinking...':'デモで仕分ける',actionAppearance:appearance,disabled:appearance==='breathing',commit:true});
   export const panel=(active,appearance)=>renderToStaticMarkup(createElement(StatementImportPanel,{processing:active,progress:active?{phase:'sorting',entries:[],count:3,demo:true}:null,reviewing:false,onExited:()=>{},context:context(appearance)},'明細'));
   export const dock=appearance=>renderToStaticMarkup(createElement(FloatingDock,{tab:'home',onSelect:()=>{},panelActive:true,month:'2026-09',onMonthChange:()=>{},onPrevMonth:()=>{},onNextMonth:()=>{},context:context(appearance)}));
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
@@ -32,13 +32,13 @@ const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],sett
 test('読取中はゲージを1行の要約に置き換え、未着時・デモを区別してHTMLを実行しない',()=>{
   const render=extra=>processing({progress:{phase:'reading',entries:[],count:null,demo:false,...extra},settings:[]});
   const pending=render({});
-  assert.ok(pending.includes('AIが明細を解析中…'));
+  assert.ok(pending.includes('Thinking...'));
   assert.ok(pending.includes('import-thinking-text'));
   assert.ok(!pending.includes('import-working-line'));
   const summary=render({reasoning:'金額を確認中 <img src=x onerror=alert(1)>'});
   assert.ok(summary.includes('金額を確認中 &lt;img'));
   assert.ok(!summary.includes('<img src=x'));
-  assert.ok(!summary.includes('AIが明細を解析中…'));
+  assert.ok(!summary.includes('Thinking...'));
   assert.ok(render({demo:true}).includes('サンプル明細を準備中…'));
 });
 
@@ -136,11 +136,11 @@ test('仕分け開始アクションだけにStudioの色付きボタンとア�
   assert.doesNotMatch(panel(false),/<button class="studio-action"/);
 });
 
-test('処理中はナビとパネルの両方で標準20px breathingと仕分け中...を表示する',()=>{
+test('処理中はナビとパネルの両方で標準20px breathingとThinking...を表示する',()=>{
   for(const markup of [panel(true,'breathing'),dock('breathing')]){
     assert.match(markup,/<button[^>]*class="[^"]*breathing-action"[^>]*disabled=""/);
     assert.ok(markup.includes(defaultOrb()));
-    assert.match(markup,/<span class="import-processing-label" role="status" aria-label="仕分け中\.\.\.">[\s\S]*<span class="import-processing-shimmer" data-text="仕分け中\.\.\." aria-hidden="true">仕分け中\.\.\.<\/span>/);
+    assert.match(markup,/<span class="import-processing-label" role="status" aria-label="Thinking\.\.\.">[\s\S]*<span class="import-processing-shimmer" data-text="Thinking\.\.\." aria-hidden="true">Thinking\.\.\.<\/span>/);
     assert.ok(!markup.includes('studio-action'));
     assert.ok(!markup.includes('data-studio-wand'));
   }
@@ -181,25 +181,25 @@ test('実取り込みは全件数が不明な間、受信件数だけを示し�
  assert.ok(!markup.includes(' / '));
 });
 
-test('ステージングの画像取り込みにだけモデル選択を表示し、使用したモデルを結果に残す',()=>{
- const setupProps={cards:props.cards,cardId:'one',month:'2026-09',images:[],mode:'live',demoEnabled:true,liveEnabled:true,model:'gpt-6-sol',onModel:()=>{},onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
+test('取り込みで引落月を選択でき、モデル選択は表示しない',()=>{
+ const setupProps={cards:props.cards,cardId:'one',month:'2026-11',onMonth:()=>{},images:[],mode:'live',demoEnabled:true,liveEnabled:true,onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
  const markup=setup(setupProps);
- assert.ok(markup.includes('aria-label="使用するAI"'));
- assert.match(markup,/aria-pressed="true">GPT-6 Sol/);
- assert.match(markup,/aria-pressed="false">GPT-6 Luna/);
- assert.ok(!setup({...setupProps,demoEnabled:false}).includes('使用するAI'));
- assert.ok(!setup({...setupProps,mode:'demo'}).includes('使用するAI'));
- assert.ok(review({...props,draft:{...draft,demo:false,model:'gpt-6-sol'}}).includes('GPT-6 Sol'));
+ assert.match(markup,/<input type="month" aria-label="引落年月を選択" value="2026-11"/);
+ assert.match(markup,/<label class="import-card-select">[\s\S]*<select aria-label="取り込むカード"/);
+ for(const mode of ['live','demo']){
+   const html=setup({...setupProps,mode});
+   assert.ok(!html.includes('使用するAI'));
+   assert.ok(!html.includes('GPT-6 Sol'));
+ }
 });
 
-
 test('デモ表示から画像読み取りを選べ、AI未設定時には無効理由を表示する',()=>{
- const props={cards:[{id:'one',name:'生活費カード',active:true}],cardId:'one',month:'2026-09',images:[],mode:'live',demoEnabled:true,demoView:true,liveEnabled:true,model:'gpt-6-luna',onModel:()=>{},onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
+ const props={cards:[{id:'one',name:'生活費カード',active:true}],cardId:'one',month:'2026-09',images:[],mode:'live',demoEnabled:true,demoView:true,liveEnabled:true,onMonth:()=>{},onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
  const ready=setup(props);
  assert.match(ready,/<button aria-pressed="true">画像を読み取る<\/button>/);
  assert.ok(ready.includes('実際のAIで画像を読み取ります'));
  assert.ok(ready.includes('結果は保存されません'));
- assert.ok(ready.includes('GPT-6 Sol'));
+ assert.ok(!ready.includes('使用するAI'));
  const missing=setup({...props,liveEnabled:false});
  assert.match(missing,/<button aria-pressed="true">画像を読み取る<\/button>/);
  assert.ok(missing.includes('AIの接続設定を確認できません'));

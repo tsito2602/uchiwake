@@ -1,4 +1,3 @@
-import { importModels, type ImportModel } from './import-model';
 import { useId, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -6,7 +5,7 @@ import type { CategoryAppearance, EntryDraft, SharedCard } from './domain';
 import { allCategoryAppearances, fallbackCategory, isReviewCategory } from './category-appearance';
 import { ImportEntryLine } from './statement-import-content';
 
-export type ImportDraft={due_month:string;card_id:string;title:string;confirmed_total:number;entries:EntryDraft[];demo:boolean;model?:ImportModel};
+export type ImportDraft={due_month:string;card_id:string;title:string;confirmed_total:number;entries:EntryDraft[];demo:boolean};
 export function ImportReview({draft,cards,settings,busy,checked,onChange,onChecked}:{
   draft:ImportDraft;cards:SharedCard[];settings:CategoryAppearance[];busy:boolean;checked:boolean;
   onChange:(draft:ImportDraft)=>void;onChecked:(checked:boolean)=>void;
@@ -27,7 +26,7 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
   const update=(index:number,change:Partial<EntryDraft>)=>onChange({...draft,entries:draft.entries.map((entry,i)=>i===index?{...entry,...change}:entry)});
   return <div className="import-processing import-review">
     <div className="import-processing-symbol import-complete-symbol" aria-hidden="true"><Check className="import-animated-check" size={30}/></div>
-    <div className="import-processing-heading"><h3>仕分け結果</h3><p>{card?.name} · {Number(draft.due_month.slice(0,4))}年{Number(draft.due_month.slice(5))}月{draft.demo?' · デモ':draft.model?` · ${importModels.find(item=>item.id===draft.model)?.label}`:''}</p></div>
+    <div className="import-processing-heading"><h3>仕分け結果</h3><p>{card?.name} · {Number(draft.due_month.slice(0,4))}年{Number(draft.due_month.slice(5))}月{draft.demo?' · デモ':''}</p></div>
     <div className="import-review-list-heading"><span>{draft.entries.length}件の明細</span><span className="import-edit-hint"><Pencil size={14} aria-hidden="true"/>タップして編集</span></div>
     <div className="import-sorting-list import-review-list" aria-label="仕分け結果">
       {groups.filter(group=>group.rows.length>0).map(group=><section className="import-review-group" key={group.label} aria-label={group.label}>

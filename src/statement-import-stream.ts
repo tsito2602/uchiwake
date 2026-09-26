@@ -1,4 +1,3 @@
-import type { ImportModel } from './import-model';
 import type { EntryDraft } from './domain';
 import type { ImportResult } from './statement-import-flow';
 import { streamLines } from './streaming/lines';
@@ -24,14 +23,14 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');
 }
 
-export async function streamStatement(images:string[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,model?:ImportModel,onReasoning?:(text:string)=>void):Promise<ImportResult> {
+export async function streamStatement(images:string[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void):Promise<ImportResult> {
   const controller=new AbortController();
   const abort=()=>controller.abort(signal.reason);
   signal.addEventListener('abort',abort,{once:true});
   if(signal.aborted)abort();
   const watch=idleWatch(()=>controller.abort(new ImportIdleError()),CLIENT_IDLE_MS);
   try {
-    const response=await abortable(fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal:controller.signal,body:JSON.stringify({images,mode:'live',stream:true,...(model?{model}:{})})}),controller.signal);
+    const response=await abortable(fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal:controller.signal,body:JSON.stringify({images,mode:'live',stream:true})}),controller.signal);
     watch.clear();
     return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning);
   } finally {
