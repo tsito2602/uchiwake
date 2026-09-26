@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Camera, X } from 'lucide-react';
+import { BorderBeam } from 'border-beam';
 import { SoftOrbitGlow } from './soft-orbit-glow';
 import { StudioActionLabel } from './studio-action-label';
 import { ImportProcessingLabel } from './import-processing-label';
@@ -32,6 +33,7 @@ export function StatementImportPanel({reviewing,processing,progress,origin,closi
     <div className="card-panel-scrim" aria-hidden="true"/>
     <div ref={panel} className="card-panel statement-import-panel" style={{display:'flex',position:'relative',borderRadius:28}} role="dialog" aria-modal="true" aria-labelledby="import-panel-title">
       {processing&&<SoftOrbitGlow/>}
+      {processing&&<div className="import-border-beam" aria-hidden="true"><BorderBeam size="md" theme="light" colorVariant="colorful" borderRadius={28} style={{position:'absolute',inset:0}}><div style={{height:'100%',borderRadius:28}}/></BorderBeam></div>}
       <header className="card-panel-header"><span className="card-panel-icon"><Camera size={22}/></span><div><h2 id="import-panel-title" tabIndex={-1}>{processing?'明細を仕分ける':reviewing?'明細を確認':'明細を取り込む'}</h2></div><button className="card-panel-close" aria-label={processing?'取り込みを中止':'戻る'} onClick={context.onBack}><X size={20}/></button></header>
       {processing&&progress&&<ImportPhaseStatus progress={progress}/>}
       <div ref={scroll} className="card-panel-scroll">{children}</div>

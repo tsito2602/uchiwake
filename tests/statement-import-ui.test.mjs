@@ -104,7 +104,10 @@ test('仕分け中だけ0.7倍のSoft Orbitを表示し、光とぼかしを角�
   const active=panel(true),inactive=panel(false);
   assert.match(active,/<div class="soft-orbit-glow" data-strength="0.7" aria-hidden="true"><canvas><\/canvas><canvas><\/canvas><canvas><\/canvas>/);
   assert.ok(!inactive.includes('soft-orbit-glow'));
-  assert.ok(!active.includes('data-beam'));
+  assert.ok(active.includes('class="import-border-beam"'));
+  assert.ok(active.includes('data-beam='));
+  assert.ok(active.includes('beam-spin-'));
+  assert.ok(!inactive.includes('data-beam='));
   const css=readFileSync(new URL('../src/statement-import.css',import.meta.url),'utf8');
   const overlay=css.match(/\.soft-orbit-glow \{([^}]+)\}/)?.[1];
   assert.match(overlay,/overflow: hidden/);
@@ -123,7 +126,7 @@ test('処理中はナビとパネルの両方で標準20px breathingと仕分け
   for(const markup of [panel(true,'breathing'),dock('breathing')]){
     assert.match(markup,/<button[^>]*class="[^"]*breathing-action"[^>]*disabled=""/);
     assert.ok(markup.includes(defaultOrb()));
-    assert.match(markup,/<span class="import-processing-label" role="status">[\s\S]*<span>仕分け中\.\.\.<\/span>/);
+    assert.match(markup,/<span class="import-processing-label" role="status" aria-label="仕分け中\.\.\.">[\s\S]*<span class="import-processing-shimmer" data-text="仕分け中\.\.\." aria-hidden="true">仕分け中\.\.\.<\/span>/);
     assert.ok(!markup.includes('studio-action'));
     assert.ok(!markup.includes('data-studio-wand'));
   }

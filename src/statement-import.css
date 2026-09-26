@@ -2,6 +2,8 @@
 .statement-import-panel .card-panel-scroll { flex: 1; }
 .soft-orbit-glow { position: absolute; inset: 0; z-index: 3; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
 .soft-orbit-glow canvas { position: absolute; left: -30px; top: -30px; width: calc(100% + 60px); height: calc(100% + 60px); pointer-events: none; }
+.import-border-beam { position: absolute; inset: 0; z-index: 4; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
+.import-border-beam * { pointer-events: none; }
 .import-setup { display: flex; flex-direction: column; gap: 20px; padding-top: 10px; }
 .import-card-select { display: flex; align-items: center; gap: 14px; padding: 17px 18px; border: 1px solid #e9e9e9; border-radius: 20px; background: #ffffffb8; }
 .import-card-select > svg { flex-shrink: 0; }
@@ -128,6 +130,14 @@
 /* The processing action is a status, not another animated Studio wash. */
 .import-processing-label { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .import-processing-label canvas { flex: 0 0 20px; }
+/* Libraries.dev /assets/examples.css: Orb demo shimmer, unchanged motion and ink. */
+.import-processing-shimmer { --shimmer-base: rgba(251,251,251,.5); --shimmer-highlight: #fff; --shimmer-band: 400%; --shimmer-dur: 2000ms; --shimmer-ease: linear; position: relative; display: inline-block; color: var(--shimmer-base); }
+.import-processing-shimmer::before { content: attr(data-text); position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(90deg,transparent 0%,transparent 40%,var(--shimmer-highlight) 50%,transparent 60%,transparent 100%); background-size: var(--shimmer-band) 100%; background-repeat: no-repeat; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: import-text-shimmer var(--shimmer-dur) var(--shimmer-ease) infinite; }
+@keyframes import-text-shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .import-processing-shimmer::before { animation: none; }
+  .import-border-beam { display: none; }
+}
 .context-island button.breathing-action:disabled,
 .card-panel-footer button.breathing-action:disabled { opacity: 1; cursor: wait; }
 .card-panel-footer button.breathing-action { justify-content: center; }
