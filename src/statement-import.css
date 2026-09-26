@@ -56,7 +56,8 @@
 .import-step-track i { display: block; height: 100%; background: #171717; transform: scaleX(0); transform-origin: left; transition: transform .45s cubic-bezier(.22,1,.36,1); }
 .import-steps li[data-state="current"],.import-steps li[data-state="done"] { color: #171717; }
 .import-steps li[data-state="current"] .import-step-marker,.import-steps li[data-state="done"] .import-step-marker { background: #171717; color: #fff; }
-.import-steps li[data-state="current"] .import-step-track i { transform: scaleX(.5); }
+.import-steps li:first-child[data-state="current"] .import-step-track i { animation: import-reading-track 1.4s ease-in-out infinite; }
+@keyframes import-reading-track { from { transform: translateX(-100%) scaleX(.35); } to { transform: translateX(100%) scaleX(.35); } }
 .import-steps li[data-state="done"] .import-step-track i { transform: scaleX(1); }
 .import-phase-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-height: 36px; font-size: 11px; color: #777; }
 .import-phase-summary b { color: #171717; font-weight: 600; }
@@ -98,7 +99,7 @@
 .import-entry-button:not(:disabled):active { transform: scale(.985); background: #fff; }
 .import-entry-button > b { font-size: 15px; }
 .import-entry-edit { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: #171717; border-radius: 50%; background: #f0f0f0; transition: background .2s,transform .25s; }
-.import-entry-button[aria-expanded="true"] .import-entry-edit { background: #e4e4e4; transform: rotate(90deg); }
+.import-entry-button[aria-expanded="true"] .import-entry-edit,.import-review-total[aria-expanded="true"] .import-entry-edit { background: #e4e4e4; transform: rotate(90deg); }
 .import-review-expander { overflow: hidden; }
 .import-review .import-category-tag { animation: none; }
 .import-review-editor { min-width: 0; margin: 0 12px; padding: 16px 0; display: flex; flex-direction: column; gap: 15px; border: 0; border-top: 1px solid #e6e6e6; border-radius: 0; background: transparent; }

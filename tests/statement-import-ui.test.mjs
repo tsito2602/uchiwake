@@ -30,11 +30,11 @@ const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],sett
 
 test('仕分け後も同じ明細行で日付・費目・金額を表示し、編集フォームは閉じている',()=>{
   const completed=review(props);
-  const running=processing({progress:{phase:'checking',entries:sample.entries,count:3,demo:true},settings:[]});
+  const running=processing({progress:{phase:'checking',entries:sample.entries,count:15,demo:true,checkedCount:15,checkedTotal:sample.confirmed_total},settings:[]});
   for(const markup of [completed,running]){
     for(const entry of sample.entries){assert.ok(markup.includes(entry.title));assert.ok(markup.includes(entry.spent_on));assert.ok(markup.includes(entry.category));}
     assert.ok(markup.includes('import-entry-copy'));
-    assert.ok(markup.includes('6,840'));
+    assert.ok(markup.includes(sample.confirmed_total.toLocaleString('ja-JP')));
   }
   assert.ok(completed.includes('スーパーを編集'));
   assert.ok(completed.includes('タップして編集'));
@@ -52,7 +52,7 @@ test('手入力で始めた空の明細は編集欄を開き、削除・金額�
 
 test('利用合計を唯一の登録先編集入口にし、重複金額と明細名の入力をなくす',()=>{
   const markup=review(props);
-  assert.equal((markup.match(/6,840/g)||[]).length,1);
+  assert.equal(markup.split(sample.confirmed_total.toLocaleString('ja-JP')).length-1,1);
   assert.match(markup,/<button class="import-processing-foot import-review-total"[^>]*aria-label="利用合計：登録先・引落額を編集"[^>]*aria-expanded="false"/);
   assert.ok(!markup.includes('カード引落額'));
   assert.ok(!markup.includes('import-review-destination'));
@@ -90,7 +90,7 @@ test('新しい明細をパネル内だけで追従し、動きを減らす設�
 
 test('編集できる行をアイコンで示し、確認チェックは黒いアニメーションとキーボード操作を備える',()=>{
   const markup=review({...props,checked:true});
-  assert.equal((markup.match(/class="import-entry-edit"/g)||[]).length,4);
+  assert.equal((markup.match(/class="import-entry-edit"/g)||[]).length,16);
   assert.ok(markup.includes('import-edit-hint'));
   assert.match(markup,/data-checked="true"><input type="checkbox" checked=""/);
   assert.ok(markup.includes('元の明細と内容・金額を確認した'));
@@ -146,3 +146,12 @@ test('Studioの発光SVG・マスク・透明度・速度を参照ページか�
   const oldCSS=readFileSync(new URL('../src/statement-import.css',import.meta.url),'utf8');
   assert.ok(!oldCSS.includes('.studio-action'));
 });
+
+ test('ゲージは仕分け・金額確認の件数に連動する',()=>{
+ for(const count of [1,7,15]){
+  for(const phase of ['sorting','checking']){
+   const markup=processing({progress:{phase,entries:sample.entries.slice(0,count),count:15,demo:true,checkedCount:count},settings:[]});
+   assert.ok(markup.includes(`transform:scaleX(${count/15})`));
+  }
+ }
+ });

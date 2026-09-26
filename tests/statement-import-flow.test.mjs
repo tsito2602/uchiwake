@@ -2,13 +2,15 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { demoImportResult, importPause, runStatementImport } from '../src/statement-import-flow.ts';
 
-test('デモは選択月の3件を順に仕分け、10秒間のプレビュー後に一致する合計を返す',async()=>{
+test('デモは選択月の15件を順に仕分け、10秒間のプレビュー後に一致する合計を返す',async()=>{
   const frames=[],waits=[];
   const sample=demoImportResult('2026-10');
   const result=await runStatementImport({demo:true,signal:new AbortController().signal,
     analyze:async()=>sample,onProgress:progress=>frames.push(progress),pause:async ms=>{waits.push(ms);}});
-  assert.deepEqual(frames.map(frame=>[frame.phase,frame.entries.length]),[['reading',0],['sorting',1],['sorting',2],['sorting',3],['checking',3]]);
-  assert.equal(waits.reduce((sum,ms)=>sum+ms,0),10000);
+  assert.deepEqual(frames.map(frame=>[frame.phase,frame.entries.length]),[['reading',0],...Array.from({length:15},(_,i)=>['sorting',i+1]),...Array.from({length:16},()=>['checking',15])]);
+  assert.ok(Math.abs(waits.reduce((sum,ms)=>sum+ms,0)-10000)<.001);
+  assert.equal(frames.at(-1).checkedCount,15);
+  assert.equal(frames.at(-1).checkedTotal,result.confirmed_total);
   assert.ok(result.entries.every(entry=>entry.spent_on.startsWith('2026-10-')));
   assert.equal(result.entries.reduce((sum,entry)=>sum+entry.amount,0),result.confirmed_total);
   assert.ok(frames.every(frame=>frame.demo));
@@ -46,7 +48,7 @@ test('AIエラーはそのまま返し、動きを減らす設定では演出の
   await assert.rejects(runStatementImport({demo:false,signal:new AbortController().signal,analyze:async()=>{throw error;},onProgress:frame=>frames.push(frame)}),error);
   assert.equal(frames.length,1);
   const result=await runStatementImport({demo:true,reducedMotion:true,signal:new AbortController().signal,analyze:async()=>demoImportResult('2026-09'),onProgress:()=>{},pause:async()=>assert.fail('reduced motion must not wait')});
-  assert.equal(result.entries.length,3);
+  assert.equal(result.entries.length,15);
 });
 
 test('演出のタイマーは中止ですぐ終了し、0件の読み取りでも停止しない',async()=>{

@@ -18,7 +18,7 @@ export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnab
       <span className="import-demo-badge"><Sparkles size={14}/> デモ</span>
       <h3>仕分けを体験</h3><p>画像を用意せず、サンプル明細で試せます。</p>
       <div className="import-sample-paper" aria-hidden="true"><ReceiptLines/></div>
-      <small>サンプル3件 · 実データは変更されません</small>
+      <small>サンプル15件 · 実データは変更されません</small>
     </div>:<>
       <label className="import-upload"><span className="import-upload-icon"><Camera size={30}/></span><strong>{images.length?'画像を選び直す':'明細の画像を選ぶ'}</strong><span>スクリーンショットを最大3枚</span><small>JPEG・PNG・WebP / 1枚4MBまで</small><input aria-label="明細の画像" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={event=>{onFiles(event.target.files);event.target.value='';}}/></label>
       {images.length>0&&<div className="import-image-list">{images.map((item,index)=><div key={`${index}-${item.name}`}><img src={item.image} alt={`明細画像 ${index+1}`}/><span>{item.name}</span><button onClick={()=>onRemove(index)} aria-label={`明細画像 ${index+1}を外す`}><X size={16}/></button></div>)}</div>}
@@ -44,9 +44,10 @@ export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {
     <div className="import-phase-title" role="status" aria-live="polite"><span key={progress.phase} className="import-phase-title-content">{checking?<Check className="import-animated-check" size={20} aria-hidden="true"/>:<ScanLine size={20} aria-hidden="true"/>}<strong>{title}</strong></span>{progress.demo&&<small>デモ</small>}</div>
     <ol className="import-steps">{['読み取り','仕分け','金額確認'].map((label,index)=>{
       const state=index<phaseIndex?'done':index===phaseIndex?'current':'pending';
-      return <li key={label} data-state={state} aria-current={state==='current'?'step':undefined}><span className="import-step-marker" aria-hidden="true">{state==='done'?<Check className="import-animated-check" size={13}/>:index+1}</span><span>{label}</span><span className="import-step-track" aria-hidden="true"><i/></span></li>;
+      const fraction=state==='done'?1:state==='pending'?0:reading?0:progress.count?Math.min(1,(checking?(progress.checkedCount??0):progress.entries.length)/progress.count):1;
+      return <li key={label} data-state={state} aria-current={state==='current'?'step':undefined}><span className="import-step-marker" aria-hidden="true">{state==='done'?<Check className="import-animated-check" size={13}/>:index+1}</span><span>{label}</span><span className="import-step-track" aria-hidden="true"><i style={{transform:`scaleX(${fraction})`}}/></span></li>;
     })}</ol>
-    <div className="import-phase-summary">{reading?<span className="import-working-line" aria-hidden="true"/>:<><span>仕分け済み <b>{progress.entries.length}</b> / {progress.count}件</span><span className="import-phase-total"><small>利用合計</small><strong>¥{progress.entries.reduce((sum,entry)=>sum+entry.amount,0).toLocaleString('ja-JP')}</strong></span></>}</div>
+    <div className="import-phase-summary">{reading?<span className="import-working-line" aria-hidden="true"/>:<><span>{checking?'金額確認済み':'仕分け済み'} <b>{checking?(progress.checkedCount??0):progress.entries.length}</b> / {progress.count}件</span><span className="import-phase-total"><small>利用合計</small><strong>¥{(checking?(progress.checkedTotal??0):progress.entries.reduce((sum,entry)=>sum+entry.amount,0)).toLocaleString('ja-JP')}</strong></span></>}</div>
   </section>;
 }
 
