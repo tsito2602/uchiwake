@@ -58,3 +58,27 @@ test('演出のタイマーは中止ですぐ終了し、0件の読み取りで�
   const result=await runStatementImport({demo:false,signal:new AbortController().signal,analyze:async()=>({confirmed_total:0,entries:[]}),onProgress:()=>{},pause:async()=>{}});
   assert.equal(result.entries.length,0);
 });
+
+test('要約で読み取り表示を更新し、受信済みの明細を保持して中止後は更新しない',async()=>{
+  const controller=new AbortController(),frames=[];
+  const result=demoImportResult('2026-09');
+  let summarize;
+  await runStatementImport({demo:false,signal:controller.signal,onProgress:p=>frames.push(p),
+    analyze:async(onEntry,onReasoning)=>{
+      summarize=onReasoning;
+      onReasoning('画像の重なりを確認中');
+      onEntry(result.entries[0]);
+      onReasoning('利用金額を確認中');
+      return result;
+    }});
+  assert.equal(frames[1].phase,'reading');
+  assert.equal(frames[1].reasoning,'画像の重なりを確認中');
+  assert.deepEqual(frames[1].entries,[]);
+  assert.equal(frames[1].count,null);
+  assert.equal(frames[3].phase,'sorting');
+  assert.deepEqual(frames[3].entries,[result.entries[0]]);
+  assert.equal(frames[3].reasoning,'利用金額を確認中');
+  controller.abort();
+  assert.throws(()=>summarize('古い通信の更新'),{name:'AbortError'});
+  assert.equal(frames.at(-1).phase,'checking');
+});

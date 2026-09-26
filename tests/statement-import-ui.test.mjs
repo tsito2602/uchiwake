@@ -29,6 +29,19 @@ const sample=demoImportResult('2026-09');
 const draft={...sample,card_id:'one',due_month:'2026-09',title:'カード明細',demo:true};
 const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],settings:[],busy:false,checked:false,onChange:()=>{},onChecked:()=>{}};
 
+test('読取中はゲージを1行の要約に置き換え、未着時・デモを区別してHTMLを実行しない',()=>{
+  const render=extra=>processing({progress:{phase:'reading',entries:[],count:null,demo:false,...extra},settings:[]});
+  const pending=render({});
+  assert.ok(pending.includes('AIが明細を解析中…'));
+  assert.ok(pending.includes('import-thinking-text'));
+  assert.ok(!pending.includes('import-working-line'));
+  const summary=render({reasoning:'金額を確認中 <img src=x onerror=alert(1)>'});
+  assert.ok(summary.includes('金額を確認中 &lt;img'));
+  assert.ok(!summary.includes('<img src=x'));
+  assert.ok(!summary.includes('AIが明細を解析中…'));
+  assert.ok(render({demo:true}).includes('サンプル明細を準備中…'));
+});
+
 test('仕分け後も同じ明細行で日付・費目・金額を表示し、編集フォームは閉じている',()=>{
   const completed=review(props);
   const running=processing({progress:{phase:'checking',entries:sample.entries,count:15,demo:true,checkedCount:15,checkedTotal:sample.confirmed_total},settings:[]});

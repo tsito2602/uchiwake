@@ -146,7 +146,7 @@ function App() {
     setBusy(true);setNotice('');
     try {
       const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:setImportProgress,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-        analyze:onEntry=>isDemo?Promise.resolve(demoImportResult(month)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry,state?.demo_enabled?importModel:undefined)});
+        analyze:(onEntry,onReasoning)=>isDemo?Promise.resolve(demoImportResult(month)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry,state?.demo_enabled?importModel:undefined,onReasoning)});
       const sum=result.entries.reduce((a,b)=>a+b.amount,0);
       const card=state?.cards.find(item=>item.id===selectedCardId);
       setDraft({due_month:month,card_id:selectedCardId,title:`${monthText(month)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,demo:!!result.demo,model:!isDemo&&state?.demo_enabled?importModel:undefined});setTotalChecked(false);

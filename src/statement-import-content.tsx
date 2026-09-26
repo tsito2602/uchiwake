@@ -4,6 +4,7 @@ import type { CategoryAppearance, SharedCard, EntryDraft } from './domain';
 import { categoryAppearance } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import type { ImportProgress } from './statement-import-flow';
+import { ImportThinking } from './import-thinking';
 
 export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnabled,demoView=false,onCard,onMode,onFiles,onRemove,onManual,model,onModel}:{
   cards:SharedCard[];cardId:string;month:string;images:{name:string;image:string}[];
@@ -52,7 +53,7 @@ export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {
       const fraction=state==='done'?1:state==='pending'?0:reading||progress.count===null?0:progress.count?Math.min(1,(checking?(progress.checkedCount??0):progress.entries.length)/progress.count):1;
       return <li key={label} data-state={state} data-indeterminate={indeterminate} aria-current={state==='current'?'step':undefined}><span className="import-step-marker" aria-hidden="true">{state==='done'?<Check className="import-animated-check" size={13}/>:index+1}</span><span>{label}</span><span className="import-step-track" aria-hidden="true"><i style={{transform:`scaleX(${fraction})`}}/></span></li>;
     })}</ol>
-    <div className="import-phase-summary">{reading?<span className="import-working-line" aria-hidden="true"/>:<><span>{checking?'金額確認済み':progress.demo?'仕分け済み':'受信済み'} <b>{checking?(progress.checkedCount??0):progress.entries.length}</b>{progress.count===null?'件':` / ${progress.count}件`}</span><span className="import-phase-total"><small>利用合計</small><strong>¥{(checking?(progress.checkedTotal??0):progress.entries.reduce((sum,entry)=>sum+entry.amount,0)).toLocaleString('ja-JP')}</strong></span></>}</div>
+    <div className="import-phase-summary">{reading?<ImportThinking text={progress.demo?'サンプル明細を準備中…':progress.reasoning}/>:<><span>{checking?'金額確認済み':progress.demo?'仕分け済み':'受信済み'} <b>{checking?(progress.checkedCount??0):progress.entries.length}</b>{progress.count===null?'件':` / ${progress.count}件`}</span><span className="import-phase-total"><small>利用合計</small><strong>¥{(checking?(progress.checkedTotal??0):progress.entries.reduce((sum,entry)=>sum+entry.amount,0)).toLocaleString('ja-JP')}</strong></span></>}</div>
   </section>;
 }
 

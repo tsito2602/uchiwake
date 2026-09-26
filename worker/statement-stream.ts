@@ -3,6 +3,7 @@ import type { EntryDraft } from '../src/domain';
 import type { ImportResult } from '../src/statement-import-flow';
 import { sseData } from '../src/streaming/lines';
 import { idleWatch, IMPORT_IDLE_MS } from '../src/streaming/idle';
+import { StatementReasoning } from './statement-reasoning';
 
 function normalizeEntry(raw:unknown,categories:string[],reviewCategory:string):EntryDraft {
   if(!raw||typeof raw!=='object')throw new ImportError('invalid_result');
@@ -74,6 +75,7 @@ export function statementStream(upstream:Response,categories:string[],abort:Abor
       stop=()=>{watch.clear();clearInterval(heartbeat);cleanup();abort.abort();};
       send({type:'status',phase:'reading'});
       const decoder=new StatementDecoder(categories,reviewCategory);
+      const reasoning=new StatementReasoning();
       let completed=false;
       try {
         if(!upstream.body)throw new ImportError('disconnected');
@@ -84,6 +86,11 @@ export function statementStream(upstream:Response,categories:string[],abort:Abor
             if(typeof event.delta!=='string')throw new ImportError('invalid_result');
             if(event.delta.length)watch.touch();
             for(const entry of decoder.append(event.delta))send({type:'entry',entry});
+          }else if(event.type==='response.reasoning_summary_text.delta'||event.type==='response.reasoning_summary_text.done'){
+            const text=event.type==='response.reasoning_summary_text.delta'?event.delta:event.text;
+            if(typeof text==='string'&&text.length)watch.touch();
+            const preview=reasoning.accept(event);
+            if(preview)send({type:'reasoning',text:preview});
           }else if(event.type==='response.completed'){
             if(event.response?.status!=='completed')throw incompleteImportError(event.response?.incomplete_details?.reason);
             const result=decoder.finish();

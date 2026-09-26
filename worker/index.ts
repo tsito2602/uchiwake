@@ -320,7 +320,11 @@ app.post('/api/statement/analyze', async c => {
     {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。渡された画像をすべて確認する。同じ請求に含まれる本人・家族カード・Apple Payなど全利用者・全支払手段の利用行を対象にする。スクロール境界に重なる同一行は、前後の並びと画像内の位置も確認して1回だけ抽出する。同日・同店・同額というだけで別の利用を重複扱いにしない。端で切れた行は他の画像で完全な行を確認する。利用日は支払月とは異なる場合がある。26.08.02のような日付は画像の年を踏まえて2026-08-02にする。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。費目の判断に必要な情報が不足している場合は「${reviewCategory}」にする。「${classifiedOther}」は内容を判断できたうえで既存費目のどれにも当てはまらない場合だけにする。その他と要確認を混同しない。金額が表示されていない・読めない利用行はamountを0、費目を「${reviewCategory}」にして確認に回す。合計に合わせるために金額や行を推測して補完しない。推測で行や値を作らない。請求全体のお支払い金額・お支払金額総合計が画面に明示されていればconfirmed_totalに入れる。利用者別のお支払い金額小計を請求全体の確定額にしない。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
     ...imageParts
   ];
-  const options={text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}}};
+  const options={
+    reasoning:{effort:'low',summary:'auto'},
+    instructions:'公開用の思考の要約は日本語で簡潔に記述する。最終出力は指定されたJSON形式を厳守する。',
+    text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}}
+  };
   if(body.stream===true){
     const abort=new AbortController();
     const watch=idleWatch(()=>abort.abort(new ImportError('timeout')));
@@ -329,7 +333,7 @@ app.post('/api/statement/analyze', async c => {
     c.req.raw.signal.addEventListener('abort',cancel,{once:true});
     if(c.req.raw.signal.aborted)abort.abort();
     try {
-      const upstream=await abortable(fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...options,stream:true})}),abort.signal);
+      const upstream=await abortable(fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,...options,stream:true})}),abort.signal);
       if(!upstream.ok||!upstream.body){
         const data=await abortable(upstream.json(),abort.signal).catch(()=>{abort.signal.throwIfAborted();return null;}) as {error?:{code?:unknown}}|null;
         const failure=upstreamImportError(data?.error?.code,upstream.status);

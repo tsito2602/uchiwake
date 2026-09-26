@@ -32,6 +32,14 @@ https://uchiwake-staging.tsito-apps.workers.dev/
 
 ## 開発・デプロイ
 
+明細の読み取り中は Beautiful UI の Thinking / Reasoning をもとにした星形アイコンと
+光る1行テキストで、APIから届いた公開用の思考要約を表示します。
+Responses API に `reasoning: { effort: 'low', summary: 'auto' }` を指定し、
+要約の受信に合わせて更新します。要約が届くまでは「AIが明細を解析中…」を表示します。
+要約の頻度・言語はモデルの応答に依存し、固定文による実況は行いません。
+明細の受信が始まると件数・利用合計の表示に切り替わります。
+Beautiful UI のライセンス文は `licenses/beautiful-ui-MIT.txt` にあります。
+
 ```sh
 npm ci
 npm run check

@@ -111,6 +111,65 @@ test('AI完了前に1件目が画面へ届き、APIは1回・実取り込みの�
   }finally{globalThis.fetch=original;}
 });
 
+test('Lunaの公開要約を日本語の分割受信で先に表示し、JSON明細と混ぜない',async()=>{
+  const original=globalThis.fetch;
+  let source,requestBody;
+  globalThis.fetch=async(_url,options)=>{
+    requestBody=JSON.parse(options.body);
+    return new Response(new ReadableStream({start(c){source=c;}}));
+  };
+  try{
+    const response=await app.fetch(request({model:'gpt-6-luna'}),env);
+    assert.deepEqual(requestBody.reasoning,{effort:'low',summary:'auto'});
+    assert.equal(requestBody.model,'gpt-6-luna');
+    const previews=[],entries=[];
+    let previewReady;
+    const ready=new Promise(resolve=>{previewReady=resolve;});
+    let finished=false;
+    const running=receiveStatement(response,e=>entries.push(e),new AbortController().signal,undefined,text=>{
+      previews.push(text);if(text==='画像の重なりを確認中')previewReady();
+    }).then(value=>{finished=true;return value;});
+    const summary=(delta,summary_index=0,item_id='rs_1')=>frame({type:'response.reasoning_summary_text.delta',item_id,summary_index,delta});
+    for(const byte of encoder.encode(summary('**画像の')+summary('重なりを確認中**')))source.enqueue(Uint8Array.of(byte));
+    await ready;
+    assert.equal(finished,false);
+    assert.deepEqual(entries,[]);
+    source.enqueue(encoder.encode(
+      frame({type:'response.reasoning_text.delta',delta:'raw reasoning must not reach UI'})+
+      summary('\n\n')+summary('日付と金額を確認中')+
+      frame({type:'response.reasoning_summary_text.done',item_id:'rs_1',summary_index:0,text:'**画像の重なりを確認中**\n\n日付と金額を確認中'})+
+      summary('返金を確認中',1)+summary('費目を確認中',0,'rs_2')+
+      delta(JSON.stringify(result))+done
+    ));
+    source.close();
+    assert.deepEqual(await running,result);
+    assert.deepEqual(entries,result.entries);
+    assert.deepEqual(previews,['画像の','画像の重なりを確認中','日付と金額を確認中','返金を確認中','費目を確認中']);
+  }finally{globalThis.fetch=original;}
+});
+
+test('推論要約が届いている間は明細が未着でも無通信タイムアウトにしない',{timeout:2000},async()=>{
+  let source;
+  const controller=new AbortController();
+  const response=statementStream(new Response(new ReadableStream({start(c){source=c;}})),['食費'],controller,()=>{},'要確認',100);
+  const previews=[];
+  const receiving=receiveStatement(response,()=>{},new AbortController().signal,undefined,text=>previews.push(text));
+  for(const text of ['画像','の明細','を確認','しています']){
+    await new Promise(resolve=>setTimeout(resolve,40));
+    source.enqueue(encoder.encode(frame({type:'response.reasoning_summary_text.delta',item_id:'rs_1',summary_index:0,delta:text})));
+  }
+  source.enqueue(encoder.encode(delta(JSON.stringify(result))+done));source.close();
+  assert.deepEqual(await receiving,result);
+  assert.equal(previews.at(-1),'画像の明細を確認しています');
+});
+
+test('要約の完了イベントだけでも表示でき、その後の切断は成功扱いしない',async()=>{
+  const previews=[];
+  const response=statementStream(new Response(frame({type:'response.reasoning_summary_text.done',item_id:'rs_1',summary_index:0,text:'**利用行を確認中**'})),['食費'],new AbortController(),()=>{});
+  await assert.rejects(receiveStatement(response,()=>assert.fail('no entries'),new AbortController().signal,undefined,text=>previews.push(text)),/受信/);
+  assert.deepEqual(previews,['利用行を確認中']);
+});
+
 test('切断・拒否・出力上限・不正JSONを完了扱いにせず、部分結果を保存画面へ渡さない',async()=>{
   const original=globalThis.fetch;
   try{
