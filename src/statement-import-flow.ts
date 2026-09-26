@@ -1,7 +1,7 @@
 import type { EntryDraft } from './domain';
 
 export type ImportResult={confirmed_total:number;entries:EntryDraft[];demo?:boolean};
-export type ImportProgress={phase:'reading'|'sorting'|'checking';entries:EntryDraft[];count:number;demo:boolean;checkedCount?:number;checkedTotal?:number};
+export type ImportProgress={phase:'reading'|'sorting'|'checking';entries:EntryDraft[];count:number|null;demo:boolean;checkedCount?:number;checkedTotal?:number};
 
 export function demoImportResult(month:string):ImportResult {
   const entries:EntryDraft[]=[
@@ -35,14 +35,26 @@ export function importPause(ms:number,signal:AbortSignal):Promise<void> {
 
 // Reveal only returned data. Pending AI requests show an indeterminate state.
 export async function runStatementImport({analyze,onProgress,signal,demo,reducedMotion=false,pause=importPause}:{
-  analyze:()=>Promise<ImportResult>;onProgress:(progress:ImportProgress)=>void;
+  analyze:(onEntry:(entry:EntryDraft)=>void)=>Promise<ImportResult>;onProgress:(progress:ImportProgress)=>void;
   signal:AbortSignal;demo:boolean;reducedMotion?:boolean;
   pause?:(ms:number,signal:AbortSignal)=>Promise<void>;
 }) {
   signal.throwIfAborted();
-  onProgress({phase:'reading',entries:[],count:0,demo});
+  onProgress({phase:'reading',entries:[],count:demo?0:null,demo});
+  if(!demo){
+    const entries:EntryDraft[]=[];
+    const result=await analyze(entry=>{
+      signal.throwIfAborted();
+      entries.push(entry);
+      onProgress({phase:'sorting',entries:[...entries],count:null,demo:false});
+    });
+    signal.throwIfAborted();
+    const total=result.entries.reduce((sum,entry)=>sum+entry.amount,0);
+    onProgress({phase:'checking',entries:result.entries,count:result.entries.length,demo:false,checkedCount:result.entries.length,checkedTotal:total});
+    return result;
+  }
   const started=Date.now();
-  const result=await analyze();
+  const result=await analyze(()=>{});
   signal.throwIfAborted();
   if(!reducedMotion)await pause(demo?2000:Math.max(0,2000-(Date.now()-started)),signal);
   const batch=1;

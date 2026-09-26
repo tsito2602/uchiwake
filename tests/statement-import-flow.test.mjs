@@ -21,7 +21,7 @@ test('実AIの応答が来るまで架空の明細・件数を表示せず、返
   const result={confirmed_total:800,entries:[{title:'書店',spent_on:'2026-08-01',amount:1000,category:'その他・要確認'},{title:'返金',spent_on:'2026-08-02',amount:-200,category:'その他・要確認'}]};
   const running=runStatementImport({demo:false,signal:new AbortController().signal,
     analyze:()=>new Promise(done=>{resolve=done;}),onProgress:progress=>frames.push(progress),pause:async()=>{}});
-  assert.deepEqual(frames,[{phase:'reading',entries:[],count:0,demo:false}]);
+  assert.deepEqual(frames,[{phase:'reading',entries:[],count:null,demo:false}]);
   resolve(result);
   assert.equal(await running,result);
   assert.deepEqual(frames.at(-1).entries,result.entries);

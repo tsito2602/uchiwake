@@ -1,3 +1,4 @@
+import { statementStream } from './statement-stream';
 import { Hono } from 'hono';
 import { billKinds, categories, type BillKind, type CategoryAppearance } from '../src/domain';
 import { allCategoryAppearances, normalizeCategoryName, validCategoryName, validCategoryColor, validCategoryIcon } from '../src/category-appearance';
@@ -255,7 +256,7 @@ app.put('/api/statements/:id/entries', async c => {
 
 app.post('/api/statement/analyze', async c => {
   if (Number(c.req.header('Content-Length')) > 18_000_000) return error('画像の合計サイズを確認してください',413);
-  const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown}|null;
+  const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown;stream?:boolean}|null;
   if (!body || (body.mode !== 'demo' && body.mode !== 'live') || !Array.isArray(body.images) || body.images.length < 1 || body.images.length > 3 || !body.images.every(image=>parseImage(image))) return error('JPEG・PNG・WebPの画像を1〜3枚選んでください');
   if (body.mode === 'demo') {
     if (c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
@@ -269,10 +270,24 @@ app.post('/api/statement/analyze', async c => {
   const allowedCategories=await categoryNames(c.env.DB);
   const imageParts=body.images.map(image=>({type:'input_image',image_url:image,detail:'high'}));
   const schema={type:'object',properties:{confirmed_total:{type:'integer'},entries:{type:'array',items:{type:'object',properties:{spent_on:{type:'string'},title:{type:'string'},category:{type:'string',enum:allowedCategories},amount:{type:'integer'}},required:['spent_on','title','category','amount'],additionalProperties:false}}},required:['confirmed_total','entries'],additionalProperties:false};
-  const response=await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL,[
+  const content=[
     {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。画像は最大3枚で、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
     ...imageParts
-  ],{text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500});
+  ];
+  const options={text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500};
+  if(body.stream===true){
+    const abort=new AbortController();
+    const cancel=()=>abort.abort();
+    const cleanup=()=>c.req.raw.signal.removeEventListener('abort',cancel);
+    c.req.raw.signal.addEventListener('abort',cancel,{once:true});
+    if(c.req.raw.signal.aborted)abort.abort();
+    try {
+      const upstream=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model:c.env.OPENAI_MODEL,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...options,stream:true})});
+      if(!upstream.ok||!upstream.body){cleanup();abort.abort();return error('明細を読み取れませんでした。もう一度お試しください',502);}
+      return statementStream(upstream,allowedCategories,abort,cleanup);
+    }catch{cleanup();abort.abort();return error('明細の読み取りに接続できませんでした',502);}
+  }
+  const response=await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL,content,options);
   if (!response) return error('明細を読み取れませんでした。手入力で仕分けできます',502);
   let parsed: {confirmed_total?:unknown;entries?:unknown};
   try {parsed=JSON.parse(response);} catch {return error('AIの結果を確認できませんでした',502);}

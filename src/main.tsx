@@ -1,3 +1,4 @@
+import { streamStatement } from './statement-import-stream';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowRight, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles } from 'lucide-react';
@@ -8,7 +9,7 @@ import { defaultCardColor } from './card-colors';
 import { StatementImportPanel } from './statement-import-panel';
 import { ImportSetup, ImportProcessing } from './statement-import-content';
 import { ImportReview } from './statement-import-review';
-import { demoImportResult, runStatementImport, type ImportProgress, type ImportResult } from './statement-import-flow';
+import { demoImportResult, runStatementImport, type ImportProgress } from './statement-import-flow';
 import { BillPanel } from './bill-panel';
 import { CardSettingsPanel } from './card-settings-panel';
 import { CategorySettingsPanel } from './category-settings-panel';
@@ -139,7 +140,7 @@ function App() {
     setBusy(true);setNotice('');
     try {
       const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:setImportProgress,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-        analyze:()=>isDemo?Promise.resolve(demoImportResult(month)):api<ImportResult>('/statement/analyze',{method:'POST',signal:controller.signal,body:JSON.stringify({images:screenshots.map(item=>item.image),mode:'live'})})});
+        analyze:onEntry=>isDemo?Promise.resolve(demoImportResult(month)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry)});
       const sum=result.entries.reduce((a,b)=>a+b.amount,0);
       const card=state?.cards.find(item=>item.id===selectedCardId);
       setDraft({due_month:month,card_id:selectedCardId,title:`${monthText(month)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,demo:!!result.demo});setTotalChecked(false);

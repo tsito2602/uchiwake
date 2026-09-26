@@ -155,3 +155,11 @@ test('Studioの発光SVG・マスク・透明度・速度を参照ページか�
   }
  }
  });
+
+test('実取り込みは全件数が不明な間、受信件数だけを示して割合を表示しない',()=>{
+ const markup=processing({progress:{phase:'sorting',entries:sample.entries.slice(0,2),count:null,demo:false},settings:[]});
+ assert.ok(markup.includes('明細を受信中'));
+ assert.ok(markup.includes('受信済み <b>2</b>件'));
+ assert.match(markup,/data-state="current" data-indeterminate="true"[\s\S]*?transform:scaleX\(0\)/);
+ assert.ok(!markup.includes(' / '));
+});

@@ -1,0 +1,99 @@
+import type { EntryDraft } from '../src/domain';
+import type { ImportResult } from '../src/statement-import-flow';
+import { sseData } from '../src/streaming/lines';
+
+const failed='明細の受信が完了しませんでした。もう一度取り込んでください。';
+function normalizeEntry(raw:unknown,categories:string[]):EntryDraft {
+  if(!raw||typeof raw!=='object')throw new Error(failed);
+  const row=raw as Record<string,unknown>;
+  if(typeof row.title!=='string'||typeof row.spent_on!=='string'||typeof row.category!=='string'||!Number.isSafeInteger(row.amount)||Math.abs(Number(row.amount))>100_000_000)throw new Error(failed);
+  return {title:row.title.trim().slice(0,100),spent_on:/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(row.spent_on)?row.spent_on:'',category:categories.includes(row.category)?row.category:'その他・要確認',amount:Number(row.amount)};
+}
+
+// Only emit a complete entry object. Braces/quotes inside titles are not delimiters.
+export class StatementDecoder {
+  text='';
+  entries:EntryDraft[]=[];
+  private position=0;
+  private arrayStarted=false;
+  private arrayEnded=false;
+  private objectStart=-1;
+  private depth=0;
+  private quoted=false;
+  private escaped=false;
+  constructor(private categories:string[]){}
+  append(delta:string):EntryDraft[] {
+    this.text+=delta;
+    if(this.text.length>200_000)throw new Error(failed);
+    if(!this.arrayStarted){
+      const match=/"entries"\s*:\s*\[/.exec(this.text);
+      if(!match)return [];
+      this.position=match.index+match[0].length;
+      this.arrayStarted=true;
+    }
+    const added:EntryDraft[]=[];
+    for(;this.position<this.text.length&&!this.arrayEnded;this.position++){
+      const char=this.text[this.position];
+      if(this.quoted){
+        if(this.escaped)this.escaped=false;
+        else if(char==='\\')this.escaped=true;
+        else if(char==='"')this.quoted=false;
+        continue;
+      }
+      if(char==='"'){this.quoted=true;continue;}
+      if(char==='{'){if(this.depth===0)this.objectStart=this.position;this.depth++;}
+      else if(char==='}'){
+        this.depth--;
+        if(this.depth===0){
+          const entry=normalizeEntry(JSON.parse(this.text.slice(this.objectStart,this.position+1)),this.categories);
+          if(this.entries.length>=50)throw new Error('行数が多いため明細を分けてください');
+          this.entries.push(entry);added.push(entry);
+        }
+      }else if(char===']'&&this.depth===0)this.arrayEnded=true;
+    }
+    return added;
+  }
+  finish():ImportResult {
+    const parsed=JSON.parse(this.text);
+    if(!Array.isArray(parsed.entries)||parsed.entries.length>50||!Number.isSafeInteger(parsed.confirmed_total))throw new Error(failed);
+    const entries=parsed.entries.map((entry:unknown)=>normalizeEntry(entry,this.categories));
+    if(JSON.stringify(entries)!==JSON.stringify(this.entries))throw new Error(failed);
+    const amount=parsed.confirmed_total;
+    return {entries,confirmed_total:amount>0&&amount<=100_000_000?amount:0};
+  }
+}
+
+export function statementStream(upstream:Response,categories:string[],abort:AbortController,cleanup:()=>void):Response {
+  const encoder=new TextEncoder();
+  let cancelled=false;
+  const body=new ReadableStream<Uint8Array>({
+    async start(controller){
+      const send=(value:unknown)=>{if(!cancelled)controller.enqueue(encoder.encode(JSON.stringify(value)+'\n'));};
+      const decoder=new StatementDecoder(categories);
+      let completed=false;
+      try {
+        if(!upstream.body)throw new Error(failed);
+        for await(const data of sseData(upstream.body,abort.signal)){
+          if(data==='[DONE]')break;
+          const event=JSON.parse(data);
+          if(event.type==='response.output_text.delta'){
+            if(typeof event.delta!=='string')throw new Error(failed);
+            for(const entry of decoder.append(event.delta))send({type:'entry',entry});
+          }else if(event.type==='response.completed'){
+            if(event.response?.status!=='completed')throw new Error(failed);
+            const result=decoder.finish();
+            send({type:'complete',result});completed=true;break;
+          }else if(['error','response.failed','response.incomplete','response.refusal.delta'].includes(event.type))throw new Error(failed);
+        }
+        if(!completed)throw new Error(failed);
+      }catch{
+        if(!cancelled&&!abort.signal.aborted)send({type:'error',error:failed});
+      }finally{
+        cleanup();abort.abort();
+        if(!cancelled)controller.close();
+      }
+    },
+    cancel(){cancelled=true;cleanup();abort.abort();}
+  });
+  return new Response(body,{headers:{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'}});
+}
