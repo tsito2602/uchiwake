@@ -12,9 +12,7 @@ const {outputFiles}=await build({stdin:{contents:`
   import {ImportProcessing} from './src/statement-import-content';
   import {StatementImportPanel} from './src/statement-import-panel';
   import {FloatingDock} from './src/floating-dock';
-  import {BorderBeam} from 'border-beam';
   import {ThinkingOrb} from 'thinking-orbs';
-  export const defaultBeam=()=>renderToStaticMarkup(createElement(BorderBeam,{size:'md',theme:'light',borderRadius:28}));
   export const defaultOrb=()=>renderToStaticMarkup(createElement(ThinkingOrb,{state:'breathing',size:20,theme:'dark','aria-hidden':'true'}));
   export const review=props=>renderToStaticMarkup(createElement(ImportReview,props));
   export const processing=props=>renderToStaticMarkup(createElement(ImportProcessing,props));
@@ -24,7 +22,7 @@ const {outputFiles}=await build({stdin:{contents:`
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
 // Resolve external React imports from the project, not from a data URL.
 const bundle=outputFiles[0].text.replace(/from "(react(?:-dom(?:\/server)?|\/jsx-runtime)?|lucide-react|border-beam|thinking-orbs|motion\/react)"/g,(_match,name)=>`from ${JSON.stringify(import.meta.resolve(name))}`);
-const {review,processing,panel,dock,defaultBeam,defaultOrb}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
+const {review,processing,panel,dock,defaultOrb}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
 const sample=demoImportResult('2026-09');
 const draft={...sample,card_id:'one',due_month:'2026-09',title:'カード明細',demo:true};
 const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],settings:[],busy:false,checked:false,onChange:()=>{},onChecked:()=>{}};
@@ -50,26 +48,16 @@ test('手入力で始めた空の明細は編集欄を開き、削除・金額�
   for(const expected of ['type="date"','type="number"','<select','1件目を削除'])assert.ok(markup.includes(expected));
 });
 
-test('白いパネルはlight Rotateの配色・回転を保ち、縁と内側のコントラストを補正する',()=>{
+test('仕分け中だけ0.7倍のSoft Orbitを表示し、光とぼかしを角丸の内側に収める',()=>{
   const active=panel(true),inactive=panel(false);
-  assert.match(active,/<div[^>]*data-beam="[^"]+"[^>]*data-active=""/);
-  assert.doesNotMatch(inactive,/<div[^>]*data-beam="[^"]+"[^>]*data-active=""/);
-  assert.ok(!active.includes('--pulse-glow'));
-  assert.ok(active.includes('--beam-strength:1'));
-  // The app panel is always light, independently of the OS color preference.
-  const normalizeId=markup=>markup.replaceAll(markup.match(/data-beam="([^"]+)"/)[1],'BEAM_ID');
-  const sourceCSS=normalizeId(defaultBeam()).match(/<style>([\s\S]*?)<\/style>/)[1];
-  assert.ok(normalizeId(active).includes(sourceCSS),'Beam colors, opacity and motion must match the unmodified light preset');
-  assert.ok(sourceCSS.includes('rgba(0, 0, 0, 0.55)'),'The moving highlight must contrast with the white panel');
-  assert.ok(!sourceCSS.includes('rgba(255, 255, 255, 0.75)'),'Do not use the dark preset white highlight on a white panel');
-  const normalized=normalizeId(active);
-  assert.match(normalized,/\[data-beam="BEAM_ID"\] \{\s*--beam-stroke-opacity: 5;\s*--beam-inner-opacity: 3;/);
-  assert.match(normalized,/\[data-beam="BEAM_ID"\]\[data-active\]::after,\s*\[data-beam="BEAM_ID"\]\[data-fading\]::after \{\s*padding: 2px;/);
-  assert.ok(active.includes('--beam-angle-'));
-  assert.ok(active.includes('beam-spin-'));
-  assert.ok(active.includes('mask-composite: exclude'));
-  assert.ok(!active.includes('{id}'));
-  assert.ok(active.includes('prefers-reduced-motion'));
+  assert.match(active,/<div class="soft-orbit-glow" data-strength="0.7" aria-hidden="true"><canvas><\/canvas><canvas><\/canvas><canvas><\/canvas>/);
+  assert.ok(!inactive.includes('soft-orbit-glow'));
+  assert.ok(!active.includes('data-beam'));
+  const css=readFileSync(new URL('../src/statement-import.css',import.meta.url),'utf8');
+  const overlay=css.match(/\.soft-orbit-glow \{([^}]+)\}/)?.[1];
+  assert.match(overlay,/overflow: hidden/);
+  assert.match(overlay,/clip-path: inset\(0 round 28px\)/);
+  assert.match(overlay,/pointer-events: none/);
 });
 
 test('仕分け開始アクションだけにStudioの色付きボタンとアイコンを表示する',()=>{
