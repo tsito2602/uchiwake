@@ -27,7 +27,10 @@ test('未完成の行は出さず、引用符や括弧を含む店名・返金�
   const entries=[];
   for(const char of text)entries.push(...decoder.append(char));
   assert.deepEqual(entries,result.entries);
-  assert.throws(()=>new StatementDecoder(['食費']).append(JSON.stringify({entries:Array(51).fill(entry)})));
+  const many={entries:Array(120).fill(entry),confirmed_total:180000};
+  const large=new StatementDecoder(['食費']);
+  assert.equal(large.append(JSON.stringify(many)).length,120);
+  assert.deepEqual(large.finish(),many);
 });
 
 test('AI完了前に1件目が画面へ届き、APIは1回・実取り込みの待機演出はゼロ',async()=>{
@@ -55,6 +58,7 @@ test('AI完了前に1件目が画面へ届き、APIは1回・実取り込みの�
     assert.deepEqual(await running,result);
     assert.equal(calls,1);assert.equal(requestBody.stream,true);
     assert.equal(requestBody.text.format.strict,true);
+    assert.equal('max_output_tokens' in requestBody,false);
     assert.equal(upstreamSignal.aborted,true);
   }finally{globalThis.fetch=original;}
 });
@@ -91,7 +95,7 @@ test('上流のHTTPエラーはJSONエラーとして返し、再リクエスト
   try{
     const response=await app.fetch(request(),env);
     assert.equal(response.status,502);
-    await assert.rejects(receiveStatement(response,()=>{},new AbortController().signal),/読み取れません/);
+    await assert.rejects(receiveStatement(response,()=>{},new AbortController().signal),/リクエスト制限/);
     assert.equal(calls,1);
   }finally{globalThis.fetch=original;}
 });
@@ -99,7 +103,7 @@ test('上流のHTTPエラーはJSONエラーとして返し、再リクエスト
 test('ステージングはSolとLunaをリクエストごとに選べ、ストリームと一括受信で同じモデルを使う',async()=>{
   const original=globalThis.fetch;const called=[];
   globalThis.fetch=async(_url,options)=>{
-    const body=JSON.parse(options.body);called.push(body.model);
+    const body=JSON.parse(options.body);called.push(body.model);assert.equal('max_output_tokens' in body,false);
     return body.stream?new Response(delta(JSON.stringify(result))+done):Response.json({output:[{content:[{type:'output_text',text:JSON.stringify(result)}]}]});
   };
   try{
@@ -158,4 +162,52 @@ test('枚数・容量制限を外しても空選択・非対応形式・不正�
       assert.equal((await app.fetch(request({images}),env)).status,400);
     }
   }finally{globalThis.fetch=original;}
+});
+
+
+test('50件・200KBを超える結果と大きな最終イベントも全件受信できる',async()=>{
+  const original=globalThis.fetch;
+  const many={entries:Array.from({length:4000},(_,i)=>({...entry,title:String(i)+'店'.repeat(95)})),confirmed_total:6000000};
+  const text=JSON.stringify(many);
+  assert.ok(text.length>500_000);
+  globalThis.fetch=async()=>{
+    const chunks=[];
+    for(let i=0;i<text.length;i+=8192)chunks.push(delta(text.slice(i,i+8192)));
+    chunks.push(frame({type:'response.completed',response:{status:'completed',output:[{content:[{type:'output_text',text}]}]}}));
+    return new Response(chunks.join(''));
+  };
+  try{
+    let received=0;
+    const response=await app.fetch(request(),env);
+    const value=await receiveStatement(response,()=>received++,new AbortController().signal);
+    assert.equal(received,4000);
+    assert.deepEqual(value,many);
+  }finally{globalThis.fetch=original;}
+});
+
+test('失敗理由を区別し、途中結果を成功にせず、画像や上流メッセージをログに出さない',async()=>{
+  const original=globalThis.fetch,originalError=console.error;
+  const logs=[];console.error=value=>logs.push(JSON.parse(value));
+  const privateText='private screenshot or API key content';
+  const cases=[
+    [{type:'response.incomplete',response:{incomplete_details:{reason:'max_output_tokens'}}},'output_limit','出力上限'],
+    [{type:'response.incomplete',response:{incomplete_details:{reason:'content_filter'}}},'content_filter','中断'],
+    [{type:'response.refusal.delta',delta:privateText},'refusal','応じなかった'],
+    [{type:'error',code:'insufficient_quota',message:privateText},'quota','利用枠'],
+    [{type:'response.failed',response:{error:{code:'rate_limit_exceeded',message:privateText}}},'rate_limit','リクエスト制限'],
+    [{type:'error',code:privateText,message:privateText},'upstream','AI側'],
+    [null,'disconnected','接続が途中で切れた'],
+    [{type:'response.completed',response:{status:'completed'}},'invalid_result','形式']
+  ];
+  try{
+    for(const [event,code,message] of cases){
+      globalThis.fetch=async()=>new Response(delta('{"entries":['+JSON.stringify(entry))+(event?frame(event):''));
+      const response=await app.fetch(request(),env);
+      await assert.rejects(receiveStatement(response,()=>{},new AbortController().signal),error=>error.message.includes(message));
+      assert.equal(logs.at(-1).code,code);
+      assert.equal(logs.at(-1).received_entries,1);
+    }
+    assert.ok(!JSON.stringify(logs).includes(privateText));
+    assert.ok(!JSON.stringify(logs).includes(entry.title));
+  }finally{globalThis.fetch=original;console.error=originalError;}
 });

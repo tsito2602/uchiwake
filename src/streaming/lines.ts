@@ -11,7 +11,6 @@ export async function* streamLines(body:ReadableStream<Uint8Array>,signal?:Abort
       const {value,done}=await reader.read();
       signal?.throwIfAborted();
       buffer+=decoder.decode(value,{stream:!done});
-      if(buffer.length>500_000)throw new Error('受信データが大きすぎます');
       let end:number;
       while((end=buffer.indexOf('\n'))>=0){
         yield buffer.slice(0,end).replace(/\r$/,'');

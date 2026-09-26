@@ -1,3 +1,4 @@
+import { upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
 import { isImportModel } from '../src/import-model';
 import { statementStream } from './statement-stream';
 import { Hono } from 'hono';
@@ -191,10 +192,9 @@ function isSupportedImage(value: unknown): boolean {
 
 // One reviewed import is one card withdrawal. The total must match the saved rows.
 app.post('/api/statements', async c => {
-  if (Number(c.req.header('Content-Length')) > 100_000) return error('明細行は50件以下にしてください',413);
   const body = await c.req.json().catch(() => null) as {due_month?:unknown;card_id?:unknown;title?:unknown;confirmed_total?:unknown;entries?:unknown} | null;
   const entries = body?.entries;
-  if (!body || !monthPattern.test(String(body.due_month)) || typeof body.card_id!=='string' || !safeString(body.title) || !validAmount(body.confirmed_total) || !Array.isArray(entries) || entries.length < 1 || entries.length > 50) return error('カード明細の入力を確認してください');
+  if (!body || !monthPattern.test(String(body.due_month)) || typeof body.card_id!=='string' || !safeString(body.title) || !validAmount(body.confirmed_total) || !Array.isArray(entries) || entries.length < 1) return error('カード明細の入力を確認してください');
   const card=await c.env.DB.prepare('SELECT id FROM shared_cards WHERE id=? AND active=1').bind(body.card_id).first();
   if (!card) return error('設定で使用中のカードを選んでください');
   const existing=await c.env.DB.prepare('SELECT id FROM card_statements WHERE due_month=? AND card_id=?').bind(body.due_month,body.card_id).first();
@@ -237,7 +237,7 @@ app.put('/api/card-entries/:id/category', async c => {
 app.put('/api/statements/:id/entries', async c => {
   const id=c.req.param('id');
   const body=await c.req.json().catch(()=>null) as {entries?:unknown}|null;
-  if(!Array.isArray(body?.entries)||!body.entries.length||body.entries.length>50)return error('明細を確認してください');
+  if(!Array.isArray(body?.entries)||!body.entries.length)return error('明細を確認してください');
   const allowedCategories=await categoryNames(c.env.DB);
   const rows:{id:string;category:string;amount:number}[]=[];
   for(const item of body.entries){
@@ -281,10 +281,10 @@ app.post('/api/statement/analyze', async c => {
   const imageParts=body.images.map(image=>({type:'input_image',image_url:image,detail:'high'}));
   const schema={type:'object',properties:{confirmed_total:{type:'integer'},entries:{type:'array',items:{type:'object',properties:{spent_on:{type:'string'},title:{type:'string'},category:{type:'string',enum:allowedCategories},amount:{type:'integer'}},required:['spent_on','title','category','amount'],additionalProperties:false}}},required:['confirmed_total','entries'],additionalProperties:false};
   const content=[
-    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。渡された画像をすべて確認し、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
+    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。渡された画像をすべて確認する。同じ請求に含まれる本人・家族カード・Apple Payなど全利用者・全支払手段の利用行を対象にする。スクロール境界に重なる同一行は、前後の並びと画像内の位置も確認して1回だけ抽出する。同日・同店・同額というだけで別の利用を重複扱いにしない。端で切れた行は他の画像で完全な行を確認する。利用日は支払月とは異なる場合がある。26.08.02のような日付は画像の年を踏まえて2026-08-02にする。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求全体のお支払い金額・お支払金額総合計が画面に明示されていればconfirmed_totalに入れる。利用者別のお支払い金額小計を請求全体の確定額にしない。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
     ...imageParts
   ];
-  const options={text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500};
+  const options={text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}}};
   if(body.stream===true){
     const abort=new AbortController();
     const cancel=()=>abort.abort();
@@ -293,7 +293,12 @@ app.post('/api/statement/analyze', async c => {
     if(c.req.raw.signal.aborted)abort.abort();
     try {
       const upstream=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...options,stream:true})});
-      if(!upstream.ok||!upstream.body){cleanup();abort.abort();return error('明細を読み取れませんでした。もう一度お試しください',502);}
+      if(!upstream.ok||!upstream.body){
+        const data=await upstream.json().catch(()=>null) as {error?:{code?:unknown}}|null;
+        const failure=upstreamImportError(data?.error?.code,upstream.status);
+        logImportFailure(failure,0,upstream.status);
+        cleanup();abort.abort();return error(failure.message,502);
+      }
       return statementStream(upstream,allowedCategories,abort,cleanup);
     }catch{cleanup();abort.abort();return error('明細の読み取りに接続できませんでした',502);}
   }
@@ -301,7 +306,7 @@ app.post('/api/statement/analyze', async c => {
   if (!response) return error('明細を読み取れませんでした。手入力で仕分けできます',502);
   let parsed: {confirmed_total?:unknown;entries?:unknown};
   try {parsed=JSON.parse(response);} catch {return error('AIの結果を確認できませんでした',502);}
-  if (!Array.isArray(parsed.entries) || parsed.entries.length>50) return error('行数が多いため明細を分けてください',502);
+  if (!Array.isArray(parsed.entries)) return error('AIから受信した明細の形式を確認できませんでした',502);
   const entries=parsed.entries.map((raw:unknown)=>{const entry=(raw&&typeof raw==='object'?raw:{}) as Record<string,unknown>;return {spent_on:datePattern.test(String(entry.spent_on))?entry.spent_on:'',title:safeString(entry.title),category:allowedCategories.includes(entry.category as string)?entry.category:'その他・要確認',amount:Number.isSafeInteger(entry.amount)&&Math.abs(Number(entry.amount))<=100_000_000?Number(entry.amount):0};});
   return c.json({entries,confirmed_total:validAmount(parsed.confirmed_total)?Number(parsed.confirmed_total):0});
 });
@@ -321,14 +326,15 @@ app.post('/api/report/comment', async c => {
   }
   const key = c.env.OPENAI_API_KEY;
   if (!key) return error('AIの設定がまだありません',503);
-  const result = await openai(key,c.env.OPENAI_MODEL,[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }]);
+  const result = await openai(key,c.env.OPENAI_MODEL,[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }],{max_output_tokens:500});
   return result ? c.json({comment:result.slice(0,300)}) : error('コメントを作成できませんでした',502);
 });
 
 async function openai(key:string,model:string,content:unknown[],extra:Record<string,unknown>={}): Promise<string|null> {
-  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},max_output_tokens:500,...extra})});
+  const response = await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...extra})});
   if (!response.ok) { console.error(JSON.stringify({event:'openai_error',status:response.status})); return null; }
-  const data = await response.json() as {output?:Array<{content?:Array<{type:string;text?:string}>}>};
+  const data = await response.json() as {status?:string;incomplete_details?:{reason?:unknown};output?:Array<{content?:Array<{type:string;text?:string}>}>};
+  if(data.status&&data.status!=='completed'){logImportFailure(incompleteImportError(data.incomplete_details?.reason),0);return null;}
   return data.output?.flatMap(item=>item.content||[]).filter(item=>item.type==='output_text').map(item=>item.text||'').join('') || null;
 }
 

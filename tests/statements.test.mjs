@@ -77,3 +77,16 @@ test('精算の棒グラフは固定家賃と月ごとの上書きを二重計�
   assert.equal(months.length,60);
   assert.deepEqual(months.slice(-2),[{month:'2026-08',amount:50000,total:100000},{month:'2026-09',amount:80001,total:160001}]);
 });
+
+
+test('50件を超える明細も合計を検証して全件保存できる',async()=>{
+  let saved=[];
+  const DB={prepare(sql){return{async all(){return {results:[]};},bind(...values){return{sql,values,async first(){return sql.includes('shared_cards')?{id:values[0]}:null;}}}}},async batch(rows){saved=rows;return rows.map(()=>({success:true}));}};
+  const entries=Array.from({length:120},(_,i)=>({spent_on:'2026-09-01',title:'利用'+i,category:'食費',amount:100}));
+  const body={due_month:'2026-09',card_id:'card-one',title:'共有カード',confirmed_total:12000,entries};
+  const response=await app.fetch(request('/api/statements',body),{...env,DB});
+  assert.equal(response.status,201);
+  assert.equal(saved.length,121);
+  assert.equal(saved[0].values[4],12000);
+  assert.deepEqual(saved.slice(1).map(row=>row.values[3]),entries.map(row=>row.title));
+});
