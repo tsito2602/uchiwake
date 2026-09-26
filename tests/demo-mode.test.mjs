@@ -50,3 +50,16 @@ test('月次デモコメントは実際の費目集計を使い、外部APIを�
     assert.equal(calls,0);
   } finally { globalThis.fetch=original; }
 });
+
+
+test('デモ表示でも実行環境のAI設定を返し、キーそのものは公開しない',async()=>{
+  const DB={prepare:()=>assert.fail('sample state must not query DB')};
+  for(const key of [undefined,'test-secret']){
+    const response=await app.fetch(read('/api/state?month=2026-09&demo=1'),{...base,DB,OPENAI_API_KEY:key});
+    const state=await response.json();
+    assert.equal(state.ai_enabled,Boolean(key));
+    assert.equal(state.demo_enabled,true);
+    assert.equal(state.cards.length,2);
+    assert.ok(!JSON.stringify(state).includes('test-secret'));
+  }
+});

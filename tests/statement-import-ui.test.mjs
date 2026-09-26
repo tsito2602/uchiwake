@@ -178,3 +178,17 @@ test('ステージングの画像取り込みにだけモデル選択を表示�
  assert.ok(!setup({...setupProps,mode:'demo'}).includes('使用するAI'));
  assert.ok(review({...props,draft:{...draft,demo:false,model:'gpt-6-sol'}}).includes('GPT-6 Sol'));
 });
+
+
+test('デモ表示から画像読み取りを選べ、AI未設定時には無効理由を表示する',()=>{
+ const props={cards:[{id:'one',name:'生活費カード',active:true}],cardId:'one',month:'2026-09',images:[],mode:'live',demoEnabled:true,demoView:true,liveEnabled:true,model:'gpt-6-luna',onModel:()=>{},onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
+ const ready=setup(props);
+ assert.match(ready,/<button aria-pressed="true">画像を読み取る<\/button>/);
+ assert.ok(ready.includes('実際のAIで画像を読み取ります'));
+ assert.ok(ready.includes('結果は保存されません'));
+ assert.ok(ready.includes('GPT-6 Sol'));
+ const missing=setup({...props,liveEnabled:false});
+ assert.match(missing,/<button aria-pressed="true">画像を読み取る<\/button>/);
+ assert.ok(missing.includes('AIの接続設定を確認できません'));
+ assert.ok(!missing.includes('実際のAIで画像を読み取ります'));
+});

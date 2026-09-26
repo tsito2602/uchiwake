@@ -139,8 +139,8 @@ function App() {
     } catch(e){setNotice(String(e instanceof Error?e.message:e));}
   }
   async function analyzeStatement() {
-    const isDemo=demoView||aiMode==='demo';
-    if(busy||!selectedCardId||(isDemo?!state?.demo_enabled:!screenshots.length))return;
+    const isDemo=aiMode==='demo';
+    if(busy||!selectedCardId||(isDemo?!state?.demo_enabled:!screenshots.length||!state?.ai_enabled))return;
     const controller=new AbortController();
     importRequest.current=controller;
     setBusy(true);setNotice('');
@@ -245,6 +245,7 @@ function App() {
     catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   const openImport=()=>{
+    void load(); // Refresh AI availability after a deployment or secret update.
     setAiMode(state?.demo_enabled&&(demoView||!state?.ai_enabled)?'demo':'live');
     const source=document.querySelector<HTMLElement>('.dock-add')??document.activeElement;
     setNotice('');setDraft(null);setScreenshots([]);setTotalChecked(false);
@@ -326,7 +327,7 @@ function App() {
     label:draft?'カード明細の確認':'明細の取り込み',commit:true,
     actionAppearance:importProgress?'breathing':!draft&&state?.cards.some(card=>card.active)?'studio':undefined,
     onBack:()=>{if(importRequest.current){cancelImport();return;}if(busy)return;if(draft){setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
-    actionLabel:draft?(draft.demo?'デモ・保存されません':busy?'保存中…':'保存して計算'):!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'仕分け中...':aiMode==='demo'?'デモで仕分ける':'取り込みを始める',
+    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'仕分け中...':aiMode==='demo'?'デモで仕分ける':'取り込みを始める',
     onAction:()=>{if(busy)return;if(draft)void saveStatement();else if(!state?.cards.some(card=>card.active))selectTab('settings');else void analyzeStatement();},
     disabled:busy||!!((demoView||draft?.demo)&&draft)||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:(aiMode==='live'&&(!screenshots.length||!state.ai_enabled))||(aiMode==='demo'&&!state.demo_enabled)))
   }:undefined;
@@ -391,7 +392,7 @@ function App() {
     {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
       {notice&&<div className="notice" role="alert">{notice}</div>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
-        {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={month} images={screenshots} mode={aiMode} model={importModel} onModel={changeImportModel} demoEnabled={state.demo_enabled} liveEnabled={!demoView&&state.ai_enabled} onCard={id=>{setSelectedCardId(id);setScreenshots([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseScreenshots(files);}} onRemove={index=>setScreenshots(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:month,card_id:selectedCardId,title:`${monthText(month)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:'その他・要確認'}],demo:demoView});setTotalChecked(false);}}/>}
+        {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={month} images={screenshots} mode={aiMode} model={importModel} onModel={changeImportModel} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setScreenshots([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseScreenshots(files);}} onRemove={index=>setScreenshots(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:month,card_id:selectedCardId,title:`${monthText(month)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:'その他・要確認'}],demo:demoView});setTotalChecked(false);}}/>}
       </>:<ImportReview draft={draft} cards={state.cards} settings={state.category_settings} busy={busy} checked={totalChecked} onChange={value=>{setDraft(value);setTotalChecked(false);}} onChecked={setTotalChecked}/>)}
     </StatementImportPanel>}
     {editing&&<BillPanel bill={editing.data} view={editing.view} onView={openFixedRent} deleteAction={deleteBillAction} origin={editing.origin} closing={editing.closing} onExited={()=>setEditing(null)} actionLabel={billContext!.actionLabel} onAction={billContext!.onAction} actionDisabled={billContext!.disabled} month={month} demo={demoView} busy={busy} rentStartMonth={rentStartMonth} rentAmount={rentAmount} onRentStartMonth={setRentStartMonth} onRentAmount={setRentAmount} onChange={data=>setEditing({...editing,data})} onClose={billContext!.onBack}/>}

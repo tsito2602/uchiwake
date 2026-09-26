@@ -52,7 +52,7 @@ app.use('*', async (c, next) => {
 app.get('/api/state', async c => {
   const month = c.req.query('month') || '';
   if (!monthPattern.test(month)) return error('月を確認してください');
-  if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json(demoState(month)):error('見つかりません',404);
+  if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json({...demoState(month),ai_enabled:Boolean(c.env.OPENAI_API_KEY)}):error('見つかりません',404);
   const [bills, statements, entries, cards, rentRules, categorySettings] = await Promise.all([
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
     c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at FROM card_statements WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
