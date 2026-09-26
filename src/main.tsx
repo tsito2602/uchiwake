@@ -132,7 +132,7 @@ function App() {
   async function chooseScreenshots(files:FileList|null) {
     if (!files?.length) return;
     const selected=Array.from(files);
-    if (selected.length>3 || selected.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>4_000_000)) {setNotice('JPEG・PNG・WebPの4MB以下の画像を最大3枚選んでください');return;}
+    if (selected.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type))) {setNotice('JPEG・PNG・WebPの画像を選んでください');return;}
     try {
       const loaded=await Promise.all(selected.map(file=>new Promise<{name:string;image:string}>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve({name:file.name,image:String(reader.result)});reader.onerror=()=>reject(new Error('画像を読み込めませんでした'));reader.readAsDataURL(file);}))); 
       setScreenshots(loaded);setDraft(null);setTotalChecked(false);setNotice('');

@@ -171,18 +171,22 @@ app.delete('/api/bills/:id', async c => {
   return result.meta.changes ? c.json({ ok: true }) : error('対象が見つかりません',404);
 });
 
-function parseImage(value: unknown): { mime:string; bytes:Uint8Array } | null {
-  if (typeof value !== 'string') return null;
-  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value);
-  if (!match || match[2].length > 5_600_000) return null;
+function isSupportedImage(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const header = /^data:(image\/(?:jpeg|png|webp));base64,/.exec(value);
+  if (!header) return false;
+  const data = value.slice(header[0].length);
+  // Validate the encoding without decoding a second full copy of a large image.
+  if (!data || /[^A-Za-z0-9+/=]/.test(data)) return false;
+  const padding = data.indexOf('=');
+  if (padding < 0 ? data.length % 4 === 1 :
+      data.length % 4 !== 0 || !/^={1,2}$/.test(data.slice(padding))) return false;
   try {
-    const raw = atob(match[2]);
-    if (raw.length > 4_000_000) return null;
-    const bytes = Uint8Array.from(raw, char => char.charCodeAt(0));
+    const prefix = atob(data.slice(0, 16));
     const signatures = { 'image/jpeg': [0xff,0xd8,0xff], 'image/png': [0x89,0x50,0x4e,0x47], 'image/webp': [0x52,0x49,0x46,0x46] } as const;
-    if (!signatures[match[1] as keyof typeof signatures].every((byte,index) => bytes[index] === byte)) return null;
-    return { mime:match[1],bytes };
-  } catch { return null; }
+    return signatures[header[1] as keyof typeof signatures].every((byte,index) => prefix.charCodeAt(index) === byte)
+      && (header[1] !== 'image/webp' || prefix.slice(8,12) === 'WEBP');
+  } catch { return false; }
 }
 
 // One reviewed import is one card withdrawal. The total must match the saved rows.
@@ -256,9 +260,8 @@ app.put('/api/statements/:id/entries', async c => {
 });
 
 app.post('/api/statement/analyze', async c => {
-  if (Number(c.req.header('Content-Length')) > 18_000_000) return error('画像の合計サイズを確認してください',413);
   const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown;stream?:boolean;model?:unknown}|null;
-  if (!body || (body.mode !== 'demo' && body.mode !== 'live') || !Array.isArray(body.images) || body.images.length < 1 || body.images.length > 3 || !body.images.every(image=>parseImage(image))) return error('JPEG・PNG・WebPの画像を1〜3枚選んでください');
+  if (!body || (body.mode !== 'demo' && body.mode !== 'live') || !Array.isArray(body.images) || body.images.length < 1 || !body.images.every(isSupportedImage)) return error('JPEG・PNG・WebPの画像を選んでください');
   if (body.mode === 'demo') {
     if (c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
     return c.json({confirmed_total:6840,entries:[
@@ -278,7 +281,7 @@ app.post('/api/statement/analyze', async c => {
   const imageParts=body.images.map(image=>({type:'input_image',image_url:image,detail:'high'}));
   const schema={type:'object',properties:{confirmed_total:{type:'integer'},entries:{type:'array',items:{type:'object',properties:{spent_on:{type:'string'},title:{type:'string'},category:{type:'string',enum:allowedCategories},amount:{type:'integer'}},required:['spent_on','title','category','amount'],additionalProperties:false}}},required:['confirmed_total','entries'],additionalProperties:false};
   const content=[
-    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。画像は最大3枚で、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
+    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。渡された画像をすべて確認し、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
     ...imageParts
   ];
   const options={text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500};

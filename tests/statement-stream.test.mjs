@@ -13,7 +13,7 @@ const frame=event=>`event: ${event.type}\r\ndata: ${JSON.stringify(event)}\r\n\r
 const delta=text=>frame({type:'response.output_text.delta',delta:text});
 const done=frame({type:'response.completed',response:{status:'completed'}});
 const env={APP_PASSWORD:'pw',APP_ENV:'staging',OPENAI_MODEL:'test-model',OPENAI_API_KEY:'test-key',DB:{prepare(){return{async all(){return {results:[]};}};}}};
-const request=(extra={})=>new Request('https://example.test/api/statement/analyze',{method:'POST',headers:{Authorization:'Basic '+btoa('guest:pw'),'Content-Type':'application/json'},body:JSON.stringify({mode:'live',stream:true,...extra,images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII=']})});
+const request=(extra={})=>new Request('https://example.test/api/statement/analyze',{method:'POST',headers:{Authorization:'Basic '+btoa('guest:pw'),'Content-Type':'application/json'},body:JSON.stringify({mode:'live',stream:true,images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII='],...extra})});
 
 test('未完成の行は出さず、引用符や括弧を含む店名・返金を任意の分割位置で復元する',()=>{
   const text=JSON.stringify(result);
@@ -121,5 +121,41 @@ test('本番のモデル上書きと選択肢外のモデルはAIへ送信する
   try{
     for(const model of ['gpt-6-sol','gpt-6-luna'])assert.equal((await app.fetch(request({model}),{...env,APP_ENV:'production'})).status,400);
     for(const model of ['unknown','',null,7])assert.equal((await app.fetch(request({model}),env)).status,400);
+  }finally{globalThis.fetch=original;}
+});
+
+
+test('4枚以上・1枚4MB超・合計18MB超の画像を省略せずAIへ渡す',async()=>{
+  const original=globalThis.fetch;
+  const bytes=Buffer.alloc(4_000_001);
+  bytes.set([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
+  const image='data:image/png;base64,'+bytes.toString('base64');
+  const images=Array(4).fill(image);
+  let calls=0;
+  globalThis.fetch=async(_url,options)=>{
+    calls++;
+    const body=JSON.parse(options.body);
+    assert.deepEqual(body.input[0].content.filter(part=>part.type==='input_image').map(part=>part.image_url),images);
+    assert.doesNotMatch(body.input[0].content[0].text,/最大3枚/);
+    return new Response(delta(JSON.stringify(result))+done);
+  };
+  try{
+    const req=request({images});
+    req.headers.set('Content-Length',String(Buffer.byteLength(JSON.stringify({images}))));
+    assert.ok(Number(req.headers.get('Content-Length'))>18_000_000);
+    const response=await app.fetch(req,env);
+    assert.equal(response.status,200);
+    assert.deepEqual(await receiveStatement(response,()=>{},new AbortController().signal),result);
+    assert.equal(calls,1);
+  }finally{globalThis.fetch=original;}
+});
+
+test('枚数・容量制限を外しても空選択・非対応形式・不正な画像はAIに送らない',async()=>{
+  const original=globalThis.fetch;
+  globalThis.fetch=async()=>assert.fail('invalid image must not call AI');
+  try{
+    for(const images of [[],['data:image/gif;base64,R0lGODlh'],['data:image/png;base64,aGVsbG8='],['data:image/png;base64,iVBORw==='],['data:image/png;base64,iVBORw==AA'],['data:image/png;base64,iVBORw0KGgoA!'],['data:image/webp;base64,UklGRgAAAAAAAAAA']]){
+      assert.equal((await app.fetch(request({images}),env)).status,400);
+    }
   }finally{globalThis.fetch=original;}
 });

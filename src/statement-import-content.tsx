@@ -22,7 +22,7 @@ export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnab
       <div className="import-sample-paper" aria-hidden="true"><ReceiptLines/></div>
       <small>サンプル15件 · 実データは変更されません</small>
     </div>:<>
-      <label className="import-upload"><span className="import-upload-icon"><Camera size={30}/></span><strong>{images.length?'画像を選び直す':'明細の画像を選ぶ'}</strong><span>スクリーンショットを最大3枚</span><small>JPEG・PNG・WebP / 1枚4MBまで</small><input aria-label="明細の画像" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={event=>{onFiles(event.target.files);event.target.value='';}}/></label>
+      <label className="import-upload"><span className="import-upload-icon"><Camera size={30}/></span><strong>{images.length?'画像を選び直す':'明細の画像を選ぶ'}</strong><span>スクリーンショットをまとめて選択</span><small>JPEG・PNG・WebP</small><input aria-label="明細の画像" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={event=>{onFiles(event.target.files);event.target.value='';}}/></label>
       {images.length>0&&<div className="import-image-list">{images.map((item,index)=><div key={`${index}-${item.name}`}><img src={item.image} alt={`明細画像 ${index+1}`}/><span>{item.name}</span><button onClick={()=>onRemove(index)} aria-label={`明細画像 ${index+1}を外す`}><X size={16}/></button></div>)}</div>}
       <p className="import-hint">店名・日付・金額から、費目ごとにまとめます。</p>
     </>}
