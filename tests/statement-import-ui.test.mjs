@@ -47,6 +47,21 @@ test('仕分け後も同じ明細行で日付・費目・金額を表示し、�
 test('手入力で始めた空の明細は編集欄を開き、削除・金額・費目を編集できる',()=>{
   const markup=review({...props,draft:{...draft,entries:[{spent_on:'',title:'',amount:0,category:'その他・要確認'}]}});
   for(const expected of ['type="date"','type="number"','<select','1件目を削除'])assert.ok(markup.includes(expected));
+  assert.match(markup,/<div class="import-review-item" data-expanded="true"[^>]*><button[\s\S]*?<\/button><div class="import-review-expander"[^>]*><fieldset/);
+});
+
+test('利用合計を唯一の登録先編集入口にし、重複金額と明細名の入力をなくす',()=>{
+  const markup=review(props);
+  assert.equal((markup.match(/6,840/g)||[]).length,1);
+  assert.match(markup,/<button class="import-processing-foot import-review-total"[^>]*aria-label="利用合計：登録先・引落額を編集"[^>]*aria-expanded="false"/);
+  assert.ok(!markup.includes('カード引落額'));
+  assert.ok(!markup.includes('import-review-destination'));
+  const source=readFileSync(new URL('../src/statement-import-review.tsx',import.meta.url),'utf8');
+  assert.ok(!source.includes('明細の名前'));
+  assert.ok(!source.includes('value={draft.title}'));
+  for(const field of ['value={draft.card_id}','value={draft.due_month}','value={draft.confirmed_total'])assert.ok(source.includes(field));
+  const css=readFileSync(new URL('../src/statement-import.css',import.meta.url),'utf8');
+  assert.match(css,/\.import-review-editor \{[^}]*border: 0;[^}]*border-top: 1px solid/);
 });
 
 test('フェーズはスクロール領域の外に固定し、仕分け済みの全行を保持する',()=>{
@@ -75,7 +90,7 @@ test('新しい明細をパネル内だけで追従し、動きを減らす設�
 
 test('編集できる行をアイコンで示し、確認チェックは黒いアニメーションとキーボード操作を備える',()=>{
   const markup=review({...props,checked:true});
-  assert.equal((markup.match(/class="import-entry-edit"/g)||[]).length,3);
+  assert.equal((markup.match(/class="import-entry-edit"/g)||[]).length,4);
   assert.ok(markup.includes('import-edit-hint'));
   assert.match(markup,/data-checked="true"><input type="checkbox" checked=""/);
   assert.ok(markup.includes('元の明細と内容・金額を確認した'));

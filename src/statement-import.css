@@ -91,26 +91,25 @@
 .import-edit-hint { display: inline-flex; align-items: center; gap: 6px; color: #171717; font-size: 12px; font-weight: 550; animation: import-hint-arrive .5s .15s both; }
 .import-edit-hint svg { animation: import-pencil-nudge .6s .5s both; }
 .import-review-list { min-height: 0; }
+.import-review-item,.import-review-summary { min-width: 0; border: 1px solid #e5e5e5; border-radius: 18px; background: #ffffffb3; overflow: hidden; transition: background .2s,border-color .2s; }
 .import-review-item { margin-bottom: 10px; animation: import-row-arrive .38s var(--import-row-delay,0ms) both; }
-.import-entry-button { width: 100%; gap: 10px; padding: 15px 12px; border: 1px solid #e5e5e5; border-radius: 18px; background: #ffffffb3; color: #171717; text-align: left; animation: none; transition: background .2s,border-color .2s,transform .22s; }
+.import-review-item[data-expanded="true"],.import-review-summary[data-expanded="true"] { border-color: #bcbcbc; background: #fff; }
+.import-entry-button { width: 100%; gap: 10px; padding: 15px 12px; border: 0; border-radius: 0; background: transparent; color: #171717; text-align: left; animation: none; transition: background .2s,transform .22s; }
 .import-entry-button:not(:disabled):active { transform: scale(.985); background: #fff; }
-.import-entry-button[aria-expanded="true"] { border-color: #bcbcbc; background: #fff; }
 .import-entry-button > b { font-size: 15px; }
 .import-entry-edit { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: #171717; border-radius: 50%; background: #f0f0f0; transition: background .2s,transform .25s; }
 .import-entry-button[aria-expanded="true"] .import-entry-edit { background: #e4e4e4; transform: rotate(90deg); }
 .import-review-expander { overflow: hidden; }
 .import-review .import-category-tag { animation: none; }
-.import-review-editor { min-width: 0; margin: 0 0 12px; padding: 17px; display: flex; flex-direction: column; gap: 15px; border: 1px solid #e6e6e6; border-radius: 18px; background: #ffffff9c; }
-.import-review-expander .import-review-editor { margin-top: 8px; }
+.import-review-editor { min-width: 0; margin: 0 12px; padding: 16px 0; display: flex; flex-direction: column; gap: 15px; border: 0; border-top: 1px solid #e6e6e6; border-radius: 0; background: transparent; }
 .import-edit-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
 .import-edit-actions { display: flex; align-items: center; justify-content: space-between; }
 .import-edit-actions button { min-width: 44px; min-height: 44px; border: 0; border-radius: 12px; background: #fff; color: #555; font-size: 12px; }
 .import-edit-actions .import-remove-entry { display: grid; place-items: center; color: #ce5b56; }
 .import-review-add { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; margin: 8px 0; border: 0; background: transparent; color: #888; font-size: 12px; }
-.import-review-total { margin-top: 0; }
-.import-review-meta-button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: #888; font-size: 12px; }
-.import-review-meta-button strong { margin-left: auto; font-size: 14px; font-weight: 550; color: #555; }
-.import-review-destination { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 44px; border: 0; background: transparent; color: #999; font-size: 11px; }
+.import-review-total { width: 100%; gap: 10px; min-height: 64px; margin-top: 0; padding: 12px; border: 0; background: transparent; text-align: left; color: #555; }
+.import-review-total strong { margin-left: auto; }
+.import-review-total:focus-visible,.import-entry-button:focus-visible { outline: 2px solid #171717; outline-offset: -4px; }
 .import-complete-symbol { border: 0; color: #fff; background: #171717; animation: import-check-pop .48s cubic-bezier(.34,1.56,.64,1) both; }
 .import-animated-check path { stroke-dasharray: 32; stroke-dashoffset: 32; animation: import-check-draw .4s .12s ease forwards; }
 .import-review-confirm { position: relative; align-items: center; gap: 12px; min-height: 60px; margin: 18px 0 0; padding: 14px; border: 1px solid #dedede; border-radius: 18px; background: #ffffffa3; color: #171717; font-size: 12px; transition: background .25s,border-color .25s; }
