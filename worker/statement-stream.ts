@@ -2,6 +2,7 @@ import { ImportError, incompleteImportError, upstreamImportError, logImportFailu
 import type { EntryDraft } from '../src/domain';
 import type { ImportResult } from '../src/statement-import-flow';
 import { sseData } from '../src/streaming/lines';
+import { idleWatch, IMPORT_IDLE_MS } from '../src/streaming/idle';
 
 function normalizeEntry(raw:unknown,categories:string[],reviewCategory:string):EntryDraft {
   if(!raw||typeof raw!=='object')throw new ImportError('invalid_result');
@@ -61,12 +62,17 @@ export class StatementDecoder {
   }
 }
 
-export function statementStream(upstream:Response,categories:string[],abort:AbortController,cleanup:()=>void,reviewCategory='要確認'):Response {
+export function statementStream(upstream:Response,categories:string[],abort:AbortController,cleanup:()=>void,reviewCategory='要確認',idleMs=IMPORT_IDLE_MS):Response {
   const encoder=new TextEncoder();
   let cancelled=false;
+  let stop=()=>{};
   const body=new ReadableStream<Uint8Array>({
     async start(controller){
       const send=(value:unknown)=>{if(!cancelled)controller.enqueue(encoder.encode(JSON.stringify(value)+'\n'));};
+      const watch=idleWatch(()=>abort.abort(new ImportError('timeout')),idleMs);
+      const heartbeat=setInterval(()=>send({type:'heartbeat'}),15_000);
+      stop=()=>{watch.clear();clearInterval(heartbeat);cleanup();abort.abort();};
+      send({type:'status',phase:'reading'});
       const decoder=new StatementDecoder(categories,reviewCategory);
       let completed=false;
       try {
@@ -76,6 +82,7 @@ export function statementStream(upstream:Response,categories:string[],abort:Abor
           const event=JSON.parse(data);
           if(event.type==='response.output_text.delta'){
             if(typeof event.delta!=='string')throw new ImportError('invalid_result');
+            if(event.delta.length)watch.touch();
             for(const entry of decoder.append(event.delta))send({type:'entry',entry});
           }else if(event.type==='response.completed'){
             if(event.response?.status!=='completed')throw incompleteImportError(event.response?.incomplete_details?.reason);
@@ -87,17 +94,17 @@ export function statementStream(upstream:Response,categories:string[],abort:Abor
         }
         if(!completed)throw new ImportError('disconnected');
       }catch(error){
-        if(!cancelled&&!abort.signal.aborted){
-          const failure=error instanceof ImportError?error:new ImportError(error instanceof SyntaxError?'invalid_result':'disconnected');
+        if(!cancelled&&(!abort.signal.aborted||abort.signal.reason instanceof ImportError)){
+          const failure=abort.signal.reason instanceof ImportError?abort.signal.reason:error instanceof ImportError?error:new ImportError(error instanceof SyntaxError?'invalid_result':'disconnected');
           logImportFailure(failure,decoder.entries.length);
           send({type:'error',code:failure.code,error:failure.message});
         }
       }finally{
-        cleanup();abort.abort();
+        stop();
         if(!cancelled)controller.close();
       }
     },
-    cancel(){cancelled=true;cleanup();abort.abort();}
+    cancel(){cancelled=true;stop();}
   });
   return new Response(body,{headers:{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'}});
 }

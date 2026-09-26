@@ -1,15 +1,20 @@
+import { abortable, idleWatch, ImportIdleError } from './idle';
 // Decode UTF-8 across arbitrary network chunks; never split a Japanese character.
-export async function* streamLines(body:ReadableStream<Uint8Array>,signal?:AbortSignal) {
+export async function* streamLines(body:ReadableStream<Uint8Array>,signal?:AbortSignal,idleMs?:number) {
   const reader=body.getReader();
   const decoder=new TextDecoder();
   let buffer='';
-  const abort=()=>{void reader.cancel().catch(()=>{});};
+  const local=new AbortController();
+  const abort=()=>{local.abort(signal?.reason);void reader.cancel().catch(()=>{});};
   signal?.addEventListener('abort',abort,{once:true});
+  if(signal?.aborted)abort();
+  const watch=idleMs===undefined?undefined:idleWatch(()=>local.abort(new ImportIdleError()),idleMs);
   try {
     while(true){
-      signal?.throwIfAborted();
-      const {value,done}=await reader.read();
-      signal?.throwIfAborted();
+      local.signal.throwIfAborted();
+      const {value,done}=await abortable(reader.read(),local.signal);
+      local.signal.throwIfAborted();
+      if(value?.byteLength)watch?.touch();
       buffer+=decoder.decode(value,{stream:!done});
       let end:number;
       while((end=buffer.indexOf('\n'))>=0){
@@ -19,8 +24,10 @@ export async function* streamLines(body:ReadableStream<Uint8Array>,signal?:Abort
       if(done){if(buffer)yield buffer;break;}
     }
   } finally {
+    watch?.clear();
     signal?.removeEventListener('abort',abort);
-    await reader.cancel().catch(()=>{});
+    // A completed result must never wait for remote connection teardown.
+    void reader.cancel().catch(()=>{});
     reader.releaseLock();
   }
 }

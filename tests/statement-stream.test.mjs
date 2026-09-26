@@ -3,8 +3,8 @@ import {strict as assert} from 'node:assert';
 import {build} from 'esbuild';
 import app from '../dist/worker.mjs';
 import {runStatementImport} from '../src/statement-import-flow.ts';
-const {outputFiles}=await build({stdin:{contents:`export {receiveStatement} from './src/statement-import-stream';export {StatementDecoder} from './worker/statement-stream';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
-const {receiveStatement,StatementDecoder}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {outputFiles}=await build({stdin:{contents:`export {receiveStatement} from './src/statement-import-stream';export {StatementDecoder,statementStream} from './worker/statement-stream';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
+const {receiveStatement,StatementDecoder,statementStream}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 const entry={title:'スーパー「日本」 } ] \\"',spent_on:'2026-09-01',category:'食費',amount:1500};
 const second={title:'返金',spent_on:'',category:'食費',amount:-200};
 const result={confirmed_total:1300,entries:[entry,second]};
@@ -14,6 +14,54 @@ const delta=text=>frame({type:'response.output_text.delta',delta:text});
 const done=frame({type:'response.completed',response:{status:'completed'}});
 const env={APP_PASSWORD:'pw',APP_ENV:'staging',OPENAI_MODEL:'test-model',OPENAI_API_KEY:'test-key',DB:{prepare(){return{async all(){return {results:[]};}};}}};
 const request=(extra={})=>new Request('https://example.test/api/statement/analyze',{method:'POST',headers:{Authorization:'Basic '+btoa('guest:pw'),'Content-Type':'application/json'},body:JSON.stringify({mode:'live',stream:true,images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII='],...extra})});
+
+test('完了通知の後は通信のcancelが戻らなくても結果を表示する',{timeout:1000},async()=>{
+  let cancelled=false;
+  const body=new ReadableStream({start(c){c.enqueue(encoder.encode(JSON.stringify({type:'complete',result})+'\n'));},cancel(){cancelled=true;return new Promise(()=>{});}});
+  const response=new Response(body,{headers:{'Content-Type':'application/x-ndjson'}});
+  assert.deepEqual(await receiveStatement(response,()=>{},new AbortController().signal),result);
+  assert.equal(cancelled,true);
+});
+
+test('AI完了後も上流接続が閉じなくても、結果を返して後片付けする',{timeout:1000},async()=>{
+  let cancelled=false,cleaned=false;
+  const upstream=new Response(new ReadableStream({start(c){c.enqueue(encoder.encode(delta(JSON.stringify(result))+done));},cancel(){cancelled=true;return new Promise(()=>{});}}));
+  const controller=new AbortController();
+  const response=statementStream(upstream,['食費'],controller,()=>{cleaned=true;});
+  assert.deepEqual(await receiveStatement(response,()=>{},new AbortController().signal),result);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(cancelled,true);assert.equal(cleaned,true);assert.equal(controller.signal.aborted,true);
+});
+
+test('受信が途絶えたら途中結果を保存に渡さず、cancelが応答しなくても中断する',{timeout:1000},async()=>{
+  for(const cancel of [()=>{},()=>new Promise(()=>{})]){
+    const response=new Response(new ReadableStream({start(c){c.enqueue(encoder.encode(JSON.stringify({type:'entry',entry})+'\n'));},cancel}),{headers:{'Content-Type':'application/x-ndjson'}});
+    const entries=[];
+    await assert.rejects(receiveStatement(response,e=>entries.push(e),new AbortController().signal,10),/応答が途絶えた/);
+    assert.deepEqual(entries,[entry]);
+  }
+});
+
+test('AIから応答が止まったらエラーを送り、読取中を終える',{timeout:1000},async()=>{
+  let cleaned=false;
+  const controller=new AbortController();
+  const response=statementStream(new Response(new ReadableStream({start(){},cancel(){return new Promise(()=>{});}})),['食費'],controller,()=>{cleaned=true;},'要確認',10);
+  await assert.rejects(receiveStatement(response,()=>{},new AbortController().signal),/応答が途絶えた/);
+  assert.equal(controller.signal.aborted,true);assert.equal(cleaned,true);
+});
+
+test('応答が届く間は処理の合計時間が長くても打ち切らない',{timeout:2000},async()=>{
+  let source;
+  const upstream=new Response(new ReadableStream({start(c){source=c;}}));
+  const response=statementStream(upstream,['食費'],new AbortController(),()=>{},'要確認',80);
+  const receiving=receiveStatement(response,()=>{},new AbortController().signal);
+  for(const chunk of ['{"entries":[',JSON.stringify(entry),','+JSON.stringify(second),'],"confirmed_total":1300}']){
+    await new Promise(resolve=>setTimeout(resolve,30));
+    source.enqueue(encoder.encode(delta(chunk)));
+  }
+  source.enqueue(encoder.encode(done));source.close();
+  assert.deepEqual(await receiving,result);
+});
 
 test('未完成の行は出さず、引用符や括弧を含む店名・返金を任意の分割位置で復元する',()=>{
   const text=JSON.stringify(result);

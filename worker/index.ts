@@ -1,4 +1,5 @@
-import { upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
+import { ImportError, upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
+import { abortable, idleWatch } from '../src/streaming/idle';
 import { readCategorySettings, categorySchemaReady } from './category-settings';
 import { isImportModel } from '../src/import-model';
 import { statementStream } from './statement-stream';
@@ -316,26 +317,33 @@ app.post('/api/statement/analyze', async c => {
   const imageParts=body.images.map(image=>({type:'input_image',image_url:image,detail:'high'}));
   const schema={type:'object',properties:{confirmed_total:{type:'integer'},entries:{type:'array',items:{type:'object',properties:{spent_on:{type:'string'},title:{type:'string'},category:{type:'string',enum:allowedCategories},amount:{type:'integer'}},required:['spent_on','title','category','amount'],additionalProperties:false}}},required:['confirmed_total','entries'],additionalProperties:false};
   const content=[
-    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。渡された画像をすべて確認する。同じ請求に含まれる本人・家族カード・Apple Payなど全利用者・全支払手段の利用行を対象にする。スクロール境界に重なる同一行は、前後の並びと画像内の位置も確認して1回だけ抽出する。同日・同店・同額というだけで別の利用を重複扱いにしない。端で切れた行は他の画像で完全な行を確認する。利用日は支払月とは異なる場合がある。26.08.02のような日付は画像の年を踏まえて2026-08-02にする。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。費目の判断に必要な情報が不足している場合は「${reviewCategory}」にする。「${classifiedOther}」は内容を判断できたうえで既存費目のどれにも当てはまらない場合だけにする。その他と要確認を混同しない。推測で行や値を作らない。請求全体のお支払い金額・お支払金額総合計が画面に明示されていればconfirmed_totalに入れる。利用者別のお支払い金額小計を請求全体の確定額にしない。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
+    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。渡された画像をすべて確認する。同じ請求に含まれる本人・家族カード・Apple Payなど全利用者・全支払手段の利用行を対象にする。スクロール境界に重なる同一行は、前後の並びと画像内の位置も確認して1回だけ抽出する。同日・同店・同額というだけで別の利用を重複扱いにしない。端で切れた行は他の画像で完全な行を確認する。利用日は支払月とは異なる場合がある。26.08.02のような日付は画像の年を踏まえて2026-08-02にする。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。費目の判断に必要な情報が不足している場合は「${reviewCategory}」にする。「${classifiedOther}」は内容を判断できたうえで既存費目のどれにも当てはまらない場合だけにする。その他と要確認を混同しない。金額が表示されていない・読めない利用行はamountを0、費目を「${reviewCategory}」にして確認に回す。合計に合わせるために金額や行を推測して補完しない。推測で行や値を作らない。請求全体のお支払い金額・お支払金額総合計が画面に明示されていればconfirmed_totalに入れる。利用者別のお支払い金額小計を請求全体の確定額にしない。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
     ...imageParts
   ];
   const options={text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}}};
   if(body.stream===true){
     const abort=new AbortController();
+    const watch=idleWatch(()=>abort.abort(new ImportError('timeout')));
     const cancel=()=>abort.abort();
-    const cleanup=()=>c.req.raw.signal.removeEventListener('abort',cancel);
+    const cleanup=()=>{watch.clear();c.req.raw.signal.removeEventListener('abort',cancel);};
     c.req.raw.signal.addEventListener('abort',cancel,{once:true});
     if(c.req.raw.signal.aborted)abort.abort();
     try {
-      const upstream=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...options,stream:true})});
+      const upstream=await abortable(fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...options,stream:true})}),abort.signal);
       if(!upstream.ok||!upstream.body){
-        const data=await upstream.json().catch(()=>null) as {error?:{code?:unknown}}|null;
+        const data=await abortable(upstream.json(),abort.signal).catch(()=>{abort.signal.throwIfAborted();return null;}) as {error?:{code?:unknown}}|null;
         const failure=upstreamImportError(data?.error?.code,upstream.status);
         logImportFailure(failure,0,upstream.status);
         cleanup();abort.abort();return error(failure.message,502);
       }
+      watch.clear();
       return statementStream(upstream,allowedCategories,abort,cleanup,reviewCategory);
-    }catch{cleanup();abort.abort();return error('明細の読み取りに接続できませんでした',502);}
+    }catch(failure){
+      const reason=abort.signal.reason instanceof ImportError?abort.signal.reason:failure;
+      cleanup();abort.abort();
+      if(reason instanceof ImportError){logImportFailure(reason,0);return error(reason.message,502);}
+      return error('明細の読み取りに接続できませんでした',502);
+    }
   }
   const response=await openai(c.env.OPENAI_API_KEY,model,content,options);
   if (!response) return error('明細を読み取れませんでした。手入力で仕分けできます',502);
