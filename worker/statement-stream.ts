@@ -3,11 +3,11 @@ import type { EntryDraft } from '../src/domain';
 import type { ImportResult } from '../src/statement-import-flow';
 import { sseData } from '../src/streaming/lines';
 
-function normalizeEntry(raw:unknown,categories:string[]):EntryDraft {
+function normalizeEntry(raw:unknown,categories:string[],reviewCategory:string):EntryDraft {
   if(!raw||typeof raw!=='object')throw new ImportError('invalid_result');
   const row=raw as Record<string,unknown>;
   if(typeof row.title!=='string'||typeof row.spent_on!=='string'||typeof row.category!=='string'||!Number.isSafeInteger(row.amount)||Math.abs(Number(row.amount))>100_000_000)throw new ImportError('invalid_result');
-  return {title:row.title.trim().slice(0,100),spent_on:/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(row.spent_on)?row.spent_on:'',category:categories.includes(row.category)?row.category:'その他・要確認',amount:Number(row.amount)};
+  return {title:row.title.trim().slice(0,100),spent_on:/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(row.spent_on)?row.spent_on:'',category:categories.includes(row.category)?row.category:reviewCategory,amount:Number(row.amount)};
 }
 
 // Only emit a complete entry object. Braces/quotes inside titles are not delimiters.
@@ -21,7 +21,7 @@ export class StatementDecoder {
   private depth=0;
   private quoted=false;
   private escaped=false;
-  constructor(private categories:string[]){}
+  constructor(private categories:string[],private reviewCategory='要確認'){}
   append(delta:string):EntryDraft[] {
     this.text+=delta;
     if(!this.arrayStarted){
@@ -44,7 +44,7 @@ export class StatementDecoder {
       else if(char==='}'){
         this.depth--;
         if(this.depth===0){
-          const entry=normalizeEntry(JSON.parse(this.text.slice(this.objectStart,this.position+1)),this.categories);
+          const entry=normalizeEntry(JSON.parse(this.text.slice(this.objectStart,this.position+1)),this.categories,this.reviewCategory);
           this.entries.push(entry);added.push(entry);
         }
       }else if(char===']'&&this.depth===0)this.arrayEnded=true;
@@ -54,20 +54,20 @@ export class StatementDecoder {
   finish():ImportResult {
     const parsed=JSON.parse(this.text);
     if(!Array.isArray(parsed.entries)||!Number.isSafeInteger(parsed.confirmed_total))throw new ImportError('invalid_result');
-    const entries=parsed.entries.map((entry:unknown)=>normalizeEntry(entry,this.categories));
+    const entries=parsed.entries.map((entry:unknown)=>normalizeEntry(entry,this.categories,this.reviewCategory));
     if(JSON.stringify(entries)!==JSON.stringify(this.entries))throw new ImportError('invalid_result');
     const amount=parsed.confirmed_total;
     return {entries,confirmed_total:amount>0&&amount<=100_000_000?amount:0};
   }
 }
 
-export function statementStream(upstream:Response,categories:string[],abort:AbortController,cleanup:()=>void):Response {
+export function statementStream(upstream:Response,categories:string[],abort:AbortController,cleanup:()=>void,reviewCategory='要確認'):Response {
   const encoder=new TextEncoder();
   let cancelled=false;
   const body=new ReadableStream<Uint8Array>({
     async start(controller){
       const send=(value:unknown)=>{if(!cancelled)controller.enqueue(encoder.encode(JSON.stringify(value)+'\n'));};
-      const decoder=new StatementDecoder(categories);
+      const decoder=new StatementDecoder(categories,reviewCategory);
       let completed=false;
       try {
         if(!upstream.body)throw new ImportError('disconnected');

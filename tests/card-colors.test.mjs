@@ -71,7 +71,7 @@ test('費目は初期表示を維持し、全アイコン・プリセットの�
   try {
     seedStatement(db);
     const before=await (await call('/state?month=2026-09')).json();
-    assert.equal(before.category_settings.length,10);
+    assert.equal(before.category_settings.length,11);
     assert.deepEqual(before.category_settings.find(item=>item.category==='食費'),{category:'食費',icon:'basket',color:'#738778'});
     const icons=['basket','utensils','shopping','lightbulb','phone','train','home','heart','gamepad','tag','coffee','book','shirt','plane','gift','paw','car','bike','bus','fuel','parking','hotel','map','beach','water','flame','wifi','laptop','sofa','wrench','scissors','sparkles','pill','stethoscope','baby','graduation','music','film','dumbbell','wallet'];
     for(let index=0;index<Math.max(categoryColors.length,icons.length);index++){
@@ -111,7 +111,7 @@ test('追加費目は再取得・アイコン色の編集・明細取り込み�
     assert.equal(created.status,201);
     assert.deepEqual(await created.json(),{...value,category:'旅行費'});
     const state=await (await call('/state?month=2026-09')).json();
-    assert.equal(state.category_settings.length,11);
+    assert.equal(state.category_settings.length,12);
     assert.equal(state.category_settings.at(-1).category,'旅行費');
     assert.equal((await call('/category-settings/'+encodeURIComponent('旅行費'),'PUT',{icon:'gift',color:'#d05d8c'})).status,200);
     const imported=await call('/statements','POST',{due_month:'2026-09',card_id:'existing',title:'旅行',confirmed_total:1000,entries:[{spent_on:'2026-09-01',title:'乗車券',category:'旅行費',amount:1000}]});
@@ -136,7 +136,7 @@ test('追加費目の重複や不正な名前を拒否し、元の設定を上�
     }
     assert.equal((await call('/category-settings','POST',{...value,category:'不正',icon:'no-icon'})).status,400);
     assert.equal((await call('/category-settings','POST',{...value,category:'不正',color:'red'})).status,400);
-    assert.deepEqual(db.prepare('SELECT * FROM category_settings').all().map(row=>({...row})),[value]);
+    assert.deepEqual(db.prepare('SELECT category,icon,color FROM category_settings').all().map(row=>({...row})),[value]);
     const demo=await (await call('/state?month=2026-09&demo=1')).json();
     assert.equal(demo.category_settings.length,0);
   } finally {db.close();}
@@ -188,4 +188,91 @@ test('不正な金額・重複ID・別明細の行・行の不足は保存しな
     assert.equal(state.statements[0].confirmed_total,3000);
     assert.equal(state.entries.reduce((sum,row)=>sum+row.amount,0),3000);
   } finally {db.close();}
+});
+
+test('費目名の変更は全月の明細へ反映し、元の標準費目を再出現させない',async()=>{
+ const {db,call}=fixture();
+ try {
+  seedStatement(db);
+  db.exec("INSERT INTO card_statements (id,card_id,due_month,title,confirmed_total) VALUES ('past','existing','2026-08','前月',500)");
+  db.exec("INSERT INTO card_entries (id,statement_id,title,category,amount) VALUES ('past-entry','past','スーパー','食費',500)");
+  const change={category:'食料品',icon:'basket',color:'#738778',include_in_settlement:false};
+  assert.equal((await call('/category-settings/'+encodeURIComponent('食費'),'PUT',change)).status,200);
+  for(const month of ['2026-08','2026-09']){
+   const state=await (await call('/state?month='+month)).json();
+   assert.equal(state.category_settings.length,11);
+   assert.ok(!state.category_settings.some(item=>item.category==='食費'));
+   assert.deepEqual(state.category_settings.find(item=>item.category==='食料品'),{...change,original_category:'食費'});
+   assert.ok(state.entries.some(item=>item.category==='食料品'));
+   assert.ok(!state.entries.some(item=>item.category==='食費'));
+  }
+  assert.equal((await call('/category-settings/'+encodeURIComponent('食料品'),'PUT',{...change,category:'食品'})).status,200);
+  const settings=(await (await call('/state?month=2026-09')).json()).category_settings;
+  assert.equal(settings.find(item=>item.category==='食品').original_category,'食費');
+  assert.ok(!settings.some(item=>item.category==='食料品'||item.category==='食費'));
+  assert.equal(db.prepare("SELECT confirmed_total FROM card_statements WHERE id='statement'").get().confirmed_total,3000);
+ } finally {db.close();}
+});
+
+test('重複名や不正な精算設定では設定・明細の名前を変更しない',async()=>{
+ const {db,call}=fixture();
+ try {
+  seedStatement(db);
+  for(const change of [{category:'外食費'},{category:''},{category:'名前',include_in_settlement:'false'}]){
+   assert.equal((await call('/category-settings/'+encodeURIComponent('食費'),'PUT',{icon:'basket',color:'#738778',...change})).status,400);
+  }
+  assert.equal(db.prepare("SELECT category FROM card_entries WHERE id='first'").get().category,'食費');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM category_settings').get().n,0);
+ } finally {db.close();}
+});
+
+test('精算除外は返金込みの対象費目だけを全月の履歴から差し引き、引落額と明細は維持する',async()=>{
+ const {db,call}=fixture();
+ try {
+  seedStatement(db);
+  db.exec("INSERT INTO card_entries (id,statement_id,title,category,amount) VALUES ('refund','statement','返金','外食費',-200)");
+  db.exec("UPDATE card_statements SET confirmed_total=2800 WHERE id='statement'");
+  db.exec("INSERT INTO rent_rules (effective_month,amount) VALUES ('2026-08',100000)");
+  const setting={icon:'utensils',color:'#b78d6a',include_in_settlement:false};
+  assert.equal((await call('/category-settings/'+encodeURIComponent('外食費'),'PUT',setting)).status,200);
+  const getHistory=async()=> (await (await call('/settlement-history?month=2026-09')).json()).months.at(-1);
+  assert.deepEqual(await getHistory(),{month:'2026-09',total:102000,amount:51000});
+  const state=await (await call('/state?month=2026-09')).json();
+  assert.equal(state.statements[0].confirmed_total,2800);
+  assert.equal(state.entries.length,3);
+  assert.equal((await call('/category-settings/'+encodeURIComponent('外食費'),'PUT',{...setting,include_in_settlement:true})).status,200);
+  assert.deepEqual(await getHistory(),{month:'2026-09',total:102800,amount:51400});
+ } finally {db.close();}
+});
+
+test('要確認はAPIでも保存を拒否し、その他への解決後は保存できる',async()=>{
+ const {db,call}=fixture();
+ try {
+  const body={due_month:'2026-09',card_id:'existing',title:'取り込み',confirmed_total:1000,entries:[{spent_on:'2026-08-01',title:'不明な利用',category:'要確認',amount:1000}]};
+  const rejected=await call('/statements','POST',body);
+  assert.equal(rejected.status,400);
+  assert.match((await rejected.json()).error,/要確認/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM card_statements').get().n,0);
+  // Renaming the system bucket must not bypass its unresolved meaning.
+  assert.equal((await call('/category-settings/'+encodeURIComponent('要確認'),'PUT',{category:'確認待ち',icon:'tag',color:'#171717'})).status,200);
+  body.entries[0].category='確認待ち';
+  assert.equal((await call('/statements','POST',body)).status,400);
+  body.entries[0].category='その他';
+  assert.equal((await call('/statements','POST',body)).status,201);
+ } finally {db.close();}
+});
+
+test('旧その他・要確認の移行では行と金額を保持して要確認へ移す',()=>{
+ const db=new DatabaseSync(':memory:');
+ try {
+  for(const name of readdirSync(new URL('../migrations/',import.meta.url)).sort().filter(name=>name<'0008'))db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  db.exec("INSERT INTO card_statements (id,due_month,title,confirmed_total) VALUES ('old','2026-09','旧明細',1234)");
+  db.exec("INSERT INTO card_entries (id,statement_id,title,category,amount) VALUES ('old-entry','old','不明','その他・要確認',1234)");
+  db.exec("INSERT INTO category_settings (category,icon,color,include_in_settlement) VALUES ('その他・要確認','tag','#171717',0)");
+  db.exec(readFileSync(new URL('../migrations/0008_review_category.sql',import.meta.url),'utf8'));
+  const entry=db.prepare("SELECT category,amount FROM card_entries WHERE id='old-entry'").get();
+  assert.equal(entry.category,'要確認');assert.equal(entry.amount,1234);
+  const setting=db.prepare("SELECT include_in_settlement FROM category_settings WHERE category='要確認'").get();
+  assert.equal(setting.include_in_settlement,0);
+ } finally {db.close();}
 });

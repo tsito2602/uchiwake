@@ -67,7 +67,7 @@ test('設定済みのカードと基本家賃を画面に返し、カードの�
 });
 
 test('精算の棒グラフは固定家賃と月ごとの上書きを二重計上しない',async()=>{
-  const DB={prepare(sql){return{bind(){return{async all(){
+  const DB={prepare(sql){return{async all(){return {results:[]};},bind(){return{async all(){
     const results=sql.includes('kind NOT IN')?[]:sql.includes('FROM card_statements')?[{month:'2026-09',amount:50001}]:sql.includes('FROM rent_rules')?[{effective_month:'2026-08',amount:100000}]:[{month:'2026-09',amount:110000}];
     return {results};
   }};}};}};

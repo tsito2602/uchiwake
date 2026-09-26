@@ -1,8 +1,8 @@
-export const categories = ['食費','外食費','日用品費','水道光熱費','通信費','交通費','住居費','医療費','娯楽費','その他・要確認'] as const;
+export const categories = ['食費','外食費','日用品費','水道光熱費','通信費','交通費','住居費','医療費','娯楽費','その他','要確認'] as const;
 export const billKinds = { card: 'カード請求', rent: '家賃', utilities: '公共料金', other: 'その他の引落' } as const;
-// Built-in names remain stable; user-defined categories are persisted settings.
+// Retain built-in identity through renames, including the unresolved category.
 export type Category = string;
-export type CategoryAppearance = {category:Category;icon:string;color:string};
+export type CategoryAppearance = {category:Category;icon:string;color:string;original_category?:string;include_in_settlement?:boolean};
 export type BillKind = keyof typeof billKinds;
 export type Bill = { id: string; due_month: string; title: string; kind: BillKind; amount: number; note: string };
 export type CardEntry = { id: string; statement_id: string; spent_on: string; title: string; category: Category; amount: number };
@@ -24,4 +24,9 @@ export function summary(bills: Pick<Bill,'amount'>[]) {
 export function categoryTotals(entries: Pick<CardEntry,'category' | 'amount'>[]) {
   const names=[...new Set<string>([...categories,...entries.map(item=>item.category)])];
   return names.map(category => ({ category, amount: entries.filter(item => item.category === category).reduce((sum, item) => sum + item.amount, 0) })).filter(item => item.amount !== 0);
+}
+
+export function statementSettlementAmount(statement:Pick<CardStatement,'id'|'confirmed_total'>,entries:Pick<CardEntry,'statement_id'|'category'|'amount'>[],settings:CategoryAppearance[]=[]):number {
+  const excluded=new Set(settings.filter(item=>item.include_in_settlement===false).map(item=>item.category));
+  return statement.confirmed_total-entries.filter(entry=>entry.statement_id===statement.id&&excluded.has(entry.category)).reduce((sum,entry)=>sum+entry.amount,0);
 }

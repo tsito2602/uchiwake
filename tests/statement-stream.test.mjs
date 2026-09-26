@@ -211,3 +211,13 @@ test('失敗理由を区別し、途中結果を成功にせず、画像や上�
     assert.ok(!JSON.stringify(logs).includes(entry.title));
   }finally{globalThis.fetch=original;console.error=originalError;}
 });
+
+test('不明な費目の受信はその他ではなく要確認にし、改名された要確認にも対応する',()=>{
+ for(const review of ['要確認','確認待ち']){
+  const decoder=new StatementDecoder(['食費','その他',review],review);
+  const rows=[{...entry,category:'不明なカテゴリ'}, {...second,category:'その他'}];
+  const text=JSON.stringify({entries:rows,confirmed_total:1300});
+  assert.deepEqual(decoder.append(text).map(row=>row.category),[review,'その他']);
+  assert.deepEqual(decoder.finish().entries.map(row=>row.category),[review,'その他']);
+ }
+});

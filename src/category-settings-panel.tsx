@@ -29,11 +29,13 @@ export function CategorySettingsPanel({value,view,isNew,origin,closing,busy,erro
           <div><dt>アイコン</dt><dd className="category-icon-label" aria-label={categoryIcons.find(item=>item.value===value.icon)?.label}><CategoryIcon name={value.icon} color={value.color}/></dd></div>
           <div><dt>カラー</dt><dd className="card-settings-color"><i aria-hidden="true" style={{background:value.color}}/>{colors.find(item=>item.value===value.color)?.label}</dd></div>
         </dl>:<div className="bill-panel-form">
-          {isNew&&<label className="field"><span>費目名</span><input value={value.category} maxLength={30} placeholder="例：旅行費" disabled={busy} onChange={event=>onChange({...value,category:event.target.value})}/></label>}
+          <label className="field"><span>費目名</span><input value={value.category} maxLength={30} placeholder="例：旅行費" disabled={busy} onChange={event=>onChange({...value,category:event.target.value})}/></label>
           <fieldset className="category-icon-picker" disabled={busy}><legend>アイコン</legend><div className="category-icon-options">{categoryIcons.map(icon=><label key={icon.value}>
             <input type="radio" name={radioName} value={icon.value} checked={value.icon===icon.value} onChange={()=>onChange({...value,icon:icon.value})} aria-label={icon.label}/>
             <span title={icon.label}><CategoryIcon name={icon.value} color={value.color} size={26}/></span>
           </label>)}</div></fieldset>
+          <label className="card-settings-active"><span>精算に含める</span><input type="checkbox" role="switch" checked={value.include_in_settlement!==false} disabled={busy} onChange={event=>onChange({...value,include_in_settlement:event.target.checked})}/><span className="card-active-switch" aria-hidden="true"><span className="card-active-switch-thumb"/></span></label>
+          <p className="subtle">オフにすると、この費目の明細は残したまま、すべての月の精算額から除外します。</p>
           <ColorSwatchPicker value={value.color} options={colors} onChange={color=>onChange({...value,color})} disabled={busy}/>
         </div>}
       </div>

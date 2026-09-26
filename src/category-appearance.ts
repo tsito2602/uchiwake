@@ -29,7 +29,7 @@ const defaults:Record<Category,{color:string;icon:CategoryIconName}>={
   '日用品費':{color:'#8995a5',icon:'shopping'},'水道光熱費':{color:'#c0a16e',icon:'lightbulb'},
   '通信費':{color:'#8a87a4',icon:'phone'},'交通費':{color:'#6f98a1',icon:'train'},
   '住居費':{color:'#a28c80',icon:'home'},'医療費':{color:'#b48a96',icon:'heart'},
-  '娯楽費':{color:'#9c94b4',icon:'gamepad'},'その他・要確認':{color:'#989898',icon:'tag'},
+  '娯楽費':{color:'#9c94b4',icon:'gamepad'},'その他':{color:'#989898',icon:'tag'},'要確認':{color:'#171717',icon:'tag'},
 };
 export const validCategoryIcon=(value:unknown):value is CategoryIconName=>categoryIcons.some(icon=>icon.value===value);
 export const normalizeCategoryName=(value:string)=>value.normalize('NFKC').trim();
@@ -40,4 +40,8 @@ export const defaultCategoryAppearance=(category:Category):CategoryAppearance=>(
 export function categoryAppearance(category:Category,settings:CategoryAppearance[]=[]):CategoryAppearance {
   return settings.find(item=>item.category===category)??defaultCategoryAppearance(category);
 }
-export const allCategoryAppearances=(settings:CategoryAppearance[]=[]):CategoryAppearance[]=>[...new Set<string>([...categories,...settings.map(item=>item.category)])].map(category=>categoryAppearance(category,settings));
+export const allCategoryAppearances=(settings:CategoryAppearance[]=[]):CategoryAppearance[]=>[...new Set<string>([...categories.filter(category=>!settings.some(item=>item.original_category===category&&item.category!==category)),...settings.map(item=>item.category)])].map(category=>categoryAppearance(category,settings));
+
+export const fallbackCategory=(settings:CategoryAppearance[]=[])=>allCategoryAppearances(settings).find(item=>item.original_category==='要確認'||item.category==='要確認')?.category??'要確認';
+export const isReviewCategory=(category:string,settings:CategoryAppearance[]=[])=>category==='その他・要確認'||category===fallbackCategory(settings);
+export const otherCategory=(settings:CategoryAppearance[]=[])=>allCategoryAppearances(settings).find(item=>item.original_category==='その他'||item.category==='その他')?.category??'その他';

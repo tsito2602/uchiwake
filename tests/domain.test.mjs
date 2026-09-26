@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { summary, categoryTotals, rentForMonth } from '../src/domain.ts';
+import { summary, categoryTotals, rentForMonth, statementSettlementAmount } from '../src/domain.ts';
 
 test('引落額だけを合計し、端数1円はふたりの間で分ける',()=>{
   assert.deepEqual(summary([{amount:41001},{amount:5000}]),{total:46001,perPerson:23001,remainder:1});
@@ -24,4 +24,13 @@ test('基本家賃は開始月以降に引き継ぎ、その月の入力があ�
   const rent=rentForMonth('2027-02',[{kind:'rent',amount:102000}],rules);
   assert.deepEqual(rent,{amount:102000,overridden:true});
   assert.equal(summary([{amount:6840},{amount:rent.amount}]).total,108840);
+});
+
+test('費目除外は対象カードの行だけを差し引き、返金の符号と元の請求額を維持する',()=>{
+ const statement={id:'s',confirmed_total:2800};
+ const entries=[{statement_id:'s',category:'食費',amount:2000},{statement_id:'s',category:'外食費',amount:1000},{statement_id:'s',category:'外食費',amount:-200},{statement_id:'other',category:'外食費',amount:9000}];
+ const settings=[{category:'外食費',icon:'utensils',color:'#171717',include_in_settlement:false}];
+ assert.equal(statementSettlementAmount(statement,entries,settings),2000);
+ assert.equal(statementSettlementAmount(statement,entries,[]),2800);
+ assert.equal(statement.confirmed_total,2800);
 });

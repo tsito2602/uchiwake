@@ -46,7 +46,7 @@ test('仕分け後も同じ明細行で日付・費目・金額を表示し、�
 });
 
 test('手入力で始めた空の明細は編集欄を開き、削除・金額・費目を編集できる',()=>{
-  const markup=review({...props,draft:{...draft,entries:[{spent_on:'',title:'',amount:0,category:'その他・要確認'}]}});
+  const markup=review({...props,draft:{...draft,entries:[{spent_on:'',title:'',amount:0,category:'要確認'}]}});
   for(const expected of ['type="date"','type="number"','<select','1件目を削除'])assert.ok(markup.includes(expected));
   assert.match(markup,/<div class="import-review-item" data-expanded="true"[^>]*><button[\s\S]*?<\/button><div class="import-review-expander"[^>]*><fieldset/);
 });
@@ -191,4 +191,22 @@ test('デモ表示から画像読み取りを選べ、AI未設定時には無効
  assert.match(missing,/<button aria-pressed="true">画像を読み取る<\/button>/);
  assert.ok(missing.includes('AIの接続設定を確認できません'));
  assert.ok(!missing.includes('実際のAIで画像を読み取ります'));
+});
+
+test('要確認を分類済みより上に分け、その他は分類済みとして確認できる',()=>{
+ const entries=[{title:'分類済みの利用',spent_on:'2026-09-01',category:'その他',amount:100},{title:'未解決の利用',spent_on:'2026-09-02',category:'要確認',amount:200}];
+ const markup=review({...props,checked:true,draft:{...draft,entries,confirmed_total:300}});
+ assert.ok(markup.indexOf('aria-label="要確認"')<markup.indexOf('aria-label="分類済み"'));
+ assert.ok(markup.indexOf('未解決の利用')<markup.indexOf('分類済みの利用'));
+ assert.match(markup,/type="checkbox" disabled=""/);
+ assert.ok(markup.includes('要確認が残っている間は保存できません'));
+ const resolved=review({...props,draft:{...draft,entries:entries.map(entry=>({...entry,category:'その他'})),confirmed_total:300}});
+ assert.ok(!resolved.includes('aria-label="要確認"'));
+ assert.doesNotMatch(resolved,/type="checkbox" disabled=""/);
+});
+
+test('名称を変えた要確認も未分類としてまとめる',()=>{
+ const markup=review({...props,settings:[{category:'確認待ち',original_category:'要確認',icon:'tag',color:'#171717'}],draft:{...draft,entries:[{title:'不明',spent_on:'',category:'確認待ち',amount:100}],confirmed_total:100}});
+ assert.ok(markup.includes('aria-label="要確認"'));
+ assert.match(markup,/type="checkbox" disabled=""/);
 });
