@@ -1,3 +1,4 @@
+import type { ImportModel } from './import-model';
 import type { EntryDraft } from './domain';
 import type { ImportResult } from './statement-import-flow';
 import { streamLines } from './streaming/lines';
@@ -18,7 +19,7 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');
 }
 
-export async function streamStatement(images:string[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void):Promise<ImportResult> {
-  const response=await fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal,body:JSON.stringify({images,mode:'live',stream:true})});
+export async function streamStatement(images:string[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,model?:ImportModel):Promise<ImportResult> {
+  const response=await fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal,body:JSON.stringify({images,mode:'live',stream:true,...(model?{model}:{})})});
   return receiveStatement(response,onEntry,signal);
 }

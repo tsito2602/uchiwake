@@ -13,7 +13,7 @@ const frame=event=>`event: ${event.type}\r\ndata: ${JSON.stringify(event)}\r\n\r
 const delta=text=>frame({type:'response.output_text.delta',delta:text});
 const done=frame({type:'response.completed',response:{status:'completed'}});
 const env={APP_PASSWORD:'pw',APP_ENV:'staging',OPENAI_MODEL:'test-model',OPENAI_API_KEY:'test-key',DB:{prepare(){return{async all(){return {results:[]};}};}}};
-const request=()=>new Request('https://example.test/api/statement/analyze',{method:'POST',headers:{Authorization:'Basic '+btoa('guest:pw'),'Content-Type':'application/json'},body:JSON.stringify({mode:'live',stream:true,images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII=']})});
+const request=(extra={})=>new Request('https://example.test/api/statement/analyze',{method:'POST',headers:{Authorization:'Basic '+btoa('guest:pw'),'Content-Type':'application/json'},body:JSON.stringify({mode:'live',stream:true,...extra,images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII=']})});
 
 test('未完成の行は出さず、引用符や括弧を含む店名・返金を任意の分割位置で復元する',()=>{
   const text=JSON.stringify(result);
@@ -93,5 +93,33 @@ test('上流のHTTPエラーはJSONエラーとして返し、再リクエスト
     assert.equal(response.status,502);
     await assert.rejects(receiveStatement(response,()=>{},new AbortController().signal),/読み取れません/);
     assert.equal(calls,1);
+  }finally{globalThis.fetch=original;}
+});
+
+test('ステージングはSolとLunaをリクエストごとに選べ、ストリームと一括受信で同じモデルを使う',async()=>{
+  const original=globalThis.fetch;const called=[];
+  globalThis.fetch=async(_url,options)=>{
+    const body=JSON.parse(options.body);called.push(body.model);
+    return body.stream?new Response(delta(JSON.stringify(result))+done):Response.json({output:[{content:[{type:'output_text',text:JSON.stringify(result)}]}]});
+  };
+  try{
+    for(const stream of [true,false])for(const model of ['gpt-6-luna','gpt-6-sol']){
+      const response=await app.fetch(request({model,stream}),env);
+      assert.equal(response.status,200);
+      const value=stream?await receiveStatement(response,()=>{},new AbortController().signal):await response.json();
+      assert.deepEqual(value,result);
+      assert.equal(called.at(-1),model);
+    }
+    const response=await app.fetch(request({stream:false}),{...env,APP_ENV:'production'});
+    await response.json();assert.equal(called.at(-1),env.OPENAI_MODEL);
+  }finally{globalThis.fetch=original;}
+});
+
+test('本番のモデル上書きと選択肢外のモデルはAIへ送信する前に拒否する',async()=>{
+  const original=globalThis.fetch;
+  globalThis.fetch=async()=>assert.fail('must not call AI');
+  try{
+    for(const model of ['gpt-6-sol','gpt-6-luna'])assert.equal((await app.fetch(request({model}),{...env,APP_ENV:'production'})).status,400);
+    for(const model of ['unknown','',null,7])assert.equal((await app.fetch(request({model}),env)).status,400);
   }finally{globalThis.fetch=original;}
 });

@@ -1,3 +1,4 @@
+import { isImportModel } from '../src/import-model';
 import { statementStream } from './statement-stream';
 import { Hono } from 'hono';
 import { billKinds, categories, type BillKind, type CategoryAppearance } from '../src/domain';
@@ -256,7 +257,7 @@ app.put('/api/statements/:id/entries', async c => {
 
 app.post('/api/statement/analyze', async c => {
   if (Number(c.req.header('Content-Length')) > 18_000_000) return error('画像の合計サイズを確認してください',413);
-  const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown;stream?:boolean}|null;
+  const body=await c.req.json().catch(()=>null) as {images?:unknown;mode?:unknown;stream?:boolean;model?:unknown}|null;
   if (!body || (body.mode !== 'demo' && body.mode !== 'live') || !Array.isArray(body.images) || body.images.length < 1 || body.images.length > 3 || !body.images.every(image=>parseImage(image))) return error('JPEG・PNG・WebPの画像を1〜3枚選んでください');
   if (body.mode === 'demo') {
     if (c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
@@ -265,6 +266,12 @@ app.post('/api/statement/analyze', async c => {
       {spent_on:'',title:'デモ：ドラッグストア',amount:1660,category:'日用品費'},
       {spent_on:'',title:'デモ：電車',amount:2200,category:'交通費'}
     ],demo:true});
+  }
+  let model=c.env.OPENAI_MODEL;
+  if(body.model!==undefined){
+    if(c.env.APP_ENV!=='staging')return error('モデルの切り替えはステージング限定です');
+    if(!isImportModel(body.model))return error('使用するAIを選び直してください');
+    model=body.model;
   }
   if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
   const allowedCategories=await categoryNames(c.env.DB);
@@ -282,12 +289,12 @@ app.post('/api/statement/analyze', async c => {
     c.req.raw.signal.addEventListener('abort',cancel,{once:true});
     if(c.req.raw.signal.aborted)abort.abort();
     try {
-      const upstream=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model:c.env.OPENAI_MODEL,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...options,stream:true})});
+      const upstream=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${c.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model,input:[{role:'user',content}],store:false,reasoning:{effort:'none'},...options,stream:true})});
       if(!upstream.ok||!upstream.body){cleanup();abort.abort();return error('明細を読み取れませんでした。もう一度お試しください',502);}
       return statementStream(upstream,allowedCategories,abort,cleanup);
     }catch{cleanup();abort.abort();return error('明細の読み取りに接続できませんでした',502);}
   }
-  const response=await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL,content,options);
+  const response=await openai(c.env.OPENAI_API_KEY,model,content,options);
   if (!response) return error('明細を読み取れませんでした。手入力で仕分けできます',502);
   let parsed: {confirmed_total?:unknown;entries?:unknown};
   try {parsed=JSON.parse(response);} catch {return error('AIの結果を確認できませんでした',502);}

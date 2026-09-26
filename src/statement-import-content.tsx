@@ -1,12 +1,13 @@
+import { importModels, type ImportModel } from './import-model';
 import { Camera, Check, ChevronDown, CreditCard, FileImage, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
 import type { CategoryAppearance, SharedCard, EntryDraft } from './domain';
 import { categoryAppearance } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import type { ImportProgress } from './statement-import-flow';
 
-export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnabled,onCard,onMode,onFiles,onRemove,onManual}:{
+export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnabled,onCard,onMode,onFiles,onRemove,onManual,model,onModel}:{
   cards:SharedCard[];cardId:string;month:string;images:{name:string;image:string}[];
-  mode:'demo'|'live';demoEnabled:boolean;liveEnabled:boolean;
+  mode:'demo'|'live';demoEnabled:boolean;liveEnabled:boolean;model:ImportModel;onModel:(model:ImportModel)=>void;
   onCard:(id:string)=>void;onMode:(mode:'demo'|'live')=>void;onFiles:(files:FileList|null)=>void;onRemove:(index:number)=>void;onManual:()=>void;
 }) {
   const card=cards.find(item=>item.id===cardId);
@@ -14,6 +15,7 @@ export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnab
     <div className="import-card-select"><CreditCard size={24} color={card?.color}/><label><span>取り込むカード</span><select aria-label="取り込むカード" value={cardId} onChange={event=>onCard(event.target.value)}>{cards.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><ChevronDown size={18}/></div>
     <div className="import-month"><span>引落月</span><strong>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</strong></div>
     {demoEnabled&&<div className="import-mode" role="group" aria-label="読み取り方法"><button aria-pressed={mode==='live'} disabled={!liveEnabled} onClick={()=>onMode('live')}>画像を読み取る</button><button aria-pressed={mode==='demo'} onClick={()=>onMode('demo')}>デモで試す</button></div>}
+    {demoEnabled&&mode==='live'&&<div className="import-model-select"><span>使用するAI</span><div className="import-mode" role="group" aria-label="使用するAI">{importModels.map(item=><button type="button" key={item.id} aria-pressed={model===item.id} onClick={()=>onModel(item.id)}>{item.label}</button>)}</div></div>}
     {mode==='demo'?<div className="import-demo-sample">
       <span className="import-demo-badge"><Sparkles size={14}/> デモ</span>
       <h3>仕分けを体験</h3><p>画像を用意せず、サンプル明細で試せます。</p>

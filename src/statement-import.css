@@ -157,3 +157,6 @@
   .import-animated-check path { stroke-dashoffset: 0; }
   .import-entry-button,.import-entry-edit { transition: none; }
 }
+
+.import-model-select { display: flex; flex-direction: column; gap: 8px; }
+.import-model-select > span { padding: 0 3px; font-size: 12px; color: #777; }

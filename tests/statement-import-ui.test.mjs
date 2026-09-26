@@ -10,11 +10,12 @@ const {outputFiles}=await build({stdin:{contents:`
   import {createElement} from 'react';
   import {renderToStaticMarkup} from 'react-dom/server';
   import {ImportReview} from './src/statement-import-review';
-  import {ImportProcessing,ImportPhaseStatus} from './src/statement-import-content';
+  import {ImportSetup,ImportProcessing,ImportPhaseStatus} from './src/statement-import-content';
   import {StatementImportPanel} from './src/statement-import-panel';
   import {FloatingDock} from './src/floating-dock';
   import {ThinkingOrb} from 'thinking-orbs';
   export const defaultOrb=()=>renderToStaticMarkup(createElement(ThinkingOrb,{state:'breathing',size:20,theme:'dark','aria-hidden':'true'}));
+  export const setup=props=>renderToStaticMarkup(createElement(ImportSetup,props));
   export const review=props=>renderToStaticMarkup(createElement(ImportReview,props));
   export const processing=props=>renderToStaticMarkup(createElement(ImportPhaseStatus,{progress:props.progress}))+renderToStaticMarkup(createElement(ImportProcessing,props));
   const context=appearance=>({onBack:()=>{},onAction:()=>{},actionLabel:appearance==='breathing'?'仕分け中...':'デモで仕分ける',actionAppearance:appearance,disabled:appearance==='breathing',commit:true});
@@ -23,7 +24,7 @@ const {outputFiles}=await build({stdin:{contents:`
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
 // Resolve external React imports from the project, not from a data URL.
 const bundle=outputFiles[0].text.replace(/from "(react(?:-dom(?:\/server)?|\/jsx-runtime)?|lucide-react|border-beam|thinking-orbs|motion\/react)"/g,(_match,name)=>`from ${JSON.stringify(import.meta.resolve(name))}`);
-const {review,processing,panel,dock,defaultOrb}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
+const {setup,review,processing,panel,dock,defaultOrb}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
 const sample=demoImportResult('2026-09');
 const draft={...sample,card_id:'one',due_month:'2026-09',title:'カード明細',demo:true};
 const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],settings:[],busy:false,checked:false,onChange:()=>{},onChecked:()=>{}};
@@ -165,4 +166,15 @@ test('実取り込みは全件数が不明な間、受信件数だけを示し�
  assert.ok(markup.includes('受信済み <b>2</b>件'));
  assert.match(markup,/data-state="current" data-indeterminate="true"[\s\S]*?transform:scaleX\(0\)/);
  assert.ok(!markup.includes(' / '));
+});
+
+test('ステージングの画像取り込みにだけモデル選択を表示し、使用したモデルを結果に残す',()=>{
+ const setupProps={cards:props.cards,cardId:'one',month:'2026-09',images:[],mode:'live',demoEnabled:true,liveEnabled:true,model:'gpt-6-sol',onModel:()=>{},onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
+ const markup=setup(setupProps);
+ assert.ok(markup.includes('aria-label="使用するAI"'));
+ assert.match(markup,/aria-pressed="true">GPT-6 Sol/);
+ assert.match(markup,/aria-pressed="false">GPT-6 Luna/);
+ assert.ok(!setup({...setupProps,demoEnabled:false}).includes('使用するAI'));
+ assert.ok(!setup({...setupProps,mode:'demo'}).includes('使用するAI'));
+ assert.ok(review({...props,draft:{...draft,demo:false,model:'gpt-6-sol'}}).includes('GPT-6 Sol'));
 });
