@@ -11,6 +11,11 @@ test('購入明細は費目別に集計でき、引落額に混ぜない',()=>{
 test('返金で差し引かれた費目も内訳に表示する',()=>{
   assert.deepEqual(categoryTotals([{category:'日用品費',amount:800},{category:'日用品費',amount:-1000}]),[{category:'日用品費',amount:-200}]);
 });
+test('追加した費目も既存費目と一緒に集計し、返金を差し引く',()=>{
+  const totals=categoryTotals([{category:'旅行費',amount:5000},{category:'食費',amount:1000},{category:'旅行費',amount:-500},{category:'ペット',amount:2000}]);
+  assert.deepEqual(totals,[{category:'食費',amount:1000},{category:'旅行費',amount:4500},{category:'ペット',amount:2000}]);
+  assert.equal(totals.reduce((sum,row)=>sum+row.amount,0),7500);
+});
 test('基本家賃は開始月以降に引き継ぎ、その月の入力があれば置き換える',()=>{
   const rules=[{effective_month:'2026-09',amount:100000},{effective_month:'2027-01',amount:105000}];
   assert.deepEqual(rentForMonth('2026-08',[],rules),{amount:0,overridden:false});

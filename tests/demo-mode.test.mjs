@@ -18,6 +18,7 @@ test('デモ表示は半年分のカード2枚と家賃を使い、各月の明�
     assert.equal(state.statements.length,2);
     for(const statement of state.statements)assert.equal(statement.confirmed_total,state.entries.filter(row=>row.statement_id===statement.id).reduce((sum,row)=>sum+row.amount,0));
     const rent=state.bills[0]?.amount??state.rent_rules[0].amount;
+    assert.equal(item.total,rent+state.statements.reduce((sum,row)=>sum+row.confirmed_total,0));
     assert.equal(item.amount,Math.ceil((rent+state.statements.reduce((sum,row)=>sum+row.confirmed_total,0))/2));
   }
 });

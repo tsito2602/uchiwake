@@ -11,8 +11,8 @@ export function demoAnchor() {
 }
 
 const cards:SharedCard[]=[
-  {id:'demo-card-life',name:'生活費カード',active:true},
-  {id:'demo-card-shared',name:'共有カード',active:true}
+  {id:'demo-card-life',name:'生活費カード',active:true,color:'#3675d5'},
+  {id:'demo-card-shared',name:'共有カード',active:true,color:'#8b5fc7'}
 ];
 
 export function demoMonths(anchor:string) {
@@ -42,16 +42,16 @@ export function demoState(month:string,anchor=demoAnchor()):State {
       cardRows.forEach((row,rowIndex)=>entries.push({id:`${statementId}-${rowIndex}`,statement_id:statementId,spent_on:`${month}-${String(5+rowIndex*8).padStart(2,'0')}`,title:row.title,category:row.category,amount:row.amount}));
     });
   }
-  return {month,bills,statements,entries,cards,rent_rules:[{effective_month:demoMonths(anchor)[0],amount:126000}],ai_enabled:false,demo_enabled:true};
+  return {month,bills,statements,entries,cards,category_settings:[],rent_rules:[{effective_month:demoMonths(anchor)[0],amount:126000}],ai_enabled:false,demo_enabled:true};
 }
 
 export function demoHistory(month:string,anchor=demoAnchor()) {
   const available=new Set(demoMonths(anchor));
   return Array.from({length:60},(_,index)=>{
     const key=shiftMonth(month,index-59);
-    if(!available.has(key))return {month:key,amount:0};
+    if(!available.has(key))return {month:key,amount:0,total:0};
     const state=demoState(key,anchor);
     const total=state.statements.reduce((sum,item)=>sum+item.confirmed_total,0)+(state.bills[0]?.amount??126000);
-    return {month:key,amount:Math.ceil(total/2)};
+    return {month:key,amount:Math.ceil(total/2),total};
   });
 }

@@ -1,0 +1,8 @@
+/* Only page content participates; the live dock keeps its backdrop layer. */
+.shell { display: flex; flex-direction: column; min-height: 100dvh; }
+.desktop-tabs { flex-shrink: 0; }
+#main-content { flex: 1 0 auto; min-width: 0; background: #fff; }
+.route-page-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; }
+.route-page-copy { background: #fff; pointer-events: none; }
+.route-page-copy * { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion:reduce) { .route-page-layer { display: none; } }

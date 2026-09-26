@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { animatePanel, reversePanel } from '../src/kondo-panel-motion.ts';
+import { animatePanel, animatePanelBackground, reversePanel } from '../src/kondo-panel-motion.ts';
 
 // Web Animations API double: verify geometry and interruption without a browser.
 const bounds={left:12,top:12,right:378,bottom:740,width:366,height:728};
@@ -37,4 +37,21 @@ test('途中で閉じても同じタイムラインを逆再生し、背景と�
       assert.equal(animation.plays,1);
     }
   }
+});
+
+test('追加メニューとパネルの背景はスクロール位置に関わらず画面中央へ同じ縮尺で縮む',()=>{
+  globalThis.window={innerWidth:390,innerHeight:844,visualViewport:{offsetTop:20,height:700}};
+  const capture=blur=>{
+    let recorded;
+    animatePanelBackground({getBoundingClientRect:()=>({left:0,top:-600}),animate:(frames,timing)=>(recorded={frames,timing})},blur);
+    return recorded;
+  };
+  const panel=capture(true),menu=capture(false);
+  assert.deepEqual(menu.timing,panel.timing);
+  for(let index=0;index<2;index++){
+    assert.equal(menu.frames[index].scale,panel.frames[index].scale);
+    assert.equal(menu.frames[index].transformOrigin,'195px 970px');
+    assert.equal(menu.frames[index].filter,undefined);
+  }
+  assert.equal(menu.frames[1].scale,'.94');
 });

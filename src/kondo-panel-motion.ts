@@ -2,6 +2,16 @@
 export type PanelOrigin = {left:number;top:number;width:number;height:number};
 export const panelTiming:KeyframeAnimationOptions={duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'both'};
 
+export function animatePanelBackground(main:HTMLElement,blur=true) {
+  const bounds=main.getBoundingClientRect();
+  const viewport=window.visualViewport;
+  const transformOrigin=`${window.innerWidth/2-bounds.left}px ${(viewport?.offsetTop||0)+(viewport?.height||window.innerHeight)/2-bounds.top}px`;
+  return main.animate([
+    {scale:'1',transformOrigin,...(blur?{filter:'blur(0px)'}:{})},
+    {scale:'.94',transformOrigin,...(blur?{filter:'blur(6px)'}:{})},
+  ],panelTiming);
+}
+
 export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
   const bounds=panel.getBoundingClientRect();
   const full={clipPath:`inset(0px 0px 0px 0px round ${window.getComputedStyle(panel).borderRadius||'0px'})`,transform:'translateY(0px)',opacity:1};

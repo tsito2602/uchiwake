@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
-import { animatePanel, panelTiming, reversePanel, type PanelOrigin } from './kondo-panel-motion';
+import { animatePanel, animatePanelBackground, panelTiming, reversePanel, type PanelOrigin } from './kondo-panel-motion';
+import { revealPanelField } from './panel-focus';
 export type { PanelOrigin } from './kondo-panel-motion';
 
 export const panelOrigin = (element:HTMLElement):PanelOrigin => {
@@ -21,13 +22,17 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     if(!node)return;
     const shell=node.parentElement!;
     const viewport=window.visualViewport;
+    let revealFrame=0;
+    const reveal=()=>{cancelAnimationFrame(revealFrame);revealFrame=requestAnimationFrame(()=>{if(node.contains(document.activeElement))revealPanelField(document.activeElement);});};
     const updateViewport=()=>{
       shell.style.setProperty('--panel-viewport-top',`${viewport?.offsetTop||0}px`);
       shell.style.setProperty('--panel-viewport-height',`${viewport?.height||window.innerHeight}px`);
+      reveal();
     };
     updateViewport();
     viewport?.addEventListener('resize',updateViewport);
     viewport?.addEventListener('scroll',updateViewport);
+    node.addEventListener('focusin',reveal);
     const main=document.querySelector<HTMLElement>('main.shell');
     const wasInert=main?.inert;
     if(main)main.inert=true;
@@ -37,15 +42,12 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       motion.current=animatePanel(node,origin);
       const scrim=shell.querySelector<HTMLElement>('.card-panel-scrim');
       companions.current=scrim?[scrim.animate([{opacity:0},{opacity:1}],panelTiming)]:[];
-      if(main){
-        const bounds=main.getBoundingClientRect();
-        const transformOrigin=`${window.innerWidth/2-bounds.left}px ${(viewport?.offsetTop||0)+(viewport?.height||window.innerHeight)/2-bounds.top}px`;
-        companions.current.push(main.animate([{scale:'1',filter:'blur(0px)',transformOrigin},{scale:'.94',filter:'blur(6px)',transformOrigin}],panelTiming));
-      }
+      if(main)companions.current.push(animatePanelBackground(main));
     }else if(main)main.style.filter='blur(6px)';
     return()=>{
       viewport?.removeEventListener('resize',updateViewport);
       viewport?.removeEventListener('scroll',updateViewport);
+      node.removeEventListener('focusin',reveal);cancelAnimationFrame(revealFrame);
       motion.current?.cancel();
       companions.current.forEach(animation=>animation.cancel());
       if(main){main.inert=wasInert||false;main.style.filter=oldFilter||'';}
@@ -68,6 +70,9 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
     const originalOverflow=document.body.style.overflow;
     document.body.style.overflow='hidden';
+    const pointer=()=>{document.documentElement.dataset.inputModality='pointer';};
+    const keyboard=(event:KeyboardEvent)=>{if(!event.metaKey&&!event.ctrlKey&&!event.altKey)document.documentElement.dataset.inputModality='keyboard';};
+    document.addEventListener('pointerdown',pointer,true);document.addEventListener('keydown',keyboard,true);
     const visible=(element:HTMLElement)=>element.getClientRects().length>0;
     const frame=requestAnimationFrame(()=>panel.current?.querySelector<HTMLElement>('h2')?.focus({preventScroll:true}));
     const onKeyDown=(event:KeyboardEvent)=>{
@@ -81,6 +86,12 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       else if(!event.shiftKey&&(index===controls.length-1||index<0)){event.preventDefault();controls[0].focus();}
     };
     document.addEventListener('keydown',onKeyDown);
-    return()=>{cancelAnimationFrame(frame);document.removeEventListener('keydown',onKeyDown);document.body.style.overflow=originalOverflow;previous?.focus({preventScroll:true});};
+    return()=>{
+      cancelAnimationFrame(frame);document.removeEventListener('keydown',onKeyDown);document.body.style.overflow=originalOverflow;
+      document.removeEventListener('pointerdown',pointer,true);document.removeEventListener('keydown',keyboard,true);
+      if(document.documentElement.dataset.inputModality==='pointer'){
+        const restored=document.activeElement;if(restored instanceof HTMLElement&&(restored===previous||panel.current?.contains(restored)))restored.blur();
+      }else if(previous?.isConnected&&!previous.closest('[inert], [hidden]'))previous.focus({preventScroll:true});
+    };
   },[]);
 }

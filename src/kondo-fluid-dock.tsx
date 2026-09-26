@@ -38,7 +38,7 @@ export function dockSlots(
   const present = slots.filter((slot): slot is DockIsland => Boolean(slot));
   return slots.map((slot, index) => {
     if (slot) return slot;
-    const anchor = (width * index) / 2;
+    const anchor = (width * index) / Math.max(1, slots.length - 1);
     const points = present.map(({ left, width: w, radius: r }) =>
       Math.max(left + r, Math.min(left + w - r, anchor)),
     );
@@ -74,7 +74,7 @@ function visibleDock(islands: DockIsland[]) {
   return result;
 }
 
-type DockMorphPlan = { from: DockIsland[]; to: DockIsland[]; simple: boolean };
+type DockMorphPlan = { from: DockIsland[]; to: DockIsland[]; simple: boolean; stableSlots?: boolean };
 
 /** Split along a capsule's straight spine; the pieces still draw the exact same surface. */
 function splitDock(donors: DockIsland[], references: DockIsland[]) {
@@ -136,7 +136,24 @@ function splitDock(donors: DockIsland[], references: DockIsland[]) {
 export function prepareDockMorph(
   from: DockIsland[],
   to: DockIsland[],
+  stableSlots = false,
 ): DockMorphPlan {
+  // Keep the add surface independent, while the white islands use the same
+  // splitting/merging geometry as context navigation (no zero-sized shrink).
+  const fromAdd = stableSlots ? from.find(island => island.slot === 2) : undefined;
+  const toAdd = stableSlots ? to.find(island => island.slot === 2) : undefined;
+  if (fromAdd && toAdd) {
+    const neutral = prepareDockMorph(
+      from.filter(island => island.slot !== 2),
+      to.filter(island => island.slot !== 2),
+    );
+    return {
+      ...neutral,
+      from: [...neutral.from, { ...fromAdd, blend: false }],
+      to: [...neutral.to, { ...toAdd, blend: false }],
+      stableSlots: true,
+    };
+  }
   let a = visibleDock(from),
     b = visibleDock(to);
   const simple = a.length === b.length && a.length <= 2;
@@ -168,7 +185,9 @@ export function morphDock(
         Math.abs(plan.to[i].left - island.left) > 0.001 ||
         Math.abs(plan.to[i].width - island.width) > 0.001 ||
         (tension > 0 && island.blend !== false),
-      tint: (island.tint ?? 0) * fadeOut + (plan.to[i].tint ?? 0) * fadeIn,
+      tint: plan.stableSlots
+        ? (island.tint ?? 0) + ((plan.to[i].tint ?? 0) - (island.tint ?? 0)) * p
+        : (island.tint ?? 0) * fadeOut + (plan.to[i].tint ?? 0) * fadeIn,
     })),
     tension:
       tension * (1 - p) + (plan.simple ? 0 : 1800 * Math.sin(Math.PI * p) ** 2),
@@ -281,6 +300,8 @@ export function dockContour(
   center = 32,
 ) {
   if (!islands.length) return "";
+  // An independent surface (such as the add accent) has no neck to sample.
+  if (islands.every(island => island.blend === false)) tension = 0;
   if (tension > 0)
     return dockFieldPath(
       width,
@@ -338,17 +359,21 @@ export type FluidDockHandle = { measure: () => void };
 export function FluidDockSurface({
   root,
   ref,
+  addOpen = false,
 }: {
   root: RefObject<HTMLDivElement | null>;
+  addOpen?: boolean;
   ref: Ref<FluidDockHandle>;
 }) {
   const glass = useRef<HTMLDivElement>(null);
-  const accent = useRef<HTMLDivElement>(null);
+  const material = useRef<SVGPathElement>(null);
+  const accent = useRef<SVGPathElement>(null);
   const outline = useRef<SVGPathElement>(null);
   const shadow = useRef<SVGPathElement>(null);
   const svg = useRef<SVGSVGElement>(null);
   const shape = useRef<{ islands: DockIsland[]; tension: number } | null>(null);
   const target = useRef("");
+  const measuredMode = useRef<string | undefined>(undefined);
   const width = useRef(0);
   const height = useRef(56);
   const frame = useRef(0);
@@ -374,6 +399,7 @@ export function FluidDockSurface({
   const lastPath = useRef("");
   const lastAccentPath = useRef("");
 
+  const addScale = useRef(1);
   const controls = useRef<(HTMLElement | null)[]>([]);
   const id = useId();
   const paint = () => {
@@ -383,13 +409,16 @@ export function FluidDockSurface({
       ...island,
       left: island.left + 12,
     }));
-    const scales = islands.map((island, i) =>
-      pressScale(controls.current[island.slot ?? i] ?? null, performance.now()),
-    );
+    const scales = islands.map((island, i) => {
+      const scale=pressScale(controls.current[island.slot ?? i] ?? null, performance.now());
+      const add=(island.slot??i)===2&&root.current?.dataset.mode==='browse'?addScale.current:1;
+      return {x:scale.x*add,y:scale.y*add};
+    });
     const center = height.current / 2 + 12;
     const d = dockContour(w, islands, shape.current.tension, scales, center);
     if (d !== lastPath.current) {
       glass.current.style.clipPath = `path("${d}")`;
+      material.current!.setAttribute("d", d);
       outline.current!.setAttribute("d", d);
       shadow.current!.setAttribute("d", d);
       lastPath.current = d;
@@ -406,7 +435,7 @@ export function FluidDockSurface({
     );
     if (accent.current) {
       if (a !== lastAccentPath.current) {
-        accent.current.style.clipPath = a ? `path("${a}")` : "inset(50%)";
+        accent.current.setAttribute("d", a);
         lastAccentPath.current = a;
       }
       accent.current.style.opacity = String(
@@ -414,6 +443,14 @@ export function FluidDockSurface({
       );
     }
   };
+  useEffect(()=>{
+    const from=addScale.current,to=addOpen?.001:1;
+    if(reduceMotion()){addScale.current=to;paint();return;}
+    const start=performance.now();let frame=0;
+    const tick=(now:number)=>{const t=Math.min(1,(now-start)/160);addScale.current=from+(to-from)*ease(t);paint();if(t<1)frame=requestAnimationFrame(tick);};
+    frame=requestAnimationFrame(tick);
+    return()=>cancelAnimationFrame(frame);
+  },[addOpen]);
   const pressScale = (element: HTMLElement | null, now: number): DockScale => {
     const track = element && presses.current.get(element);
     if (!track) return { x: 1, y: 1 };
@@ -463,12 +500,11 @@ export function FluidDockSurface({
     );
     const tabs = content?.querySelector<HTMLElement>(".safari-dock");
     // All three browse surfaces participate in the same persistent material:
-    // tabs -> back, month + add -> primary action (and the reverse on close).
+    // Context actions may split into four islands; measure each visible island.
     controls.current = tabs
       ? [tabs, content?.querySelector<HTMLElement>(".dock-month") ?? null,
           content?.querySelector<HTMLElement>(".dock-add") ?? null]
-      : ["back", "primary", "actions"].map(role =>
-          content?.querySelector<HTMLElement>(`.context-island.context-${role}`) ?? null);
+      : Array.from(content?.querySelectorAll<HTMLElement>(".context-island") ?? []);
     const h = node.clientHeight || 56;
     const radius = h / 2;
     const bounds = node.getBoundingClientRect();
@@ -483,13 +519,15 @@ export function FluidDockSurface({
       .map((island, i) => ({
         ...island,
         slot: i,
-        tint: controls.current[i] && (tabs ? i === 2 : i === 1) ? 1 : 0,
+        tint: controls.current[i] && (tabs ? i === 2 : controls.current[i]?.dataset.commit === "true") ? 1 : 0,
       }));
     node.style.setProperty(
       "--safari-press-scale",
       String(Math.max(1, Math.min(1.06, (window.innerWidth - 8) / w))),
     );
     const key = JSON.stringify([w, h, islands]);
+    const stableSlots = measuredMode.current === 'browse' && node.dataset.mode === 'browse';
+    measuredMode.current = node.dataset.mode;
     if (key === target.current) {
       paint();
       return;
@@ -515,7 +553,7 @@ export function FluidDockSurface({
       to: islands,
       tension: from.tension,
       start: performance.now(),
-      plan: prepareDockMorph(from.islands, islands),
+      plan: prepareDockMorph(from.islands, islands, stableSlots),
     };
     schedule();
   };
@@ -531,7 +569,7 @@ export function FluidDockSurface({
         animations.set(element, motion);
         void motion.finished.then(
           () => {
-            if (animations.get(element) === motion) animations.delete(element);
+            if (!down && animations.get(element) === motion) animations.delete(element);
           },
           () => {},
         );
@@ -568,7 +606,7 @@ export function FluidDockSurface({
     const down = (event: PointerEvent) => {
       if (event.button !== 0 || event.isPrimary === false) return;
       const target = event.target as HTMLElement;
-      const element = target.closest<HTMLElement>(".context-island");
+      const element = target.closest<HTMLElement>(".context-island, .safari-dock, .dock-month, .dock-add");
       if (!element || target.closest("[disabled], [inert], [data-outgoing]"))
         return;
       release();
@@ -626,9 +664,7 @@ export function FluidDockSurface({
   }, []);
   return (
     <div className="thumb-dock-material safari-surface" aria-hidden="true">
-      <div ref={glass} className="safari-glass">
-        <div ref={accent} className="fluid-dock-accent" />
-      </div>
+      <div ref={glass} className="safari-glass" />
       <svg ref={svg} width="100%" height="80" preserveAspectRatio="none">
         <defs>
           <filter
@@ -653,6 +689,10 @@ export function FluidDockSurface({
           opacity="0.18"
           filter={`url(#${id}-shadow)`}
         />
+        {/* Paint color with the actual contour, never a clipped rectangle.
+            Safari can rebuild backdrop layers while taking route snapshots. */}
+        <path ref={material} fill="var(--dock-glass)" />
+        <path ref={accent} fill="var(--brand)" opacity="0" />
         <path
           ref={outline}
           fill="none"
@@ -664,4 +704,3 @@ export function FluidDockSurface({
     </div>
   );
 }
-

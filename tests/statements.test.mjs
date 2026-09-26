@@ -31,7 +31,7 @@ test('本番ではデモを拒否し、キーなしの実AIも拒否する',asyn
 
 test('引落額と明細行の不一致を拒否し、一致した行だけ一括保存する',async()=>{
   const executed=[];
-  const DB={prepare(sql){return{bind(...values){return{sql,values,async first(){return sql.includes('shared_cards')?{id:values[0]}:null;}}}}},async batch(statements){executed.push(...statements);return statements.map(()=>({success:true}));}};
+  const DB={prepare(sql){return{async all(){return {results:[]};},bind(...values){return{sql,values,async first(){return sql.includes('shared_cards')?{id:values[0]}:null;}}}}},async batch(statements){executed.push(...statements);return statements.map(()=>({success:true}));}};
   const body={due_month:'2026-09',card_id:'card-one',title:'共有カード',confirmed_total:6840,entries:[
     {spent_on:'2026-08-31',title:'スーパー',category:'食費',amount:2980},
     {spent_on:'',title:'交通',category:'交通費',amount:3860}
@@ -68,12 +68,12 @@ test('設定済みのカードと基本家賃を画面に返し、カードの�
 
 test('精算の棒グラフは固定家賃と月ごとの上書きを二重計上しない',async()=>{
   const DB={prepare(sql){return{bind(){return{async all(){
-    const results=sql.includes('kind NOT IN')?[]:sql.includes('FROM card_statements')?[{month:'2026-09',amount:50000}]:sql.includes('FROM rent_rules')?[{effective_month:'2026-08',amount:100000}]:[{month:'2026-09',amount:110000}];
+    const results=sql.includes('kind NOT IN')?[]:sql.includes('FROM card_statements')?[{month:'2026-09',amount:50001}]:sql.includes('FROM rent_rules')?[{effective_month:'2026-08',amount:100000}]:[{month:'2026-09',amount:110000}];
     return {results};
   }};}};}};
   const response=await app.fetch(new Request('https://example.test/api/settlement-history?month=2026-09',{headers:{Authorization:auth}}),{...env,DB});
   assert.equal(response.status,200);
   const {months}=await response.json();
   assert.equal(months.length,60);
-  assert.deepEqual(months.slice(-2),[{month:'2026-08',amount:50000},{month:'2026-09',amount:80000}]);
+  assert.deepEqual(months.slice(-2),[{month:'2026-08',amount:50000,total:100000},{month:'2026-09',amount:80001,total:160001}]);
 });

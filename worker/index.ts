@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
-import { billKinds, categories, type BillKind } from '../src/domain';
+import { billKinds, categories, type BillKind, type CategoryAppearance } from '../src/domain';
+import { allCategoryAppearances, normalizeCategoryName, validCategoryName, validCategoryColor, validCategoryIcon } from '../src/category-appearance';
 import { embeddedAssets } from './generated-assets';
+import { defaultCardColor, validCardColor } from '../src/card-colors';
 import { demoHistory, demoState } from './demo-data';
 
 type Bindings = { DB: D1Database; APP_ENV: string; APP_PASSWORD?: string; OPENAI_API_KEY?: string; OPENAI_MODEL: string };
@@ -10,6 +12,10 @@ const datePattern = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const error = (message: string, status: 400 | 401 | 404 | 413 | 500 | 502 | 503 = 400) => Response.json({ error: message }, { status });
 const safeString = (v: unknown, max = 100) => typeof v === 'string' ? v.trim().slice(0, max) : '';
 const validAmount = (v: unknown) => Number.isSafeInteger(v) && Number(v) > 0 && Number(v) <= 100_000_000;
+async function categoryNames(db:D1Database):Promise<string[]> {
+  const saved=await db.prepare('SELECT category FROM category_settings ORDER BY rowid').all<{category:string}>();
+  return [...new Set<string>([...categories,...saved.results.map(item=>item.category)])];
+}
 
 // Protect the SPA and API alike, including any unknown asset path.
 app.use('*', async (c, next) => {
@@ -45,14 +51,35 @@ app.get('/api/state', async c => {
   const month = c.req.query('month') || '';
   if (!monthPattern.test(month)) return error('月を確認してください');
   if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json(demoState(month)):error('見つかりません',404);
-  const [bills, statements, entries, cards, rentRules] = await Promise.all([
+  const [bills, statements, entries, cards, rentRules, categorySettings] = await Promise.all([
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
     c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at FROM card_statements WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
     c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(month).all(),
-    c.env.DB.prepare('SELECT id,name,active FROM shared_cards ORDER BY created_at,id').all(),
-    c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules ORDER BY effective_month DESC').all()
+    c.env.DB.prepare('SELECT id,name,active,color FROM shared_cards ORDER BY created_at,id').all(),
+    c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules ORDER BY effective_month DESC').all(),
+    c.env.DB.prepare('SELECT category,icon,color FROM category_settings ORDER BY rowid').all<CategoryAppearance>()
   ]);
-  return c.json({ month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
+  return c.json({ month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, category_settings:allCategoryAppearances(categorySettings.results), ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
+});
+
+app.post('/api/category-settings', async c => {
+  const body=await c.req.json().catch(()=>null);
+  if(!body||!validCategoryName(body.category))return error('費目名を1〜30文字で入力してください');
+  const category=normalizeCategoryName(body.category);
+  if(!validCategoryIcon(body.icon)||!validCategoryColor(category,body.color))return error('アイコンとカラーを確認してください');
+  if((categories as readonly string[]).includes(category))return error('同じ名前の費目があります');
+  const result=await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color) VALUES (?,?,?) ON CONFLICT(category) DO NOTHING').bind(category,body.icon,body.color).run();
+  if(!result.meta.changes)return error('同じ名前の費目があります');
+  return c.json({category,icon:body.icon,color:body.color},201);
+});
+
+app.put('/api/category-settings/:category', async c => {
+  const category=(await categoryNames(c.env.DB)).find(value=>value===c.req.param('category'));
+  if(!category)return error('費目を確認してください');
+  const body=await c.req.json().catch(()=>null);
+  if(!body||!validCategoryIcon(body.icon)||!validCategoryColor(category,body.color))return error('アイコンとカラーを確認してください');
+  await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color) VALUES (?,?,?) ON CONFLICT(category) DO UPDATE SET icon=excluded.icon,color=excluded.color').bind(category,body.icon,body.color).run();
+  return c.json({category,icon:body.icon,color:body.color});
 });
 
 app.get('/api/settlement-history', async c => {
@@ -73,25 +100,38 @@ app.get('/api/settlement-history', async c => {
   return c.json({months:Array.from({length:60},(_,index)=>{
     const key=new Date(Date.UTC(year,value-60+index,1)).toISOString().slice(0,7);
     const rent=overrides.get(key)??rentRules.results.find(rule=>rule.effective_month<=key)?.amount??0;
-    return {month:key,amount:Math.ceil(((amounts.get(key)||0)+rent)/2)};
+    const total=(amounts.get(key)||0)+rent;
+    return {month:key,amount:Math.ceil(total/2),total};
   })});
 });
 
 app.post('/api/cards', async c => {
-  const body=await c.req.json().catch(()=>null) as {name?:unknown}|null;
+  const body=await c.req.json().catch(()=>null) as {name?:unknown;color?:unknown}|null;
   const name=safeString(body?.name,40);
   if (!name) return error('カード名を入力してください');
-  const card={id:crypto.randomUUID(),name,active:true};
-  await c.env.DB.prepare('INSERT INTO shared_cards (id,name,active) VALUES (?,?,1)').bind(card.id,card.name).run();
+  const color=body?.color??defaultCardColor;
+  if(!validCardColor(color))return error('カードのカラーを確認してください');
+  const card={id:crypto.randomUUID(),name,active:true,color};
+  await c.env.DB.prepare('INSERT INTO shared_cards (id,name,active,color) VALUES (?,?,1,?)').bind(card.id,card.name,card.color).run();
   return c.json(card,201);
 });
 
 app.put('/api/cards/:id', async c => {
-  const body=await c.req.json().catch(()=>null) as {name?:unknown;active?:unknown}|null;
+  const body=await c.req.json().catch(()=>null) as {name?:unknown;active?:unknown;color?:unknown}|null;
   const name=safeString(body?.name,40);
   if (!name || typeof body?.active!=='boolean') return error('カード設定を確認してください');
-  const result=await c.env.DB.prepare('UPDATE shared_cards SET name=?,active=? WHERE id=?').bind(name,body.active?1:0,c.req.param('id')).run();
+  if(body.color!==undefined&&!validCardColor(body.color))return error('カードのカラーを確認してください');
+  const result=await c.env.DB.prepare('UPDATE shared_cards SET name=?,active=?,color=COALESCE(?,color) WHERE id=?').bind(name,body.active?1:0,body.color??null,c.req.param('id')).run();
   return result.meta.changes ? c.json({ok:true}) : error('カードが見つかりません',404);
+});
+
+app.delete('/api/cards/:id', async c => {
+  const id=c.req.param('id');
+  const results=await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE card_statements SET card_id=NULL WHERE card_id=?').bind(id),
+    c.env.DB.prepare('DELETE FROM shared_cards WHERE id=?').bind(id)
+  ]);
+  return results[1].meta.changes ? c.json({ok:true}) : error('カードが見つかりません',404);
 });
 
 app.put('/api/rent-rules/:month', async c => {
@@ -157,7 +197,8 @@ app.post('/api/statements', async c => {
     const item = row as Record<string,unknown> | null;
     return { spent_on:safeString(item?.spent_on,10),title:safeString(item?.title),category:item?.category,amount:item?.amount };
   });
-  if (checked.some(row => (row.spent_on && !datePattern.test(row.spent_on)) || !row.title || !categories.includes(row.category as typeof categories[number]) || !Number.isSafeInteger(row.amount) || Number(row.amount) === 0 || Math.abs(Number(row.amount)) > 100_000_000)) return error('明細行の入力を確認してください');
+  const allowedCategories=await categoryNames(c.env.DB);
+  if (checked.some(row => (row.spent_on && !datePattern.test(row.spent_on)) || !row.title || !allowedCategories.includes(row.category as string) || !Number.isSafeInteger(row.amount) || Number(row.amount) === 0 || Math.abs(Number(row.amount)) > 100_000_000)) return error('明細行の入力を確認してください');
   const total=checked.reduce((sum,row)=>sum+Number(row.amount),0);
   if (total !== Number(body.confirmed_total)) return error('カード引落額と明細行の合計が一致しません');
   const id=crypto.randomUUID();
@@ -181,9 +222,35 @@ app.delete('/api/statements/:id', async c => {
 
 app.put('/api/card-entries/:id/category', async c => {
   const body=await c.req.json().catch(()=>null) as {category?:unknown}|null;
-  if (!categories.includes(body?.category as typeof categories[number])) return error('費目を選んでください');
+  const allowedCategories=await categoryNames(c.env.DB);
+  if (!allowedCategories.includes(body?.category as string)) return error('費目を選んでください');
   const result=await c.env.DB.prepare('UPDATE card_entries SET category=? WHERE id=?').bind(body!.category,c.req.param('id')).run();
   return result.meta.changes ? c.json({ok:true}) : error('対象が見つかりません',404);
+});
+
+app.put('/api/statements/:id/entries', async c => {
+  const id=c.req.param('id');
+  const body=await c.req.json().catch(()=>null) as {entries?:unknown}|null;
+  if(!Array.isArray(body?.entries)||!body.entries.length||body.entries.length>50)return error('明細を確認してください');
+  const allowedCategories=await categoryNames(c.env.DB);
+  const rows:{id:string;category:string;amount:number}[]=[];
+  for(const item of body.entries){
+    if(!item||typeof item!=='object')return error('明細を確認してください');
+    const row=item as Record<string,unknown>;
+    if(typeof row.id!=='string'||!allowedCategories.includes(row.category as string)||!Number.isSafeInteger(row.amount)||Number(row.amount)===0||Math.abs(Number(row.amount))>100_000_000)return error('費目と金額を確認してください（金額は0以外の整数）');
+    rows.push({id:row.id,category:row.category as string,amount:Number(row.amount)});
+  }
+  const total=rows.reduce((sum,row)=>sum+row.amount,0);
+  if(!validAmount(total))return error('明細の合計は1円以上、1億円以下にしてください');
+  const existing=await c.env.DB.prepare('SELECT id FROM card_entries WHERE statement_id=?').bind(id).all<{id:string}>();
+  if(!existing.results.length)return error('対象が見つかりません',404);
+  const ids=new Set(rows.map(row=>row.id));
+  if(ids.size!==rows.length||existing.results.length!==rows.length||existing.results.some(row=>!ids.has(row.id)))return error('明細が一致しません。開き直してください');
+  await c.env.DB.batch([
+    ...rows.map(row=>c.env.DB.prepare('UPDATE card_entries SET category=?,amount=? WHERE id=? AND statement_id=?').bind(row.category,row.amount,row.id,id)),
+    c.env.DB.prepare('UPDATE card_statements SET confirmed_total=? WHERE id=?').bind(total,id)
+  ]);
+  return c.json({ok:true,confirmed_total:total});
 });
 
 app.post('/api/statement/analyze', async c => {
@@ -199,17 +266,18 @@ app.post('/api/statement/analyze', async c => {
     ],demo:true});
   }
   if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
+  const allowedCategories=await categoryNames(c.env.DB);
   const imageParts=body.images.map(image=>({type:'input_image',image_url:image,detail:'high'}));
-  const schema={type:'object',properties:{confirmed_total:{type:'integer'},entries:{type:'array',items:{type:'object',properties:{spent_on:{type:'string'},title:{type:'string'},category:{type:'string',enum:[...categories]},amount:{type:'integer'}},required:['spent_on','title','category','amount'],additionalProperties:false}}},required:['confirmed_total','entries'],additionalProperties:false};
+  const schema={type:'object',properties:{confirmed_total:{type:'integer'},entries:{type:'array',items:{type:'object',properties:{spent_on:{type:'string'},title:{type:'string'},category:{type:'string',enum:allowedCategories},amount:{type:'integer'}},required:['spent_on','title','category','amount'],additionalProperties:false}}},required:['confirmed_total','entries'],additionalProperties:false};
   const response=await openai(c.env.OPENAI_API_KEY,c.env.OPENAI_MODEL,[
-    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。画像は最大3枚で、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${categories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
+    {type:'input_text',text:`同じ共有カードの利用明細スクリーンショットを読み取る。画像は最大3枚で、連続ページの重複行は1回だけ数える。各利用行を抽出して、利用日YYYY-MM-DD（読めなければ空文字）、店名または内容（読めなければ空文字）、円の整数額（返金は負数）、費目を ${allowedCategories.join('、')} のいずれかに分類する。推測で行や値を作らない。請求確定額が画面に明示されていればconfirmed_totalに入れる。明示がなければ0。ポイント表示・未確定額・残高・小計を利用行に含めない。JSONのみ。`},
     ...imageParts
   ],{text:{format:{type:'json_schema',name:'card_statement',strict:true,schema}},max_output_tokens:3500});
   if (!response) return error('明細を読み取れませんでした。手入力で仕分けできます',502);
   let parsed: {confirmed_total?:unknown;entries?:unknown};
   try {parsed=JSON.parse(response);} catch {return error('AIの結果を確認できませんでした',502);}
   if (!Array.isArray(parsed.entries) || parsed.entries.length>50) return error('行数が多いため明細を分けてください',502);
-  const entries=parsed.entries.map((raw:unknown)=>{const entry=(raw&&typeof raw==='object'?raw:{}) as Record<string,unknown>;return {spent_on:datePattern.test(String(entry.spent_on))?entry.spent_on:'',title:safeString(entry.title),category:categories.includes(entry.category as typeof categories[number])?entry.category:'その他・要確認',amount:Number.isSafeInteger(entry.amount)&&Math.abs(Number(entry.amount))<=100_000_000?Number(entry.amount):0};});
+  const entries=parsed.entries.map((raw:unknown)=>{const entry=(raw&&typeof raw==='object'?raw:{}) as Record<string,unknown>;return {spent_on:datePattern.test(String(entry.spent_on))?entry.spent_on:'',title:safeString(entry.title),category:allowedCategories.includes(entry.category as string)?entry.category:'その他・要確認',amount:Number.isSafeInteger(entry.amount)&&Math.abs(Number(entry.amount))<=100_000_000?Number(entry.amount):0};});
   return c.json({entries,confirmed_total:validAmount(parsed.confirmed_total)?Number(parsed.confirmed_total):0});
 });
 
