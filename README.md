@@ -40,3 +40,24 @@ npm run deploy:staging
 ```
 
 `OPENAI_API_KEY` は `uchiwake-staging` Worker の Secret に設定します。コードや設定には記載しません。デプロイ前に D1 の全マイグレーションを適用してください。`0004_remove_legacy_receipts.sql` は旧レシートの表を削除します。モデルは `OPENAI_MODEL` (`gpt-6-luna`) です。
+
+## GitHub 連携による自動デプロイ
+
+Cloudflare Workers Builds で `tsito2602/uchiwake` の `staging` ブランチを
+`uchiwake-staging` Worker に接続します。更新を検知すると、ビルド・型チェック・
+テストを実行し、成功した場合にステージングへデプロイする構成です。
+
+| 項目 | 設定 |
+| --- | --- |
+| ブランチ | `staging` |
+| ルートディレクトリ | `/` |
+| ビルドコマンド | `npm ci && npm run check` |
+| デプロイコマンド | `npx wrangler deploy --config wrangler.staging.jsonc --keep-vars` |
+| ビルド環境変数 | `NODE_VERSION=22` |
+| 監視対象パス | `*` |
+
+ビルド結果は Cloudflare のビルド履歴で確認します。`--keep-vars` で既存の環境変数を
+維持します。既存の Secrets も維持されます。D1 のマイグレーションはこの自動デプロイに
+含めず、スキーマ変更が必要な場合に別途適用します。
+
+公式ドキュメント: https://developers.cloudflare.com/workers/ci-cd/builds/configuration/
