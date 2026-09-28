@@ -58,3 +58,6 @@ html, body, #root { background: var(--canvas); color: var(--ink); }
 /* Keep the neutral black choice legible without changing the saved palette. */
 :root[data-brand-theme='dark'] svg.lucide[stroke='#171717'] { stroke: var(--ink); }
 :root[data-brand-theme='dark'] .color-swatch > span { outline: 1px solid #ffffff30; }
+
+.browse-dock .dock-add { color: var(--on-brand); }
+:root[data-brand-theme='dark'] .breathing-action .import-processing-shimmer { --shimmer-base: #17171799; --shimmer-highlight: #171717; }

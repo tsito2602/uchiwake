@@ -20,3 +20,8 @@
 .appearance-control button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @media(max-width:359px) { .settings-page .settings-section { padding: 20px; } }
 @media(prefers-reduced-motion:reduce) { .appearance-control button { transition: none; } }
+.app-version { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; font-size: 13px; }
+.app-version > span:first-child { color: var(--muted); }
+.app-version > span:last-child { display: flex; align-items: baseline; gap: 8px; }
+.app-update-settings .app-update-status { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.app-update-status:empty { display: none; }

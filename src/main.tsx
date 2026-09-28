@@ -1,3 +1,4 @@
+import { AppUpdateSettings } from './app-update-settings';
 import { AppearanceSettings } from './appearance-settings';
 import { AuthGate, AccountSettings, notifySessionExpired } from './auth';
 import { streamStatement } from './statement-import-stream';
@@ -381,6 +382,7 @@ function App({user,logout,signingOut}:React.ComponentProps<typeof AccountSetting
       {tab==='settings'&&<div className="settings-page">
         <AccountSettings user={user} logout={logout} signingOut={signingOut}/>
         <AppearanceSettings/>
+        <AppUpdateSettings/>
         {state.demo_enabled&&<section className="section settings-section demo-settings"><h2>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
 
         <section className="section settings-section"><h2 className="section-heading"><CreditCard size={20} aria-hidden="true"/>共有カード</h2><p className="subtle">カードを登録すると、明細を取り込む際に選べます。</p><div className="card-settings-list">{state.cards.map(card=><button type="button" className="settings-card-button panel-source" data-panel-source={cardSettings?.card?.id===card.id?'true':undefined} key={card.id} onClick={event=>openSettings(card,event.currentTarget)}><CreditCard size={21} color={card.color}/><span><strong>{card.name}</strong><small>{card.active?'使用中':'使用停止中'}</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>openSettings(undefined,event.currentTarget)}><Plus size={17}/> カードを追加</button></section>
