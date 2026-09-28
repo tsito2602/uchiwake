@@ -23,11 +23,17 @@ export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
     const left=Math.max(0,source.left-bounds.left);
     folded={clipPath:`inset(${top}px ${right}px ${bottom}px ${left}px round 16px)`,transform:'translateY(0px)',opacity:0};
   }
-  return panel.animate([folded,full],panelTiming);
+  // The open panel must return to its normal, unclipped scroll surface. Keeping
+  // a forwards-filled clip/transform here can leave WebKit's scroll tiles blank.
+  // Retain the timeline for dismissal, but not its final compositing effect.
+  return panel.animate([folded,full],{...panelTiming,fill:'backwards'});
 }
 
 export function reversePanel(animation:Animation,companions:Animation[]) {
   const time=animation.currentTime;
+  // Hold the folded frame until React unmounts the panel. Without this, a reverse
+  // animation with backwards-only fill would briefly reveal the open panel.
+  animation.effect?.updateTiming({fill:'both'});
   animation.playbackRate=-1.15;
   animation.play();
   for(const companion of companions){

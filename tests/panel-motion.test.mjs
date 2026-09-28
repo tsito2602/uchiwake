@@ -15,7 +15,7 @@ test('カード位置から全面パネルをクリップで開く（文字や�
   const {frames,timing}=opening({left:20,top:400,width:350,height:115});
   assert.deepEqual(frames[0],{clipPath:'inset(388px 8px 225px 8px round 16px)',transform:'translateY(0px)',opacity:0});
   assert.equal(frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
-  assert.deepEqual(timing,{duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'both'});
+  assert.deepEqual(timing,{duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'backwards'});
 });
 test('小さなボタン・領域外の起点にはkondoの48pxフォールバックを使う',()=>{
   for(const origin of [undefined,{left:310,top:800,width:56,height:56},{left:20,top:900,width:350,height:115}]){
@@ -25,6 +25,21 @@ test('小さなボタン・領域外の起点にはkondoの48pxフォールバ�
 test('画面端のカードでもクリップの余白が負にならない',()=>{
   const {frames}=opening({left:0,top:0,width:390,height:800});
   assert.equal(frames[0].clipPath,'inset(0px 0px 0px 0px round 16px)');
+});
+test('開き終えたパネルはクリップを残さず、閉じる直前だけ終端の保持を戻す',()=>{
+  const {timing}=opening({left:20,top:400,width:350,height:115});
+  const phases=[];
+  const panel={currentTime:timing.duration,playbackRate:1,
+    effect:{updateTiming:next=>{phases.push('hold');Object.assign(timing,next);}},
+    play:()=>{phases.push('reverse');assert.equal(timing.fill,'both');}
+  };
+  // No forwards fill: the open panel uses CSS overflow/border-radius, with no
+  // animated clip/transform applied to its long scrolling settings contents.
+  assert.equal(timing.fill,'backwards');
+  reversePanel(panel,[]);
+  assert.deepEqual(phases,['hold','reverse']);
+  assert.equal(panel.currentTime,320);
+  assert.equal(panel.playbackRate,-1.15);
 });
 test('途中で閉じても同じタイムラインを逆再生し、背景と暗幕を同期する',()=>{
   for(const currentTime of [96,320]){
