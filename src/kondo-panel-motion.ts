@@ -1,6 +1,7 @@
 // Adapted from tsito2602/kondo's animateDialog (MIT; see licenses/kondo-MIT.txt).
 export type PanelOrigin = {left:number;top:number;width:number;height:number};
 export const panelTiming:KeyframeAnimationOptions={duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'both'};
+const completedEntrances=new WeakMap<Animation,CSSNumberish>();
 
 export function animatePanelBackground(main:HTMLElement,blur=true) {
   const bounds=main.getBoundingClientRect();
@@ -35,17 +36,26 @@ export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
     const left=Math.max(0,source.left-bounds.left);
     folded={clipPath:`inset(${top}px ${right}px ${bottom}px ${left}px round 16px)`,transform:'translateY(0px)',opacity:0};
   }
-  // The open panel must return to its normal, unclipped scroll surface. Keeping
-  // a forwards-filled clip/transform here can leave WebKit's scroll tiles blank.
-  // Retain the timeline for dismissal, but not its final compositing effect.
-  return panel.animate([folded,full],{...panelTiming,fill:'backwards'});
+  const animation=panel.animate([folded,full],{...panelTiming,fill:'backwards'});
+  // Backwards fill alone still retains a finished animation/compositing layer.
+  // Detach it entirely while reading/scrolling, preserving only the exit time.
+  // A dismissal during the entrance keeps its live timeline and reverses it.
+  void animation.finished.then(()=>{
+    if(animation.playbackRate<=0||animation.playState!=='finished')return;
+    completedEntrances.set(animation,animation.currentTime??320);
+    animation.cancel();
+  },()=>undefined);
+  return animation;
 }
 
 export function reversePanel(animation:Animation,companions:Animation[]) {
-  const time=animation.currentTime;
+  const completedTime=completedEntrances.get(animation);
+  const time=completedTime??animation.currentTime;
+  completedEntrances.delete(animation);
   // Hold the folded frame until React unmounts the panel. Without this, a reverse
   // animation with backwards-only fill would briefly reveal the open panel.
   animation.effect?.updateTiming({fill:'both'});
+  if(completedTime!==undefined)animation.currentTime=completedTime;
   animation.playbackRate=-1.15;
   animation.play();
   for(const companion of companions){

@@ -7,7 +7,7 @@ const bounds={left:12,top:12,right:378,bottom:740,width:366,height:728};
 function opening(origin){
   let recorded;
   globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
-  const panel={getBoundingClientRect:()=>bounds,animate:(frames,timing)=>{recorded={frames,timing};return recorded;}};
+  const panel={getBoundingClientRect:()=>bounds,animate:(frames,timing)=>{recorded={frames,timing,finished:new Promise(()=>{})};return recorded;}};
   animatePanel(panel,origin);
   return recorded;
 }
@@ -103,4 +103,44 @@ test('追加メニューとパネルの背景はスクロール位置に関わ�
     assert.equal(menu.frames[index].filter,undefined);
   }
   assert.equal(menu.frames[1].scale,'.94');
+});
+
+
+test('開き終わったクリップを完全に解除し、同じ終端から閉じる動きを再開する',async()=>{
+ let resolveFinished;
+ const animation={currentTime:0,playbackRate:1,playState:'running',cancels:0,plays:0,
+  finished:new Promise(resolve=>{resolveFinished=resolve;}),
+  effect:{updateTiming(){}},
+  cancel(){this.cancels++;this.currentTime=null;this.playState='idle';},
+  play(){this.plays++;this.playState='running';}
+ };
+ globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
+ animatePanel({getBoundingClientRect:()=>bounds,animate:()=>animation});
+ animation.currentTime=320;animation.playState='finished';resolveFinished();await Promise.resolve();
+ assert.equal(animation.cancels,1);
+ assert.equal(animation.playState,'idle');
+ assert.equal(animation.currentTime,null);
+ const parent={currentTime:10,playbackRate:1,play(){}};
+ reversePanel(animation,[parent]);
+ assert.equal(animation.currentTime,320);
+ assert.equal(parent.currentTime,320);
+ assert.equal(animation.playbackRate,-1.15);
+ assert.equal(parent.playbackRate,-1.15);
+ assert.equal(animation.plays,1);
+});
+
+test('開く途中の取消しやアンマウントでは、古い完了処理が閉じる動きを消さない',async()=>{
+ for(const unmount of [false,true]){
+  let resolveFinished,rejectFinished;
+  const animation={currentTime:96,playbackRate:1,playState:'running',cancels:0,
+   finished:new Promise((resolve,reject)=>{resolveFinished=resolve;rejectFinished=reject;}),
+   effect:{updateTiming(){}},play(){},cancel(){this.cancels++;this.currentTime=null;this.playState='idle';}
+  };
+  globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
+  animatePanel({getBoundingClientRect:()=>bounds,animate:()=>animation});
+  if(unmount){animation.cancel();rejectFinished(new Error('unmounted'));}
+  else {reversePanel(animation,[]);assert.equal(animation.currentTime,96);animation.currentTime=0;animation.playState='finished';resolveFinished();}
+  await Promise.resolve();
+  assert.equal(animation.cancels,unmount?1:0);
+ }
 });
