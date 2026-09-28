@@ -17,9 +17,14 @@ test('カード位置から全面パネルをクリップで開く（文字や�
   assert.equal(frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
   assert.deepEqual(timing,{duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'backwards'});
 });
-test('小さなボタン・領域外の起点にはkondoの48pxフォールバックを使う',()=>{
-  for(const origin of [undefined,{left:310,top:800,width:56,height:56},{left:20,top:900,width:350,height:115}]){
-    assert.equal(opening(origin).frames[0].transform,'translateY(48px)');
+test('初回の設定入口・小ボタン・領域外からはスクロール内容を切り抜かず48pxの動きで開く',()=>{
+  for(const origin of [undefined,{left:310,top:18,width:44,height:44},{left:20,top:180,width:350,height:62},{left:310,top:800,width:56,height:56},{left:20,top:900,width:350,height:115}]){
+    const {frames}=opening(origin);
+    assert.equal(frames[0].transform,'translateY(48px)');
+    assert.equal(frames[1].transform,'translateY(0px)');
+    assert.equal(frames[0].opacity,0);
+    assert.equal(frames[1].opacity,1);
+    assert.ok(frames.every(frame=>!('clipPath' in frame)));
   }
 });
 test('画面端のカードでもクリップの余白が負にならない',()=>{

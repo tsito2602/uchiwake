@@ -27,13 +27,17 @@ export function animatePanelSurroundings(panel:HTMLElement,main:HTMLElement|null
 
 export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
   const bounds=panel.getBoundingClientRect();
-  const full={clipPath:`inset(0px 0px 0px 0px round ${window.getComputedStyle(panel).borderRadius||'0px'})`,transform:'translateY(0px)',opacity:1};
-  let folded:Keyframe={clipPath:'inset(0px 0px 0px 0px round 22px)',transform:'translateY(48px)',opacity:0};
+  // Button/menu entries only slide and fade. An all-zero animated clip is
+  // visually redundant, but can cull a long scroller's initial paint tiles.
+  // Reserve clipping for the actual expansion from a large source card.
+  const full:Keyframe={transform:'translateY(0px)',opacity:1};
+  let folded:Keyframe={transform:'translateY(48px)',opacity:0};
   if(source&&source.width>100&&source.height>65&&source.top+source.height>bounds.top&&source.top<bounds.bottom&&source.left+source.width>bounds.left&&source.left<bounds.right){
     const top=Math.max(0,source.top-bounds.top);
     const right=Math.max(0,bounds.right-source.left-source.width);
     const bottom=Math.max(0,bounds.bottom-source.top-source.height);
     const left=Math.max(0,source.left-bounds.left);
+    full.clipPath=`inset(0px 0px 0px 0px round ${window.getComputedStyle(panel).borderRadius||'0px'})`;
     folded={clipPath:`inset(${top}px ${right}px ${bottom}px ${left}px round 16px)`,transform:'translateY(0px)',opacity:0};
   }
   const animation=panel.animate([folded,full],{...panelTiming,fill:'backwards'});
