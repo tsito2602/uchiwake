@@ -1,7 +1,7 @@
 import { auth, authEnv } from './auth-fixture.mjs';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import app from '../dist/worker.mjs';
+import app from './space-mock-app.mjs';
 import { demoHistory, demoState } from '../worker/demo-data.ts';
 
 const base = { ...authEnv, APP_ENV: 'staging', OPENAI_MODEL: 'gpt-6-luna' };

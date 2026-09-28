@@ -1,7 +1,7 @@
 import { auth, authEnv } from './auth-fixture.mjs';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import app from '../dist/worker.mjs';
+import app from './space-mock-app.mjs';
 
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII=';
 const env={...authEnv,APP_ENV:'staging',OPENAI_MODEL:'gpt-6-luna'};
@@ -67,8 +67,8 @@ test('設定済みのカードと基本家賃を画面に返し、カードの�
 });
 
 test('精算の棒グラフは固定家賃と月ごとの上書きを二重計上しない',async()=>{
-  const DB={prepare(sql){return{async all(){return {results:[]};},bind(){return{async all(){
-    const results=sql.includes('kind NOT IN')?[]:sql.includes('FROM card_statements')?[{month:'2026-09',amount:50001}]:sql.includes('FROM rent_rules')?[{effective_month:'2026-08',amount:100000}]:[{month:'2026-09',amount:110000}];
+  const DB={prepare(sql){return{bind(){return{async all(){
+    const results=sql.includes('FROM card_statements')?[{id:'s',due_month:'2026-09',confirmed_total:50001}]:sql.includes('FROM rent_rules')?[{effective_month:'2026-08',amount:100000}]:sql.includes('FROM bills')?[{kind:'rent',due_month:'2026-09',amount:110000}]:[];
     return {results};
   }};}};}};
   const response=await app.fetch(new Request('https://example.test/api/settlement-history?month=2026-09',{headers:{Cookie:auth}}),{...env,DB});

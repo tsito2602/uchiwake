@@ -1,10 +1,12 @@
+import { spacesRoutes, membership, membersFor, settlementFor, type SpaceEnv } from './spaces';
+import { settlementItems, settlementAmounts, defaultConfig, type SettlementConfig } from '../src/spaces';
 import { authRoutes, authConfigured, sessionUser, type AuthBindings } from './auth';
 import { ImportError, upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
 import { abortable, idleWatch } from '../src/streaming/idle';
 import { readCategorySettings, categorySchemaReady } from './category-settings';
 import { statementStream } from './statement-stream';
 import { Hono } from 'hono';
-import { billKinds, categories, type BillKind } from '../src/domain';
+import { billKinds, categories, type BillKind, type Bill, type CardStatement, type CardEntry, type RentRule } from '../src/domain';
 import { allCategoryAppearances, fallbackCategory, otherCategory, isReviewCategory, normalizeCategoryName, validCategoryName, validCategoryColor, validCategoryIcon } from '../src/category-appearance';
 import { embeddedAssets } from './generated-assets';
 import { defaultCardColor, validCardColor } from '../src/card-colors';
@@ -12,14 +14,14 @@ import { demoHistory, demoState } from './demo-data';
 
 type Bindings = AuthBindings & { DB: D1Database; APP_ENV: string; OPENAI_API_KEY?: string };
 const AI_MODEL='gpt-6-luna';
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<SpaceEnv>();
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const datePattern = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const error = (message: string, status: 400 | 401 | 404 | 413 | 500 | 502 | 503 = 400) => Response.json({ error: message }, { status });
 const safeString = (v: unknown, max = 100) => typeof v === 'string' ? v.trim().slice(0, max) : '';
 const validAmount = (v: unknown) => Number.isSafeInteger(v) && Number(v) > 0 && Number(v) <= 100_000_000;
-async function categoryNames(db:D1Database):Promise<string[]> {
-  return allCategoryAppearances(await readCategorySettings(db)).map(item=>item.category);
+async function categoryNames(db:D1Database,spaceId:string):Promise<string[]> {
+  return allCategoryAppearances(await readCategorySettings(db,spaceId)).map(item=>item.category);
 }
 
 // Public app shell; every household API requires a verified Google session.
@@ -35,27 +37,43 @@ app.use('*', async (c, next) => {
     }
     if (!c.req.path.startsWith('/api/auth/')) {
       if (!authConfigured(c.env)) return error('Googleログインの設定がまだありません', 503);
-      if (!await sessionUser(c)) return error('ログインし直してください', 401);
+      const user=await sessionUser(c);
+      if (!user) return error('ログインし直してください', 401);
+      c.set('user',user);
     }
   }
   await next();
 });
 app.route('/api/auth', authRoutes);
 app.all('/api/auth/*', () => error('見つかりません', 404));
+app.route('/api/spaces',spacesRoutes);
+app.use('/api/*',async(c,next)=>{
+  const id=c.req.header('X-Space-Id');
+  if(!id)return c.json({error:'スペースを選んでください'},400);
+  const space=await membership(c.env.DB,id,c.get('user').id);
+  if(!space)return c.json({error:'スペースが見つかりません'},404);
+  c.set('space',space);c.set('spaceId',id);await next();
+});
 
 app.get('/api/state', async c => {
   const month = c.req.query('month') || '';
   if (!monthPattern.test(month)) return error('月を確認してください');
-  if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json({...demoState(month),ai_enabled:Boolean(c.env.OPENAI_API_KEY)}):error('見つかりません',404);
+  if(c.req.query('demo')==='1'){
+    if(c.env.APP_ENV!=='staging')return error('見つかりません',404);
+    const members=await membersFor(c.env.DB,c.get('spaceId'));
+    return c.json({...demoState(month),space:c.get('space'),members,settlement:await settlementFor(c.env.DB,c.get('space'),month,members),ai_enabled:Boolean(c.env.OPENAI_API_KEY)});
+  }
   const [bills, statements, entries, cards, rentRules, categorySettings] = await Promise.all([
-    c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
-    c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at FROM card_statements WHERE due_month = ? ORDER BY created_at DESC').bind(month).all(),
-    c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(month).all(),
-    c.env.DB.prepare('SELECT id,name,active,color FROM shared_cards ORDER BY created_at,id').all(),
-    c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules ORDER BY effective_month DESC').all(),
-    readCategorySettings(c.env.DB)
+    c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC').bind(month,c.get('spaceId')).all(),
+    c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at,revision FROM card_statements WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC').bind(month,c.get('spaceId')).all(),
+    c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? AND s.space_id = ? ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(month,c.get('spaceId')).all(),
+    c.env.DB.prepare('SELECT id,name,active,color FROM shared_cards WHERE space_id = ? AND deleted_at IS NULL ORDER BY created_at,id').bind(c.get('spaceId')).all(),
+    c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules WHERE space_id = ? ORDER BY effective_month DESC').bind(c.get('spaceId')).all(),
+    readCategorySettings(c.env.DB,c.get('spaceId'))
   ]);
-  return c.json({ month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, category_settings:allCategoryAppearances(categorySettings), ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
+  const members=await membersFor(c.env.DB,c.get('spaceId'));
+  const settlement=await settlementFor(c.env.DB,c.get('space'),month,members,!!(bills.results.length||statements.results.length||rentRules.results.some(r=>String(r.effective_month)<=month)));
+  return c.json({ space:c.get('space'),members,settlement,month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, category_settings:allCategoryAppearances(categorySettings), ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
 });
 
 app.post('/api/category-settings', async c => {
@@ -64,20 +82,20 @@ app.post('/api/category-settings', async c => {
   const category=normalizeCategoryName(body.category);
   if(!validCategoryIcon(body.icon)||!validCategoryColor(category,body.color))return error('アイコンとカラーを確認してください');
   if(body.include_in_settlement!==undefined&&typeof body.include_in_settlement!=='boolean')return error('精算の設定を確認してください');
-  const settings=await readCategorySettings(c.env.DB);
+  const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
   if(allCategoryAppearances(settings).some(item=>item.category===category||item.original_category===category)||category==='その他・要確認')return error('同じ名前の費目があります');
   const included=body.include_in_settlement!==false;
   const ready=await categorySchemaReady(c.env.DB);
   if(!ready&&!included)return error('費目設定のDB更新が必要です。ステージングのマイグレーションを適用してください',503);
   const result=ready?
-    await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color,include_in_settlement) VALUES (?,?,?,?) ON CONFLICT(category) DO NOTHING').bind(category,body.icon,body.color,included?1:0).run():
-    await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color) VALUES (?,?,?) ON CONFLICT(category) DO NOTHING').bind(category,body.icon,body.color).run();
+    await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color,include_in_settlement,space_id) VALUES (?,?,?,?,?) ON CONFLICT(space_id,category) DO NOTHING').bind(category,body.icon,body.color,included?1:0,c.get('spaceId')).run():
+    await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color,space_id) VALUES (?,?,?,?) ON CONFLICT(space_id,category) DO NOTHING').bind(category,body.icon,body.color,c.get('spaceId')).run();
   if(!result.meta.changes)return error('同じ名前の費目があります');
   return c.json({category,icon:body.icon,color:body.color,...(!included?{include_in_settlement:false}:{})},201);
 });
 
 app.put('/api/category-settings/:category', async c => {
-  const settings=allCategoryAppearances(await readCategorySettings(c.env.DB));
+  const settings=allCategoryAppearances(await readCategorySettings(c.env.DB,c.get('spaceId')));
   const saved=settings.find(item=>item.category===c.req.param('category'));
   if(!saved)return error('費目を確認してください');
   const body=await c.req.json().catch(()=>null);
@@ -93,12 +111,13 @@ app.put('/api/category-settings/:category', async c => {
   if(ready){
     // D1 batch is atomic: update both the setting key and every historical entry.
     await c.env.DB.batch([
-      c.env.DB.prepare('INSERT INTO category_settings (category,icon,color) VALUES (?,?,?) ON CONFLICT(category) DO NOTHING').bind(saved.category,body.icon,body.color),
-      c.env.DB.prepare('UPDATE category_settings SET category=?,icon=?,color=?,original_category=?,include_in_settlement=? WHERE category=?').bind(category,body.icon,body.color,original??null,included?1:0,saved.category),
-      c.env.DB.prepare('UPDATE card_entries SET category=? WHERE category=?').bind(category,saved.category)
+      c.env.DB.prepare('INSERT INTO category_settings (category,icon,color,space_id) VALUES (?,?,?,?) ON CONFLICT(space_id,category) DO NOTHING').bind(saved.category,body.icon,body.color,c.get('spaceId')),
+      c.env.DB.prepare('UPDATE category_settings SET category=?,icon=?,color=?,original_category=?,include_in_settlement=? WHERE category=? AND space_id = ?').bind(category,body.icon,body.color,original??null,included?1:0,saved.category,c.get('spaceId')),
+      c.env.DB.prepare('UPDATE card_entries SET category=? WHERE category=? AND space_id = ?').bind(category,saved.category,c.get('spaceId')),
+      c.env.DB.prepare('UPDATE card_statements SET revision=revision+1 WHERE space_id=? AND ?<>?').bind(c.get('spaceId'),category,saved.category)
     ]);
   }else{
-    await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color) VALUES (?,?,?) ON CONFLICT(category) DO UPDATE SET icon=excluded.icon,color=excluded.color').bind(category,body.icon,body.color).run();
+    await c.env.DB.prepare('INSERT INTO category_settings (category,icon,color,space_id) VALUES (?,?,?,?) ON CONFLICT(space_id,category) DO UPDATE SET icon=excluded.icon,color=excluded.color').bind(category,body.icon,body.color,c.get('spaceId')).run();
   }
   return c.json({category,icon:body.icon,color:body.color,...(original?{original_category:original}:{}),...(!included?{include_in_settlement:false}:{})});
 });
@@ -109,25 +128,23 @@ app.get('/api/settlement-history', async c => {
   if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json({months:demoHistory(month)}):error('見つかりません',404);
   const [year,value]=month.split('-').map(Number);
   const start=new Date(Date.UTC(year,value-60,1)).toISOString().slice(0,7);
-  const [bills,statements,rentRules,rentOverrides]=await Promise.all([
-    c.env.DB.prepare("SELECT due_month AS month,SUM(amount) AS amount FROM bills WHERE kind NOT IN ('card','rent') AND due_month BETWEEN ? AND ? GROUP BY due_month").bind(start,month).all<{month:string;amount:number}>(),
-    c.env.DB.prepare('SELECT due_month AS month,SUM(confirmed_total) AS amount FROM card_statements WHERE due_month BETWEEN ? AND ? GROUP BY due_month').bind(start,month).all<{month:string;amount:number}>(),
-    c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules WHERE effective_month <= ? ORDER BY effective_month DESC').bind(month).all<{effective_month:string;amount:number}>(),
-    c.env.DB.prepare("SELECT due_month AS month,SUM(amount) AS amount FROM bills WHERE kind = 'rent' AND due_month BETWEEN ? AND ? GROUP BY due_month").bind(start,month).all<{month:string;amount:number}>()
+  const id=c.get('spaceId'),personal=c.get('space').kind==='personal';
+  const [bills,statements,entries,rentRules,settings,rules,members]=await Promise.all([
+    c.env.DB.prepare('SELECT * FROM bills WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,start,month).all<Bill>(),
+    c.env.DB.prepare('SELECT * FROM card_statements WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,start,month).all<CardStatement>(),
+    c.env.DB.prepare('SELECT e.* FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.space_id=? AND s.due_month BETWEEN ? AND ?').bind(id,start,month).all<CardEntry>(),
+    c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules WHERE space_id=? AND effective_month<=?').bind(id,month).all<RentRule>(),
+    readCategorySettings(c.env.DB,id),
+    c.env.DB.prepare('SELECT month,scope,config FROM settlement_rules WHERE space_id=? AND month<=? ORDER BY month DESC').bind(id,month).all<{month:string;scope:string;config:string}>(),
+    membersFor(c.env.DB,id)
   ]);
-  const amounts=new Map<string,number>();
-  for(const item of [...bills.results,...statements.results]) amounts.set(item.month,(amounts.get(item.month)||0)+item.amount);
-  const excluded=(await readCategorySettings(c.env.DB)).filter(item=>item.include_in_settlement===false).map(item=>item.category);
-  if(excluded.length){
-    const rows=await c.env.DB.prepare(`SELECT s.due_month AS month,SUM(e.amount) AS amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month BETWEEN ? AND ? AND e.category IN (${excluded.map(()=>'?').join(',')}) GROUP BY s.due_month`).bind(start,month,...excluded).all<{month:string;amount:number}>();
-    for(const row of rows.results)amounts.set(row.month,(amounts.get(row.month)||0)-row.amount);
-  }
-  const overrides=new Map(rentOverrides.results.map(item=>[item.month,item.amount]));
   return c.json({months:Array.from({length:60},(_,index)=>{
     const key=new Date(Date.UTC(year,value-60+index,1)).toISOString().slice(0,7);
-    const rent=overrides.get(key)??rentRules.results.find(rule=>rule.effective_month<=key)?.amount??0;
-    const total=(amounts.get(key)||0)+rent;
-    return {month:key,amount:Math.ceil(total/2),total};
+    const items=settlementItems({month:key,cards:[],bills:bills.results.filter(b=>b.due_month===key),statements:statements.results.filter(s=>s.due_month===key),entries:entries.results,rent_rules:rentRules.results,category_settings:settings},personal);
+    const total=items.reduce((n,item)=>n+item.amount,0);
+    const rule=rules.results.find(r=>r.scope==='month'&&r.month===key)??rules.results.find(r=>r.scope==='default'&&r.month<=key);
+    const config=rule?JSON.parse(rule.config) as SettlementConfig:defaultConfig(members);
+    return {month:key,total,amount:personal?total:settlementAmounts(items,config)[c.get('user').id]??0};
   })});
 });
 
@@ -138,7 +155,7 @@ app.post('/api/cards', async c => {
   const color=body?.color??defaultCardColor;
   if(!validCardColor(color))return error('カードのカラーを確認してください');
   const card={id:crypto.randomUUID(),name,active:true,color};
-  await c.env.DB.prepare('INSERT INTO shared_cards (id,name,active,color) VALUES (?,?,1,?)').bind(card.id,card.name,card.color).run();
+  await c.env.DB.prepare('INSERT INTO shared_cards (id,name,active,color,space_id) VALUES (?,?,1,?,?)').bind(card.id,card.name,card.color,c.get('spaceId')).run();
   return c.json(card,201);
 });
 
@@ -147,31 +164,28 @@ app.put('/api/cards/:id', async c => {
   const name=safeString(body?.name,40);
   if (!name || typeof body?.active!=='boolean') return error('カード設定を確認してください');
   if(body.color!==undefined&&!validCardColor(body.color))return error('カードのカラーを確認してください');
-  const result=await c.env.DB.prepare('UPDATE shared_cards SET name=?,active=?,color=COALESCE(?,color) WHERE id=?').bind(name,body.active?1:0,body.color??null,c.req.param('id')).run();
+  const result=await c.env.DB.prepare('UPDATE shared_cards SET name=?,active=?,color=COALESCE(?,color) WHERE id=? AND space_id = ? AND deleted_at IS NULL').bind(name,body.active?1:0,body.color??null,c.req.param('id'),c.get('spaceId')).run();
   return result.meta.changes ? c.json({ok:true}) : error('カードが見つかりません',404);
 });
 
 app.delete('/api/cards/:id', async c => {
   const id=c.req.param('id');
-  const results=await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE card_statements SET card_id=NULL WHERE card_id=?').bind(id),
-    c.env.DB.prepare('DELETE FROM shared_cards WHERE id=?').bind(id)
-  ]);
-  return results[1].meta.changes ? c.json({ok:true}) : error('カードが見つかりません',404);
+  const result=await c.env.DB.prepare('UPDATE shared_cards SET active=0,deleted_at=CURRENT_TIMESTAMP WHERE id=? AND space_id=? AND deleted_at IS NULL').bind(id,c.get('spaceId')).run();
+  return result.meta.changes ? c.json({ok:true}) : error('カードが見つかりません',404);
 });
 
 app.put('/api/rent-rules/:month', async c => {
   const month=c.req.param('month');
   const body=await c.req.json().catch(()=>null) as {amount?:unknown}|null;
   if (!monthPattern.test(month) || !validAmount(body?.amount)) return error('基本家賃の月と金額を確認してください');
-  await c.env.DB.prepare('INSERT INTO rent_rules (effective_month,amount) VALUES (?,?) ON CONFLICT(effective_month) DO UPDATE SET amount=excluded.amount').bind(month,body!.amount).run();
+  await c.env.DB.prepare('INSERT INTO rent_rules (effective_month,amount,space_id) VALUES (?,?,?) ON CONFLICT(space_id,effective_month) DO UPDATE SET amount=excluded.amount').bind(month,body!.amount,c.get('spaceId')).run();
   return c.json({effective_month:month,amount:body!.amount});
 });
 
 app.delete('/api/rent-rules/:month', async c => {
   const month=c.req.param('month');
   if (!monthPattern.test(month)) return error('月を確認してください');
-  const result=await c.env.DB.prepare('DELETE FROM rent_rules WHERE effective_month=?').bind(month).run();
+  const result=await c.env.DB.prepare('DELETE FROM rent_rules WHERE effective_month=? AND space_id = ?').bind(month,c.get('spaceId')).run();
   return result.meta.changes ? c.json({ok:true}) : error('設定が見つかりません',404);
 });
 
@@ -179,19 +193,19 @@ app.post('/api/bills', async c => {
   const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || !monthPattern.test(String(body.due_month)) || typeof body.kind !== 'string' || !(body.kind in billKinds) || !safeString(body.title) || !validAmount(body.amount)) return error('引落予定の入力を確認してください');
   const bill = { id: crypto.randomUUID(), due_month: String(body.due_month), title: safeString(body.title), kind: body.kind as BillKind, amount: Number(body.amount), note: safeString(body.note, 500) };
-  await c.env.DB.prepare('INSERT INTO bills (id,due_month,title,kind,amount,note) VALUES (?,?,?,?,?,?)').bind(bill.id,bill.due_month,bill.title,bill.kind,bill.amount,bill.note).run();
+  await c.env.DB.prepare('INSERT INTO bills (id,due_month,title,kind,amount,note,space_id) VALUES (?,?,?,?,?,?,?)').bind(bill.id,bill.due_month,bill.title,bill.kind,bill.amount,bill.note,c.get('spaceId')).run();
   return c.json(bill, 201);
 });
 
 app.put('/api/bills/:id', async c => {
   const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || !monthPattern.test(String(body.due_month)) || typeof body.kind !== 'string' || !(body.kind in billKinds) || !safeString(body.title) || !validAmount(body.amount)) return error('引落予定の入力を確認してください');
-  const result = await c.env.DB.prepare('UPDATE bills SET due_month=?,title=?,kind=?,amount=?,note=? WHERE id=?').bind(body.due_month,safeString(body.title),body.kind,body.amount,safeString(body.note,500),c.req.param('id')).run();
+  const result = await c.env.DB.prepare('UPDATE bills SET due_month=?,title=?,kind=?,amount=?,note=? WHERE id=? AND space_id = ?').bind(body.due_month,safeString(body.title),body.kind,body.amount,safeString(body.note,500),c.req.param('id'),c.get('spaceId')).run();
   return result.meta.changes ? c.json({ ok: true }) : error('対象が見つかりません',404);
 });
 
 app.delete('/api/bills/:id', async c => {
-  const result = await c.env.DB.prepare('DELETE FROM bills WHERE id=?').bind(c.req.param('id')).run();
+  const result = await c.env.DB.prepare('DELETE FROM bills WHERE id=? AND space_id = ?').bind(c.req.param('id'),c.get('spaceId')).run();
   return result.meta.changes ? c.json({ ok: true }) : error('対象が見つかりません',404);
 });
 
@@ -218,52 +232,56 @@ app.post('/api/statements', async c => {
   const body = await c.req.json().catch(() => null) as {due_month?:unknown;card_id?:unknown;title?:unknown;confirmed_total?:unknown;entries?:unknown} | null;
   const entries = body?.entries;
   if (!body || !monthPattern.test(String(body.due_month)) || typeof body.card_id!=='string' || !safeString(body.title) || !validAmount(body.confirmed_total) || !Array.isArray(entries) || entries.length < 1) return error('カード明細の入力を確認してください');
-  const card=await c.env.DB.prepare('SELECT id FROM shared_cards WHERE id=? AND active=1').bind(body.card_id).first();
+  const card=await c.env.DB.prepare('SELECT id FROM shared_cards WHERE id=? AND active=1 AND space_id = ?').bind(body.card_id,c.get('spaceId')).first();
   if (!card) return error('設定で使用中のカードを選んでください');
-  const existing=await c.env.DB.prepare('SELECT id FROM card_statements WHERE due_month=? AND card_id=?').bind(body.due_month,body.card_id).first();
+  const existing=await c.env.DB.prepare('SELECT id FROM card_statements WHERE due_month=? AND card_id=? AND space_id = ?').bind(body.due_month,body.card_id,c.get('spaceId')).first();
   if (existing) return error('この月のカード明細は登録済みです。明細画面で確認してください');
   const checked = entries.map((row:unknown) => {
     const item = row as Record<string,unknown> | null;
     return { spent_on:safeString(item?.spent_on,10),title:safeString(item?.title),category:item?.category,amount:item?.amount };
   });
-  const allowedCategories=await categoryNames(c.env.DB);
+  const allowedCategories=await categoryNames(c.env.DB,c.get('spaceId'));
   if (checked.some(row => (row.spent_on && !datePattern.test(row.spent_on)) || !row.title || !allowedCategories.includes(row.category as string) || !Number.isSafeInteger(row.amount) || Number(row.amount) === 0 || Math.abs(Number(row.amount)) > 100_000_000)) return error('明細行の入力を確認してください');
-  const settings=await readCategorySettings(c.env.DB);
+  const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
   if(checked.some(row=>isReviewCategory(String(row.category),settings)))return error('要確認の明細が残っています。費目を選んでから保存してください');
   const total=checked.reduce((sum,row)=>sum+Number(row.amount),0);
   if (total !== Number(body.confirmed_total)) return error('カード引落額と明細行の合計が一致しません');
   const id=crypto.randomUUID();
   await c.env.DB.batch([
-    c.env.DB.prepare('INSERT INTO card_statements (id,card_id,due_month,title,confirmed_total) VALUES (?,?,?,?,?)').bind(id,body.card_id,body.due_month,safeString(body.title),total),
-    ...checked.map(row=>c.env.DB.prepare('INSERT INTO card_entries (id,statement_id,spent_on,title,category,amount) VALUES (?,?,?,?,?,?)').bind(crypto.randomUUID(),id,row.spent_on,row.title,row.category,Number(row.amount)))
+    c.env.DB.prepare('INSERT INTO card_statements (id,card_id,due_month,title,confirmed_total,space_id) VALUES (?,?,?,?,?,?)').bind(id,body.card_id,body.due_month,safeString(body.title),total,c.get('spaceId')),
+    ...checked.map(row=>c.env.DB.prepare('INSERT INTO card_entries (id,statement_id,spent_on,title,category,amount,space_id) VALUES (?,?,?,?,?,?,?)').bind(crypto.randomUUID(),id,row.spent_on,row.title,row.category,Number(row.amount),c.get('spaceId')))
   ]);
   return c.json({id,card_id:body.card_id,due_month:body.due_month,confirmed_total:total},201);
 });
 
 app.delete('/api/statements/:id', async c => {
   const id=c.req.param('id');
-  const existing=await c.env.DB.prepare('SELECT id FROM card_statements WHERE id=?').bind(id).first();
+  const existing=await c.env.DB.prepare('SELECT id FROM card_statements WHERE id=? AND space_id = ?').bind(id,c.get('spaceId')).first();
   if (!existing) return error('対象が見つかりません',404);
   await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM card_entries WHERE statement_id=?').bind(id),
-    c.env.DB.prepare('DELETE FROM card_statements WHERE id=?').bind(id)
+    c.env.DB.prepare('DELETE FROM card_entries WHERE statement_id=? AND space_id = ?').bind(id,c.get('spaceId')),
+    c.env.DB.prepare('DELETE FROM card_statements WHERE id=? AND space_id = ?').bind(id,c.get('spaceId'))
   ]);
   return c.json({ok:true});
 });
 
 app.put('/api/card-entries/:id/category', async c => {
   const body=await c.req.json().catch(()=>null) as {category?:unknown}|null;
-  const allowedCategories=await categoryNames(c.env.DB);
+  const allowedCategories=await categoryNames(c.env.DB,c.get('spaceId'));
   if (!allowedCategories.includes(body?.category as string)) return error('費目を選んでください');
-  const result=await c.env.DB.prepare('UPDATE card_entries SET category=? WHERE id=?').bind(body!.category,c.req.param('id')).run();
+  const results=await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE card_entries SET category=? WHERE id=? AND space_id = ?').bind(body!.category,c.req.param('id'),c.get('spaceId')),
+    c.env.DB.prepare('UPDATE card_statements SET revision=revision+1 WHERE space_id=? AND id=(SELECT statement_id FROM card_entries WHERE id=? AND space_id=?)').bind(c.get('spaceId'),c.req.param('id'),c.get('spaceId'))
+  ]);const result=results[0];
   return result.meta.changes ? c.json({ok:true}) : error('対象が見つかりません',404);
 });
 
 app.put('/api/statements/:id/entries', async c => {
   const id=c.req.param('id');
-  const body=await c.req.json().catch(()=>null) as {entries?:unknown}|null;
+  const body=await c.req.json().catch(()=>null) as {entries?:unknown;revision?:unknown}|null;
   if(!Array.isArray(body?.entries)||!body.entries.length)return error('明細を確認してください');
-  const allowedCategories=await categoryNames(c.env.DB);
+  if(!Number.isSafeInteger(body.revision)||Number(body.revision)<0)return error('明細を開き直してください');
+  const allowedCategories=await categoryNames(c.env.DB,c.get('spaceId'));
   const rows:{id:string;category:string;amount:number}[]=[];
   for(const item of body.entries){
     if(!item||typeof item!=='object')return error('明細を確認してください');
@@ -273,14 +291,15 @@ app.put('/api/statements/:id/entries', async c => {
   }
   const total=rows.reduce((sum,row)=>sum+row.amount,0);
   if(!validAmount(total))return error('明細の合計は1円以上、1億円以下にしてください');
-  const existing=await c.env.DB.prepare('SELECT id FROM card_entries WHERE statement_id=?').bind(id).all<{id:string}>();
+  const existing=await c.env.DB.prepare('SELECT id FROM card_entries WHERE statement_id=? AND space_id = ?').bind(id,c.get('spaceId')).all<{id:string}>();
   if(!existing.results.length)return error('対象が見つかりません',404);
   const ids=new Set(rows.map(row=>row.id));
   if(ids.size!==rows.length||existing.results.length!==rows.length||existing.results.some(row=>!ids.has(row.id)))return error('明細が一致しません。開き直してください');
-  await c.env.DB.batch([
-    ...rows.map(row=>c.env.DB.prepare('UPDATE card_entries SET category=?,amount=? WHERE id=? AND statement_id=?').bind(row.category,row.amount,row.id,id)),
-    c.env.DB.prepare('UPDATE card_statements SET confirmed_total=? WHERE id=?').bind(total,id)
+  const results=await c.env.DB.batch([
+    ...rows.map(row=>c.env.DB.prepare('UPDATE card_entries SET category=?,amount=? WHERE id=? AND statement_id=? AND space_id = ? AND EXISTS(SELECT 1 FROM card_statements WHERE id=? AND revision=?)').bind(row.category,row.amount,row.id,id,c.get('spaceId'),id,body.revision)),
+    c.env.DB.prepare('UPDATE card_statements SET confirmed_total=?,revision=revision+1 WHERE id=? AND space_id = ? AND revision=?').bind(total,id,c.get('spaceId'),body.revision)
   ]);
+  if(!results.at(-1)?.meta.changes)return c.json({error:'ほかのメンバーが変更しました。明細を開き直してください'},409);
   return c.json({ok:true,confirmed_total:total});
 });
 
@@ -297,7 +316,7 @@ app.post('/api/statement/analyze', async c => {
   }
   const model=AI_MODEL;
   if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
-  const settings=await readCategorySettings(c.env.DB);
+  const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
   const allowedCategories=allCategoryAppearances(settings).map(item=>item.category);
   const reviewCategory=fallbackCategory(settings);
   const classifiedOther=otherCategory(settings);
@@ -351,7 +370,7 @@ app.post('/api/report/comment', async c => {
   if (!monthPattern.test(month)) return error('月を確認してください');
   if (body?.mode !== 'demo' && body?.mode !== 'live') return error('コメントのモードを選択してください');
   if (body.mode === 'demo' && c.env.APP_ENV !== 'staging') return error('デモモードはステージング限定です',404);
-  const rows = await c.env.DB.prepare('SELECT e.category,SUM(e.amount) AS amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? GROUP BY e.category').bind(month).all<{category:string;amount:number}>();
+  const rows = await c.env.DB.prepare('SELECT e.category,SUM(e.amount) AS amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? AND s.space_id = ? GROUP BY e.category').bind(month,c.get('spaceId')).all<{category:string;amount:number}>();
   if (!rows.results.length) return c.json({comment:'この月の支出を登録すると、傾向を表示できます。',demo:body.mode==='demo'});
   if (body.mode === 'demo') {
     const sorted = [...rows.results].sort((a,b)=>b.amount-a.amount);

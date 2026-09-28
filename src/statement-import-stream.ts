@@ -23,14 +23,14 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');
 }
 
-export async function streamStatement(images:string[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void):Promise<ImportResult> {
+export async function streamStatement(images:string[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void,spaceId?:string):Promise<ImportResult> {
   const controller=new AbortController();
   const abort=()=>controller.abort(signal.reason);
   signal.addEventListener('abort',abort,{once:true});
   if(signal.aborted)abort();
   const watch=idleWatch(()=>controller.abort(new ImportIdleError()),CLIENT_IDLE_MS);
   try {
-    const response=await abortable(fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal:controller.signal,body:JSON.stringify({images,mode:'live',stream:true})}),controller.signal);
+    const response=await abortable(fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json',...(spaceId?{'X-Space-Id':spaceId}:{})},cache:'no-store',signal:controller.signal,body:JSON.stringify({images,mode:'live',stream:true})}),controller.signal);
     watch.clear();
     if(response.status===401)window.dispatchEvent(new Event('uchiwake:session-expired'));
     return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning);

@@ -8,7 +8,7 @@ export type Bill = { id: string; due_month: string; title: string; kind: BillKin
 export type CardEntry = { id: string; statement_id: string; spent_on: string; title: string; category: Category; amount: number };
 export type SharedCard = { id: string; name: string; active: boolean; color: string };
 export type RentRule = { effective_month: string; amount: number };
-export type CardStatement = { id: string; card_id: string | null; due_month: string; title: string; confirmed_total: number; created_at: string };
+export type CardStatement = { id: string; card_id: string | null; due_month: string; title: string; confirmed_total: number; created_at: string; revision?:number };
 export type EntryDraft = Pick<CardEntry, 'spent_on' | 'title' | 'category' | 'amount'>;
 export type State = { bills: Bill[]; statements: CardStatement[]; entries: CardEntry[]; cards: SharedCard[]; category_settings:CategoryAppearance[]; rent_rules: RentRule[]; ai_enabled: boolean; demo_enabled: boolean; month: string };
 export function rentForMonth(month: string, bills: Pick<Bill,'kind'|'amount'>[], rules: RentRule[]) {

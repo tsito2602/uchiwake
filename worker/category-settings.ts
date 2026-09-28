@@ -1,6 +1,6 @@
 import type {CategoryAppearance} from '../src/domain';
-export async function readCategorySettings(db:D1Database):Promise<CategoryAppearance[]> {
-  const result=await db.prepare('SELECT * FROM category_settings ORDER BY rowid').all<Record<string,unknown>>();
+export async function readCategorySettings(db:D1Database,spaceId:string):Promise<CategoryAppearance[]> {
+  const result=await db.prepare('SELECT * FROM category_settings WHERE space_id=? ORDER BY rowid').bind(spaceId).all<Record<string,unknown>>();
   return result.results.filter(row=>typeof row.category==='string').map(row=>({
     category:String(row.category),icon:String(row.icon),color:String(row.color),
     ...(row.original_category?{original_category:String(row.original_category)}:{}),

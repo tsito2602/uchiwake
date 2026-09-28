@@ -21,9 +21,9 @@ export const dockTabs = [
 export type DockAction = {label:string;onAction:()=>void;disabled?:boolean;commit?:boolean};
 export type DockContext = { detailAction?:DockAction; entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
 type DockAdd = {label:string;options:AddOption[];disabled?:boolean};
-type Props = {tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext;panelActive?:boolean;month:string;onMonthChange:(month:string)=>void;onPrevMonth:()=>void;onNextMonth:()=>void};
+type Props = {personal?:boolean;tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext;panelActive?:boolean;month:string;onMonthChange:(month:string)=>void;onPrevMonth:()=>void;onNextMonth:()=>void};
 
-export function FloatingDock({tab,onSelect,add,context,panelActive,month,onMonthChange,onPrevMonth,onNextMonth}:Props) {
+export function FloatingDock({personal,tab,onSelect,add,context,panelActive,month,onMonthChange,onPrevMonth,onNextMonth}:Props) {
   const [preview,setPreview]=useState<number|null>(null);
   const [menuPhase,setMenuPhase]=useState<'closed'|'open'|'closing'>('closed');
   const pendingAdd=useRef<(()=>void)|null>(null);
@@ -96,7 +96,7 @@ export function FloatingDock({tab,onSelect,add,context,panelActive,month,onMonth
         </nav>
           :<div className={`browse-dock${add?' has-add':''}${showMonth?'':' no-month'}`}><nav className="safari-dock" data-wide="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={release} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
             <span className="dock-selection" aria-hidden="true"/>
-            {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={item.label} onClick={()=>onSelect(item.key)}><item.icon size={22} strokeWidth={1.8}/></button>)}
+            {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={personal&&item.key==='home'?'支出':item.label} onClick={()=>onSelect(item.key)}><item.icon size={22} strokeWidth={1.8}/></button>)}
           </nav>{showMonth&&<div className="dock-month" aria-label="表示月"><button aria-label="前月" onClick={onPrevMonth}><ChevronLeft size={18}/></button><NativeMonthPicker value={month} onChange={onMonthChange}/><button aria-label="翌月" onClick={onNextMonth}><ChevronRight size={18}/></button></div>}{add&&<button className="dock-add" disabled={add.disabled} aria-label={add.label} aria-haspopup="menu" aria-expanded={menuOpen} onClick={()=>setMenuPhase('open')} style={{opacity:menuOpen?0:1,transform:menuOpen?'scale(.5)':undefined}}><Plus size={23}/></button>}</div>}
       </DockContent>
     </div></div>

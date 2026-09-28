@@ -1,14 +1,19 @@
+import { spaceApi, type Api } from './space-api';
+import { SpaceControls } from './space-controls';
+import { SettlementSettingsPanel } from './settlement-settings';
+import { defaultConfig, settlementItems, settlementAmounts, type Space, type SpaceData } from './spaces';
+import './spaces.css';
 import type { EntrySort } from './entry-sort';
 import { CategoryEntriesPanel } from './category-entries-panel';
 import { displayColor } from './display-color';
 import { AppUpdateSettings, AppInfo } from './app-update-settings';
 import { AppearanceSettings } from './appearance-settings';
-import { AuthGate, AccountSettings, notifySessionExpired, type AccountProps } from './auth';
+import { AuthGate, AccountSettings, type AccountProps } from './auth';
 import { streamStatement } from './statement-import-stream';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles } from 'lucide-react';
-import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, summary, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
+import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
 import { CardStatementPanel } from './card-statement-panel';
 import { defaultCardColor } from './card-colors';
@@ -45,20 +50,26 @@ const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
 const monthText = (month:string) => `${Number(month.slice(0,4))}年${Number(month.slice(5))}月`;
 const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const bump = (month:string,diff:number) => { const [year,m]=month.split('-').map(Number); const date=new Date(Date.UTC(year,m-1+diff,1)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}`; };
-async function api<T>(path:string,options?:RequestInit):Promise<T> {
-  const response=await fetch(`/api${path}`,{...options,headers:{'Content-Type':'application/json',...options?.headers},cache:'no-store'});
-  notifySessionExpired(response);
-  if (!response.ok) { const data=await response.json().catch(()=>({error:'通信に失敗しました'})) as {error?:string}; throw new Error(data.error||'通信に失敗しました'); }
-  return response.json();
+type SpaceAppProps=AccountProps&{space:Space;spaces:Space[];onSelectSpace:(id:string)=>void;refreshSpaces:()=>Promise<void>;month:string;setMonth:(month:string)=>void;tab:Tab;setTab:(tab:Tab)=>void};
+function SpaceApp(account:AccountProps) {
+ const [spaces,setSpaces]=useState<Space[]>([]),[selected,setSelected]=useState(()=>localStorage.getItem(`uchiwake-space:${account.user.id}`)||''),[error,setError]=useState('');
+ const [month,setMonth]=useState(today().slice(0,7)),[tab,setTab]=useState<Tab>('home');
+ const api=useMemo(()=>spaceApi(),[]);
+ async function refreshSpaces(){const result=await api<{spaces:Space[]}>('/spaces');setSpaces(result.spaces);setError('');}
+ useEffect(()=>{void refreshSpaces().catch(e=>{setError(e.message);document.dispatchEvent(new Event('uchiwake:ready'));});},[]);
+ const space=spaces.find(s=>s.id===selected)??(!selected?spaces.find(s=>s.id==='legacy'):undefined)??spaces.find(s=>s.kind==='personal')??spaces[0];
+ const select=(id:string)=>{localStorage.setItem(`uchiwake-space:${account.user.id}`,id);setSelected(id);};
+ return space?<App key={space.id} {...account} space={space} spaces={spaces} onSelectSpace={select} refreshSpaces={refreshSpaces} month={month} setMonth={setMonth} tab={tab} setTab={setTab}/>:<main className="shell"><div className="empty">{error||'スペースを読み込んでいます…'}{error&&<button className="secondary" onClick={()=>void refreshSpaces().catch(e=>setError(e.message))}>再読み込み</button>}</div></main>;
 }
-function App({user,logout,signingOut,updateProfile}:AccountProps) {
+function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,refreshSpaces,month,setMonth,tab,setTab}:SpaceAppProps) {
+  const api:Api=useMemo(()=>spaceApi(space.id),[space.id]);
+  const personal=space.kind==='personal';
+  const [allocationOpen,setAllocationOpen]=useState(false);
   const [savingProfile,setSavingProfile]=useState(false);
   async function saveProfile(name:string) {
     setSavingProfile(true);
     try { await updateProfile(name); } finally { setSavingProfile(false); }
   }
-  const [month,setMonth]=useState(today().slice(0,7));
-  const [tab,setTab]=useState<Tab>('home');
   const transitionPage=useRouteTransition();
   // Reset after the new page is committed, before the browser paints it.
   useLayoutEffect(()=>{window.scrollTo({top:0,left:0,behavior:'instant'});},[tab]);
@@ -67,7 +78,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const requestId=useRef(0);
   const loadedMode=useRef(demoView);
   const cardDestination=useRef<Tab|null>(null);
-  const [state,setState]=useState<State|null>(null);
+  const [state,setState]=useState<(State&Partial<SpaceData>)|null>(null);
   const [editing,setEditing]=useState<Editing|null>(null);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
@@ -110,12 +121,12 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
       // Commit the month and its graph together, retaining the previous render
       // until both requests finish so existing animation nodes stay mounted.
       const [result,resultHistory]=await Promise.all([
-        api<State>(`/state${query}`),
+        api<State&Partial<SpaceData>>(`/state${query}`),
         api<{months:HistoryPoint[]}>(`/settlement-history${query}`).catch(()=>({months:[]}))
       ]);
       if(request===requestId.current){setState(result);setHistory(resultHistory.months);setNotice('');}
     }
-    catch(e) { if(request===requestId.current){if(demoView){window.sessionStorage.removeItem('uchiwake-demo-view');setDemoView(false);}else setNotice(String(e instanceof Error?e.message:e));} }
+    catch(e) { if(request===requestId.current){if(demoView){window.sessionStorage.removeItem('uchiwake-demo-view');setDemoView(false);}else {setNotice(String(e instanceof Error?e.message:e));if((e as {status?:number}).status===404){setState(null);void refreshSpaces();}}} }
   }
   useEffect(()=>{
     requestId.current++;
@@ -125,9 +136,19 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   useEffect(()=>{cardDestination.current=null;setCategoryDetails(null);setOpenCard(null);setCategoryDraft({});setAmountDraft({});},[month,demoView]);
   useEffect(()=>{setRentStartMonth(month);},[month]);
   useEffect(()=>{const active=state?.cards.filter(card=>card.active)||[];if(active.length&&!active.some(card=>card.id===selectedCardId))setSelectedCardId(active[0].id);},[state?.cards,selectedCardId]);
+  useEffect(()=>()=>{requestId.current++;},[]);
+  useEffect(()=>{
+    const refresh=()=>{if(document.visibilityState==='visible'&&!busy&&!openCard&&!editing&&!cardSettings&&!categorySettings&&!importPanel&&!allocationOpen)void load();};
+    const timer=window.setInterval(refresh,15000);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+    return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[month,demoView,busy,openCard,editing,cardSettings,categorySettings,importPanel,allocationOpen]);
   const displayedMonth=state?.month??month;
   const rent=useMemo(()=>rentForMonth(displayedMonth,state?.bills||[],state?.rent_rules||[]),[displayedMonth,state]);
-  const totals=useMemo(()=>summary([...(state?.bills||[]).filter(b=>b.kind!=='card'&&b.kind!=='rent'),...(state?.statements||[]).map(s=>({amount:statementSettlementAmount(s,state?.entries||[],state?.category_settings||[])})),{amount:rent.amount}]),[state,rent]);
+  const splitItems=useMemo(()=>state?settlementItems(state,personal):[],[state,personal]);
+  const allocationConfig=state?.settlement?.config??defaultConfig([{user_id:user.id,name:user.name,active:true}]);
+  const allocations=useMemo(()=>settlementAmounts(splitItems,allocationConfig),[splitItems,allocationConfig]);
+  const totals={total:splitItems.reduce((n,i)=>n+i.amount,0),perPerson:allocations[user.id]??0};
+
   const breakdown=useMemo(()=>categoryTotals(state?.entries||[]),[state]);
   const cardTotal=(state?.statements||[]).reduce((sum,item)=>sum+item.confirmed_total,0);
   const otherBills=(state?.bills||[]).filter(item=>item.kind==='utilities'||item.kind==='other');
@@ -170,7 +191,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     setBusy(true);setNotice('');
     try {
       const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:setImportProgress,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-        analyze:(onEntry,onReasoning)=>isDemo?Promise.resolve(demoImportResult(importMonth)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry,onReasoning)});
+        analyze:(onEntry,onReasoning)=>isDemo?Promise.resolve(demoImportResult(importMonth)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry,onReasoning,space.id)});
       const sum=result.entries.reduce((a,b)=>a+b.amount,0);
       const card=state?.cards.find(item=>item.id===selectedCardId);
       setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,demo:!!result.demo});setTotalChecked(false);
@@ -210,7 +231,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     if(demoView||busy||!entryChanges.length||!validEntryChanges)return;
     setBusy(true);setNotice('');
     try{
-      for(const statement of changedStatements)await api(`/statements/${statement.id}/entries`,{method:'PUT',body:JSON.stringify({entries:editedEntries.filter(entry=>entry.statement_id===statement.id).map(({id,category,amount})=>({id,category,amount}))})});
+      for(const statement of changedStatements)await api(`/statements/${statement.id}/entries`,{method:'PUT',body:JSON.stringify({revision:statement.revision??0,entries:editedEntries.filter(entry=>entry.statement_id===statement.id).map(({id,category,amount})=>({id,category,amount}))})});
       await load();setCategoryDraft({});setAmountDraft({});setOpenCard(current=>current?{...current,view:current.returnView||'details'}:null);
     }catch(e){setNotice(`変更をすべて保存できませんでした。再度保存してください。${e instanceof Error?e.message:String(e)}`);}finally{setBusy(false);}
   }
@@ -338,7 +359,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     disabled:busy||(demoView&&editing.view!=='summary')||(editing.view==='edit'&&(!editing.data.title||!Number(editing.data.amount)))||(editing.view==='fixed'&&(!rentStartMonth||!Number.isSafeInteger(Number(rentAmount))||Number(rentAmount)<=0))
   }:undefined;
   const settingsContext:DockContext|undefined=cardSettings?{
-    commit:cardSettings.view==='edit',compact:cardSettings.view==='summary',actionIcon:cardSettings.view==='summary'?'edit':undefined,label:'共有カード',
+    commit:cardSettings.view==='edit',compact:cardSettings.view==='summary',actionIcon:cardSettings.view==='summary'?'edit':undefined,label:personal?'カード':'共有カード',
     secondaryAction:cardSettings.view==='edit'&&cardSettings.card?{label:'カードを削除',disabled:demoView||busy,onAction:()=>void removeCard(cardSettings.card!)}:undefined,
     onBack:()=>{if(busy)return;setNotice('');dismissSettings();},
     actionLabel:cardSettings.view==='summary'?'カードを編集':busy?'保存中…':cardSettings.card?'変更を保存する':'カードを追加',
@@ -366,27 +387,30 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,entryControls:{sort:categorySort,onSort:setCategorySort,groupByCard,onGroupByCard:setGroupByCard},backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
   const dockContext=(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||undefined;
   return <>
+    <SpaceControls space={space} spaces={spaces} userId={user.id} members={state?.members??[]} disabled={busy||!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onRefresh={refreshSpaces} onReload={load}/>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button></nav>
       <div id="main-content">
-      <div className={`page-top ${tab==='import'?'':'screen-page-top'}`}><h1 className="page-heading"><PageIcon aria-hidden="true"/>{draft&&tab==='import'?'明細を確認':({home:'精算',ledger:'明細',import:'明細を取り込む',settings:'設定'} as const)[tab]}</h1>{!draft&&tab!=='ledger'&&tab!=='settings'&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
+      <div className={`page-top ${tab==='import'?'':'screen-page-top'}`}><h1 className="page-heading"><PageIcon aria-hidden="true"/>{draft&&tab==='import'?'明細を確認':({home:personal?'支出':'精算',ledger:'明細',import:'明細を取り込む',settings:'設定'} as const)[tab]}</h1>{!draft&&tab!=='ledger'&&tab!=='settings'&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
       {notice&&!importPanel&&<div className="notice" role="alert"><span>{notice}</span><button aria-label="閉じる" onClick={()=>setNotice('')}><X size={16}/></button></div>}
       {demoView&&<div className="demo-view-banner" role="status">デモ表示中 · サンプルデータ</div>}
       {!state?<div className="empty loading">{notice?'データを表示できませんでした。':'読み込んでいます…'}{notice&&<div><button className="secondary" onClick={()=>void load()}>再読み込み</button></div>}</div>:<>
       {tab==='home'&&<>
+        <p className="space-current-name">{space.name}</p>
         <section className="hero settlement-hero">
-          <button type="button" className="settlement-amount-toggle" aria-label={`現在は${showTotalFirst?'支払い合計':'ひとりあたり'}を大きく表示。タップして切り替え`} aria-pressed={showTotalFirst} onClick={()=>setShowTotalFirst(value=>!value)}>
-            <span className="hero-label">{showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{showTotalFirst?'支払い合計':'ひとりあたり'}<span className="hero-basis">{showTotalFirst?'2人分':'2人で折半'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></span>
-            <span className="hero-money">{hasSettlementData?<NumberTicker value={showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span>
-            <span className="hero-secondary"><span>{showTotalFirst?'ひとりあたり':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
+          <button type="button" className="settlement-amount-toggle" aria-label={personal?'今月の支出合計':`現在は${showTotalFirst?'支払い合計':'あなたの負担額'}を大きく表示。タップして切り替え`} aria-pressed={showTotalFirst} onClick={()=>{if(!personal)setShowTotalFirst(value=>!value);}}>
+            <span className="hero-label">{showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{personal?'支出合計':showTotalFirst?'支払い合計':'あなたの負担額'}{!personal&&<><span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></>}</span>
+            <span className="hero-money">{hasSettlementData?<NumberTicker value={personal||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span>
+            <span className="hero-secondary" hidden={personal}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
           </button>
+          {!personal&&!demoView&&<><button className="space-allocation-button" onClick={()=>setAllocationOpen(true)}><UsersRound size={17}/>負担の設定<ChevronRight size={14}/></button><div className="space-allocations">{(state.members??[]).filter(m=>allocations[m.user_id]!==undefined).map(m=><div key={m.user_id}><span>{m.name}{m.user_id===user.id?'（あなた）':''}</span><strong>{yen(allocations[m.user_id])}</strong></div>)}</div></>}
           <SettlementChart data={chart} month={displayedMonth}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
         </section>
         <section className="section settlement-section"><div className="settlement-list">
-          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item panel-source" data-panel-source={openCard?.type==='card'&&openCard.id===card.id?'true':undefined} key={card.id} onClick={event=>{setSelectedCardId(card.id);setOpenCard({type:'card',id:card.id,view:'summary',origin:panelOrigin(event.currentTarget)});}}><span className="settlement-item-icon"><CreditCard size={22} color={displayColor(card.color)}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{card.name}</span>{items.length>0&&<small>{items.length}件の明細</small>}<strong className="settlement-item-amount">{items.length?yen(items.reduce((sum,item)=>sum+statementSettlementAmount(item,state.entries,state.category_settings),0)):'—'}</strong></span><ChevronRight size={17}/></button>})}
-          {state.statements.filter(item=>!item.card_id||!state.cards.some(card=>card.id===item.card_id)).map(item=><button className="settlement-item panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===item.id?'true':undefined} key={item.id} onClick={event=>setOpenCard({type:'statement',id:item.id,view:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{item.title}</span><strong className="settlement-item-amount">{yen(statementSettlementAmount(item,state.entries,state.category_settings))}</strong></span><ChevronRight size={17}/></button>)}
-          {!state.cards.length&&<button className="settlement-item panel-source" data-panel-source={cardSettings&&!cardSettings.card?'true':undefined} onClick={event=>openSettings(undefined,event.currentTarget)}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">共有カード</span><strong className="settlement-item-amount">—</strong></span><ChevronRight size={17}/></button>}
+          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item panel-source" data-panel-source={openCard?.type==='card'&&openCard.id===card.id?'true':undefined} key={card.id} onClick={event=>{setSelectedCardId(card.id);setOpenCard({type:'card',id:card.id,view:'summary',origin:panelOrigin(event.currentTarget)});}}><span className="settlement-item-icon"><CreditCard size={22} color={displayColor(card.color)}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{card.name}</span>{items.length>0&&<small>{items.length}件の明細</small>}<strong className="settlement-item-amount">{items.length?yen(items.reduce((sum,item)=>sum+(personal?item.confirmed_total:statementSettlementAmount(item,state.entries,state.category_settings)),0)):'—'}</strong></span><ChevronRight size={17}/></button>})}
+          {state.statements.filter(item=>!item.card_id||!state.cards.some(card=>card.id===item.card_id)).map(item=><button className="settlement-item panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===item.id?'true':undefined} key={item.id} onClick={event=>setOpenCard({type:'statement',id:item.id,view:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{item.title}</span><strong className="settlement-item-amount">{yen((personal?item.confirmed_total:statementSettlementAmount(item,state.entries,state.category_settings)))}</strong></span><ChevronRight size={17}/></button>)}
+          {!state.cards.length&&<button className="settlement-item panel-source" data-panel-source={cardSettings&&!cardSettings.card?'true':undefined} onClick={event=>openSettings(undefined,event.currentTarget)}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{personal?'カード':'共有カード'}</span><strong className="settlement-item-amount">—</strong></span><ChevronRight size={17}/></button>}
           <button className="settlement-item panel-source" data-panel-source={editing?.data.kind==='rent'?'true':undefined} onClick={event=>addBill(event.currentTarget)}><span className="settlement-item-icon"><Home size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">家賃</span><strong className="settlement-item-amount">{rent.amount?yen(rent.amount):'—'}</strong></span><ChevronRight size={17}/></button>
           {otherBills.map(b=><button className="settlement-item panel-source" data-panel-source={editing?.data.id===b.id?'true':undefined} key={b.id} onClick={event=>setEditing({type:'bill',data:b,view:'summary',initialView:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><ArrowDownLeft size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{b.title}</span><strong className="settlement-item-amount">{yen(b.amount)}</strong></span><ChevronRight size={17}/></button>)}
         </div></section>
@@ -404,7 +428,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
         <AppearanceSettings/>
         {state.demo_enabled&&<section className="section settings-section demo-settings"><h2>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
 
-        <section className="section settings-section"><h2 className="section-heading"><CreditCard size={20} aria-hidden="true"/>共有カード</h2><p className="subtle">カードを登録すると、明細を取り込む際に選べます。</p><div className="card-settings-list">{state.cards.map(card=><button type="button" className="settings-card-button panel-source" data-panel-source={cardSettings?.card?.id===card.id?'true':undefined} key={card.id} onClick={event=>openSettings(card,event.currentTarget)}><CreditCard size={21} color={displayColor(card.color)}/><span><strong>{card.name}</strong><small>{card.active?'使用中':'使用停止中'}</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>openSettings(undefined,event.currentTarget)}><Plus size={17}/> カードを追加</button></section>
+        <section className="section settings-section"><h2 className="section-heading"><CreditCard size={20} aria-hidden="true"/>{personal?'カード':'共有カード'}</h2><p className="subtle">カードを登録すると、明細を取り込む際に選べます。</p><div className="card-settings-list">{state.cards.map(card=><button type="button" className="settings-card-button panel-source" data-panel-source={cardSettings?.card?.id===card.id?'true':undefined} key={card.id} onClick={event=>openSettings(card,event.currentTarget)}><CreditCard size={21} color={displayColor(card.color)}/><span><strong>{card.name}</strong><small>{card.active?'使用中':'使用停止中'}</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>openSettings(undefined,event.currentTarget)}><Plus size={17}/> カードを追加</button></section>
         <section className="section settings-section"><h2 className="section-heading"><Tags size={20} aria-hidden="true"/>費目</h2><p className="subtle">費目名・アイコン・色と、精算に含めるかを設定できます。</p><div className="card-settings-list category-settings-list">{categoryOptions.map(value=><button type="button" className="settings-card-button panel-source" data-panel-source={categorySettings?.saved.category===value.category?'true':undefined} key={value.category} onClick={event=>{setNotice('');setCategorySettings({saved:value,draft:value,view:'edit',origin:panelOrigin(event.currentTarget)});}}><CategoryIcon name={value.icon} color={value.color} size={21}/><span><strong>{value.category}</strong>{value.include_in_settlement===false&&<small>精算対象外</small>}</span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{const value={category:'',icon:'tag',color:defaultCardColor};setNotice('');setCategorySettings({saved:value,draft:value,isNew:true,view:'edit',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 費目を追加</button></section>
         <section className="section settings-section"><h2 className="section-heading"><Home size={20} aria-hidden="true"/>基本家賃</h2><p className="subtle">指定した月から毎月の精算に使います。金額が変わったら、新しい開始月を指定してください。</p><div className="rule-list">{state.rent_rules.map(rule=><button type="button" className="settings-rent-button" key={rule.effective_month} onClick={event=>{setRentStartMonth(rule.effective_month);setRentAmount(String(rule.amount));setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rule.amount},view:'fixed',initialView:'fixed',rentRuleMonth:rule.effective_month,origin:panelOrigin(event.currentTarget)});}}><Home size={21}/><span><strong>{yen(rule.amount)}</strong><small>{monthText(rule.effective_month)}から</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{setRentStartMonth(month);setRentAmount('');setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rent.amount},view:'fixed',initialView:'fixed',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 基本家賃を設定</button><p className="subtle">一時的な変更は精算画面の家賃から入力できます。</p></section>
         <AppUpdateSettings/>
@@ -414,11 +438,13 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
       </>}
       </div>
     </main>
-    <FloatingDock tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
+    <FloatingDock personal={personal} tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
+    {allocationOpen&&state?.settlement&&<SettlementSettingsPanel spaceId={space.id} month={month} members={state.members??[]} settings={state.settlement} items={splitItems} api={api} onClose={()=>setAllocationOpen(false)} onSaved={load}/>}
     {categoryDetails&&state&&<CategoryEntriesPanel sort={categorySort} groupByCard={groupByCard} category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
     {openCard&&state&&panelTitle&&<CardStatementPanel sort={cardSort} key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
     {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
+      <p className="space-import-target">登録先：{space.name}</p>
       {notice&&<div className="notice" role="alert">{notice}</div>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
         {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={importMonth} onMonth={setImportMonth} images={screenshots} mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setScreenshots([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseScreenshots(files);}} onRemove={index=>setScreenshots(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
@@ -431,4 +457,4 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
 function Field({label,children}:{label:string;children:React.ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
 function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
 function BillRow({bill,onEdit}:{bill:Bill;onEdit:()=>void}) {return <div className="row"><div className="row-symbol">{bill.kind==='card'?<CreditCard size={19}/>:bill.kind==='rent'?<Home size={19}/>:<ArrowDownLeft size={19}/>}</div><div className="row-content"><strong>{bill.title}</strong><small>{billKinds[bill.kind]}{bill.note?` · ${bill.note}`:''}</small></div><strong className="row-money">{yen(bill.amount)}</strong><button className="row-edit" onClick={onEdit} aria-label={`${bill.title}を編集`}>編集</button></div>}
-createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut,updateProfile)=><App key={user.id} user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>}</AuthGate>);
+createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut,updateProfile)=><SpaceApp key={user.id} user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>}</AuthGate>);

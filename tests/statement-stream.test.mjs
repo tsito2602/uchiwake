@@ -2,7 +2,7 @@ import { auth, authEnv } from './auth-fixture.mjs';
 import {test} from 'node:test';
 import {strict as assert} from 'node:assert';
 import {build} from 'esbuild';
-import app from '../dist/worker.mjs';
+import app from './space-mock-app.mjs';
 import {runStatementImport} from '../src/statement-import-flow.ts';
 const {outputFiles}=await build({stdin:{contents:`export {receiveStatement} from './src/statement-import-stream';export {StatementDecoder,statementStream} from './worker/statement-stream';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
 const {receiveStatement,StatementDecoder,statementStream}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));

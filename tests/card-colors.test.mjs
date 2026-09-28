@@ -13,6 +13,8 @@ function fixture() {
   for(const name of migrations.filter(name=>name<'0005'))db.exec(readFileSync(new URL(`../migrations/${name}`,import.meta.url),'utf8'));
   db.exec("INSERT INTO shared_cards (id,name,active) VALUES ('existing','生活費',1)");
   for(const name of migrations.filter(name=>name>='0005'))db.exec(readFileSync(new URL(`../migrations/${name}`,import.meta.url),'utf8'));
+  db.exec("UPDATE spaces SET owner_id='google-test-id' WHERE id='legacy'; INSERT INTO space_members(space_id,user_id,name) VALUES ('legacy','google-test-id','本人'),('legacy','partner','相手')");
+  db.prepare("INSERT INTO settlement_rules(space_id,month,scope,config) VALUES ('legacy','0000-01','default',?)").run(JSON.stringify({uniform:true,common:{mode:'equal',shares:[{user_id:'google-test-id',weight:1},{user_id:'partner',weight:1}]},items:{}}));
   const DB={prepare(sql){const statement=db.prepare(sql);const bound=(params=[])=>({
     bind(...values){return bound(values);},
     async all(){return {results:statement.all(...params)};},
@@ -23,7 +25,7 @@ function fixture() {
     try{const results=[];for(const statement of statements)results.push(await statement.run());db.exec('COMMIT');return results;}
     catch(error){db.exec('ROLLBACK');throw error;}
   }};
-  const call=(path,method='GET',body)=>app.fetch(new Request(`https://example.test/api${path}`,{method,headers:{Cookie:auth,Origin:'https://example.test','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),{...authEnv,APP_ENV:'staging',DB});
+  const call=(path,method='GET',body)=>app.fetch(new Request(`https://example.test/api${path}`,{method,headers:{'X-Space-Id':'legacy',Cookie:auth,Origin:'https://example.test','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),{...authEnv,APP_ENV:'staging',DB});
   return {db,call};
 }
 
@@ -120,7 +122,7 @@ test('追加費目は再取得・アイコン色の編集・明細取り込み�
     const updated=await (await call('/state?month=2026-09')).json();
     const entry=updated.entries[0];
     assert.equal(entry.category,'旅行費');
-    assert.equal((await call(`/statements/${entry.statement_id}/entries`,'PUT',{entries:[{id:entry.id,category:'旅行費',amount:1200}]})).status,200);
+    assert.equal((await call(`/statements/${entry.statement_id}/entries`,'PUT',{revision:0,entries:[{id:entry.id,category:'旅行費',amount:1200}]})).status,200);
     assert.equal((await call(`/card-entries/${entry.id}/category`,'PUT',{category:'旅行費'})).status,200);
     assert.equal((await call(`/card-entries/${entry.id}/category`,'PUT',{category:'未登録の費目'})).status,400);
     assert.equal((await (await call('/state?month=2026-09')).json()).statements[0].confirmed_total,1200);
@@ -155,7 +157,7 @@ test('カード削除では登録済みの明細・利用行・金額を残す',
     assert.equal((await call('/cards/existing','DELETE')).status,200);
     const state=await (await call('/state?month=2026-09')).json();
     assert.equal(state.cards.length,0);
-    assert.equal(state.statements[0].card_id,null);
+    assert.equal(state.statements[0].card_id,'existing');
     assert.equal(state.statements[0].confirmed_total,3000);
     assert.equal(state.entries.length,2);
     assert.equal(state.entries.reduce((sum,row)=>sum+row.amount,0),3000);
@@ -167,7 +169,7 @@ test('費目と金額をまとめて保存し、返金を含むカード合計�
   const {db,call}=fixture();
   try {
     seedStatement(db);
-    const response=await call('/statements/statement/entries','PUT',{entries:[{id:'first',category:'日用品費',amount:5000},{id:'second',category:'外食費',amount:-500}]});
+    const response=await call('/statements/statement/entries','PUT',{revision:0,entries:[{id:'first',category:'日用品費',amount:5000},{id:'second',category:'外食費',amount:-500}]});
     assert.equal(response.status,200);
     assert.equal((await response.json()).confirmed_total,4500);
     const state=await (await call('/state?month=2026-09')).json();
@@ -183,7 +185,7 @@ test('不正な金額・重複ID・別明細の行・行の不足は保存しな
     seedStatement(db);
     const first={id:'first',category:'食費',amount:2000},second={id:'second',category:'外食費',amount:1000};
     for(const entries of [[first],[first,first],[first,{...second,id:'other'}],[first,{...second,amount:0}],[first,{...second,amount:1.5}],[first,{...second,amount:-3000}],[first,{...second,amount:100_000_001}],[first,{...second,category:'invalid'}]]) {
-      assert.equal((await call('/statements/statement/entries','PUT',{entries})).status,400);
+      assert.equal((await call('/statements/statement/entries','PUT',{revision:0,entries})).status,400);
     }
     const state=await (await call('/state?month=2026-09')).json();
     assert.equal(state.statements[0].confirmed_total,3000);
@@ -233,7 +235,7 @@ test('精算除外は返金込みの対象費目だけを全月の履歴から�
   seedStatement(db);
   db.exec("INSERT INTO card_entries (id,statement_id,title,category,amount) VALUES ('refund','statement','返金','外食費',-200)");
   db.exec("UPDATE card_statements SET confirmed_total=2800 WHERE id='statement'");
-  db.exec("INSERT INTO rent_rules (effective_month,amount) VALUES ('2026-08',100000)");
+  db.exec("INSERT INTO rent_rules (space_id,effective_month,amount) VALUES ('legacy','2026-08',100000)");
   const setting={icon:'utensils',color:'#b78d6a',include_in_settlement:false};
   assert.equal((await call('/category-settings/'+encodeURIComponent('外食費'),'PUT',setting)).status,200);
   const getHistory=async()=> (await (await call('/settlement-history?month=2026-09')).json()).months.at(-1);
