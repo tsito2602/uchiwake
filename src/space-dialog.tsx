@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { animatePanelBackground } from './kondo-panel-motion';
+import { lockOverlayBackground } from './overlay-lock';
 
 // Match FuseAddMenu's timing and reverse dismissal, anchored at the top right.
 export function SpaceDialog({title,children,onClose,closing,onExited}:{title:string;children:ReactNode;onClose:()=>void;closing:boolean;onExited:()=>void}) {
@@ -8,8 +9,8 @@ export function SpaceDialog({title,children,onClose,closing,onExited}:{title:str
  const animations=useRef<Animation[]>([]);close.current=onClose;exit.current=onExited;
  useLayoutEffect(()=>{
   const node=root.current!,previous=document.activeElement as HTMLElement|null;
-  const layers=[...document.querySelectorAll<HTMLElement>('main.shell,.floating-nav-host,.space-switcher')],inert=layers.map(l=>l.inert);
-  layers.forEach(l=>l.inert=true);const overflow=document.body.style.overflow;document.body.style.overflow='hidden';
+  const layers=[...document.querySelectorAll<HTMLElement>('main.shell,.floating-nav-host,.space-switcher')];
+  const unlockBackground=lockOverlayBackground(layers);
   const buttons=[...node.querySelectorAll<HTMLButtonElement>('.space-options>button')];
   if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const timing:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
@@ -34,7 +35,7 @@ export function SpaceDialog({title,children,onClose,closing,onExited}:{title:str
    if(event.key==='End')next=buttons.length-1;
    if(next!==undefined){event.preventDefault();buttons[next]?.focus();}
   };node.addEventListener('keydown',keyboard);
-  return()=>{animations.current.forEach(a=>a.cancel());layers.forEach((l,i)=>l.inert=inert[i]);document.body.style.overflow=overflow;node.removeEventListener('keydown',keyboard);if(previous?.isConnected&&!previous.closest('[inert]'))previous.focus({preventScroll:true});};
+  return()=>{animations.current.forEach(a=>a.cancel());unlockBackground();node.removeEventListener('keydown',keyboard);if(previous?.isConnected&&!previous.closest('[inert]'))previous.focus({preventScroll:true});};
  },[]);
  useLayoutEffect(()=>{
   if(!closing)return;

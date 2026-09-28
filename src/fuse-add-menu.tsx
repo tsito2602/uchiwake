@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CreditCard, Home } from 'lucide-react';
 import { animatePanelBackground } from './kondo-panel-motion';
+import { lockOverlayBackground } from './overlay-lock';
 
 export type AddOption={id:string;label:string;color?:string;kind:'card'|'rent';onClick:()=>void};
 
@@ -15,9 +16,7 @@ export function FuseAddMenu({options,closing,onClose,onSelect,onExited}:{options
     const node=root.current!;
     const previous=document.activeElement as HTMLElement|null;
     const layers=[...document.querySelectorAll<HTMLElement>('main.shell, .floating-nav-host')];
-    const inert=layers.map(layer=>layer.inert);
-    layers.forEach(layer=>layer.inert=true);
-    const overflow=document.body.style.overflow;document.body.style.overflow='hidden';
+    const unlockBackground=lockOverlayBackground(layers);
     const buttons=[...node.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
     if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
       const timing:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
@@ -50,8 +49,7 @@ export function FuseAddMenu({options,closing,onClose,onSelect,onExited}:{options
     node.addEventListener('keydown',keydown);
     return()=>{
       animations.current.forEach(animation=>animation.cancel());
-      layers.forEach((layer,index)=>layer.inert=inert[index]);
-      document.body.style.overflow=overflow;
+      unlockBackground();
       node.removeEventListener('keydown',keydown);
       previous?.focus({preventScroll:true});
     };
