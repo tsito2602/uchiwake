@@ -86,7 +86,7 @@ function pieSlice(start:number,end:number) {
   // Two arcs also handle a single category occupying the entire circle.
   return `M 100 100 L ${point(start)} A 88 88 0 0 1 ${point((start+end)/2)} A 88 88 0 0 1 ${point(end)} Z`;
 }
-export function CategoryChart({data,settings=[]}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[]}) {
+export function CategoryChart({data,settings=[],animateAmounts=true}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[];animateAmounts?:boolean}) {
   const reduce=useReducedMotion();
   const [view,setView]=useState<'bar'|'pie'>('bar');
   const items=[...data].sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount));
@@ -113,7 +113,7 @@ export function CategoryChart({data,settings=[]}:{data:{category:Category;amount
       </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
     </div>}
     <ul><AnimatePresence initial={false}>{items.map((item,index)=><motion.li layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>
-      <div className="category-chart-label"><span><CategoryIcon name={categoryAppearance(item.category,settings).icon} color={categoryAppearance(item.category,settings).color} size={17}/>{item.category}</span><span><strong><NumberTicker value={item.amount}/></strong><small>{item.amount<0?'返金':positive?`${Math.round(item.amount/positive*100)}%`:''}</small></span></div>
+      <div className="category-chart-label"><span><CategoryIcon name={categoryAppearance(item.category,settings).icon} color={categoryAppearance(item.category,settings).color} size={17}/>{item.category}</span><span><strong>{animateAmounts?<NumberTicker value={item.amount}/>:yen(item.amount)}</strong><small>{item.amount<0?'返金':positive?`${Math.round(item.amount/positive*100)}%`:''}</small></span></div>
       {view==='bar'&&<div className={`category-chart-track${item.amount<0?' is-refund':''}`} aria-hidden="true"><motion.div initial={reduce?false:{scaleX:0}} whileInView={{scaleX:1}} viewport={{once:true,amount:.5}} animate={{width:`${Math.abs(item.amount)/maximum*100}%`}} transition={{duration:reduce?0:.55,ease,scaleX:{delay:reduce?0:index*.035,duration:reduce?0:.55,ease}}} style={{background:displayColor(categoryAppearance(item.category,settings).color),transformOrigin:'left'}}/></div>}
     </motion.li>)}</AnimatePresence></ul>
     </motion.div></AnimatePresence>
