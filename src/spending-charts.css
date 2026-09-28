@@ -40,5 +40,6 @@
 
 .category-pie svg { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .category-pie-slice { transform-origin: 100px 100px; transition: transform .18s cubic-bezier(.22,1,.36,1); }
-.category-pie-readout { left: 50%; top: 6px; transform: translateX(-50%); width: min(184px,100%); }
+.category-pie-readout { left: 50%; top: 0; transform: translate(-50%,-100%); width: max-content; max-width: calc(100% - 160px); }
+.category-pie-readout span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) { .category-pie-slice { transition: none; } }
