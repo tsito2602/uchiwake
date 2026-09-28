@@ -1,5 +1,84 @@
 # iPhoneホーム画面アイコン
 
+## 現在採用している透過アイコンの作り方
+
+2026-09-28にユーザーから保存を依頼された方式。
+実装の基準コミットは `01b94f97ff3c8d627bbb22c80b78ac34d2a848ac`。
+**背景面を描かないSVGで、マークだけ14%拡大する。SVGによる登録とテーマ切替を維持する。**
+以下が現在の再現手順。後半のPNG方式・固定画像方式は過去の検証記録であり、現在の設定ではない。
+
+### 元データと生成場所
+
+- `src/brand-motion.ts`: 5本のSVGパス `pathData` と配色 `BRAND_THEMES` の原本。
+- `scripts/build-brand.mjs`: 原本からアイコン・アプリ内ロゴ・manifestを生成する。
+- `public/icon.svg`: 初期favicon。SVG内のメディアクエリで配色を切り替える。
+- `public/icon-light.svg` / `public/icon-dark.svg`: 各テーマのホーム画面用アイコン。
+- `public/logo-light.svg` / `public/logo-dark.svg`: アプリ内ロゴ。今回の14%拡大は適用しない。
+
+### 画像の作成手順
+
+1. アイコンの `viewBox` は `0 0 1254 1254` のままにする。
+2. 背景の `<rect>` を描かず、5本の図柄のパスだけを配置する。
+   白い下地・外周の白縁・影・背景色での塗りつぶしは加えない。
+   パスの外側、中央の穴、一画目と二画目の間、円グラフの切れ目は透明になる。
+3. 図柄全体を次のグループに入れ、中心 `(627, 627)` を基準に縦横とも1.14倍にする。
+   SVGの枠の大きさは変えない。
+
+   ```svg
+   <g transform="translate(627 627) scale(1.14) translate(-627 -627)">
+     <!-- 原本の5本のパスを、形状を変えずにここへ置く -->
+   </g>
+   ```
+
+4. 各パスの塗り色を維持する。添字2（3本目）は `mid`、
+   添字3（4本目）は `pale`、残りは `ink` を使う。
+
+   | 用途 | ライト | ダーク |
+   | --- | --- | --- |
+   | ink | `#30302f` | `#f5f1e9` |
+   | mid | `#9c978f` | `#b6b0a6` |
+   | pale | `#cbc5bb` | `#817b72` |
+
+   薄いグレーの円グラフ部分は図柄であり、除去する背景ではない。
+   ダーク版の明るい `ink` も図柄の色で、白い下地とは区別する。
+5. SVGとして書き出す。画像から白を色抜きしたり、PNGへ変換して登録し直したりしない。
+   アプリ内ロゴのパス・余白・大きさと、起動アニメーションはこの変更に含めない。
+
+### 維持する登録方法
+
+`index.html` の初期指定は次のとおり。`apple-touch-icon` のPNG指定は追加しない。
+
+```html
+<link id="app-icon" rel="icon" href="/icon.svg" type="image/svg+xml"/>
+<link id="app-manifest" rel="manifest" href="/manifest.webmanifest"/>
+```
+
+`src/boot.ts` は `prefers-color-scheme` に応じ、faviconを `/icon-light.svg` または
+`/icon-dark.svg`、manifestを `/manifest-light.webmanifest` または
+`/manifest-dark.webmanifest` へ切り替える。この登録方式も含めて現在の構成を維持する。
+
+各manifestのアイコンは対応するSVGで、`sizes: "any"`、`type: "image/svg+xml"`、
+`purpose: "any maskable"`。`id`・`start_url`・`scope` はすべて `/` のまま。
+manifestの背景色指定はアプリ起動時のメタデータであり、SVG内へ背景面として描き込まない。
+互換用の `/manifest-v4.webmanifest` も現在のライト用SVGを参照する。
+
+### 再生成と確認
+
+```sh
+node scripts/build-brand.mjs
+npm run check
+```
+
+`npm run dev` / `npm run build` でも生成スクリプトが実行される。
+生成物を直接手直しせず、原本または生成スクリプトを編集する。
+`tests/brand-icons.test.mjs` で背景・穴の透明度、輪郭への白い下地の混入、14%の拡大率、
+アプリ内ロゴの維持、SVGの登録方法と配信内容を確認する。
+`tests/brand-motion.test.mjs` はテーマ切替・起動処理を確認する。
+この版はビルド・型チェック・107件のテストを通過した。
+自動テストではiOSの背景合成までは再現しないため、実機結果を新たに確認したらここへ追記する。
+
+## 参考資料と過去の検証記録
+
 参考: [Kondoのアイコンメモ](https://github.com/tsito2602/kondo/blob/3440015f3c0e9a8676ec9f3f4ce0ce26428a8158/assets/brand/README.md)、
 同リポジトリの `scripts/fixtures/README.md`・`scripts/render-touch-icon.mjs`。
 
