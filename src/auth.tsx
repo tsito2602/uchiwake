@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
-import { LogOut, UserRound } from 'lucide-react';
+import { UserRound } from 'lucide-react';
 import { pathData, FIRST_STROKE_OFFSET_Y } from './brand-motion';
 import './login.css';
 
@@ -81,7 +81,7 @@ export function AuthGate({ children }: { children: (user: User, logout: () => Pr
   if (session?.user) return <>{error && <div className="auth-notice" role="alert">{error}<button onClick={() => setError('')} aria-label="通知を閉じる">×</button></div>}{children(session.user, logout, signingOut, updateProfile)}</>;
   return <main className="login"><div className="login-panel"><Logo/><h1>AIで仕分け。<br/>家計のうちわけ。</h1><div className="login-actions"><button className="google-sign-in" disabled={!session?.configured || signingIn} aria-busy={signingIn} onClick={() => { setSigningIn(true); location.assign('/api/auth/google'); }}><GoogleMark/><span>{signingIn ? 'Googleに移動しています…' : 'Googleでログイン'}</span></button>{error && <p className="login-error" role="alert">{error}</p>}{session && !session.configured && <p className="login-status">Googleログインは現在準備中です。</p>}{!session && <button className="login-retry" onClick={() => { setError(''); void loadSession(); }}>もう一度試す</button>}</div></div></main>;
 }
-export function AccountSettings({ user, logout, signingOut, updateProfile }: AccountProps) {
+export function AccountSettings({ user, signingOut, updateProfile }: Pick<AccountProps, 'user' | 'signingOut' | 'updateProfile'>) {
   const [name, setName] = useState(user.name);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
@@ -108,6 +108,5 @@ export function AccountSettings({ user, logout, signingOut, updateProfile }: Acc
       <button type="submit" className="settings-add-card" disabled={saving || signingOut || !name.trim() || name.trim() === user.name}>{saving ? '保存中…' : '表示名を保存'}</button>
       <p className="account-save-status" role="status" aria-live="polite">{status}</p>
     </form>
-    <button type="button" className="settings-add-card" disabled={signingOut || saving} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
   </section>;
 }

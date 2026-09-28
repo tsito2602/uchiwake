@@ -10,6 +10,8 @@
 .settings-page .settings-card-button:last-child, .settings-page .settings-rent-button:last-child { border-bottom: 0; }
 .settings-page .settings-add-card { margin: 0; border-radius: 999px; background: var(--paper); font-size: 13px; }
 .settings-page .settings-add-card:active { background: var(--soft); }
+.settings-page .category-settings-list .settings-card-button:last-child { border-bottom: 1px solid var(--line); }
+.settings-page .settings-logout { color: var(--danger); }
 .settings-page .category-settings-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .settings-page .category-settings-list .settings-card-button { gap: 6px; min-height: 54px; }
 .settings-page .category-settings-list .settings-card-button > svg:first-child { flex-basis: 21px; width: 21px; }

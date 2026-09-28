@@ -318,7 +318,6 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 /* Fuse-inspired settlement: amount and history sit directly on the white canvas. */
 .desktop-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); margin-bottom: 22px; border-bottom: 1px solid var(--line); }
 .desktop-tabs button[aria-current="page"] { border-bottom-color: var(--ink); }
-.home-page-top h1 { display: none; }
 .page-heading, .section-heading { display: flex; align-items: center; gap: 10px; }
 .page-heading > svg { width: 24px; height: 24px; flex: none; }
 .section-heading > svg { flex: none; }
@@ -336,12 +335,13 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .card-panel-entry small.entry-category { display: flex; align-items: center; gap: 5px; }
 .entry-category svg, .category-chart-label svg { flex: none; }
 @media (prefers-reduced-motion: reduce) { .category-icon-options label > span { transition: none; } }
-.settlement-hero { min-height: 0; padding: 8px 0 0; border-radius: 0; }
-.settlement-hero h2, .page-top.screen-page-top h1 { color: var(--ink); font-size: 21px; font-weight: 650; letter-spacing: -.025em; line-height: 1.5; }
+.settlement-hero { min-height: 0; padding: 0; border-radius: 0; }
+.page-top.screen-page-top { align-items: flex-start; }
+.page-top.screen-page-top h1 { color: var(--ink); font-size: 21px; font-weight: 650; letter-spacing: -.025em; line-height: 1.5; }
 .settlement-amount-toggle { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 0; color: inherit; border: 0; background: none; text-align: left; cursor: pointer; }
 .settlement-amount-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 5px; border-radius: 4px; }
 .settlement-hero .hero-money { display: block; margin: 8px 0 2px; font-size: clamp(46px,10vw,70px); letter-spacing: -.065em; }
-.settlement-hero .hero-label { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; width: 100%; margin-top: 28px; color: var(--ink); font-size: 15px; font-weight: 700; }
+.settlement-hero .hero-label { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; width: 100%; margin-top: 0; color: var(--ink); font-size: 15px; font-weight: 700; }
 .hero-basis { padding: 3px 7px; border-radius: 6px; background: var(--soft); color: var(--muted); font-size: 10px; font-weight: 550; }
 .hero-switch-hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--muted); font-size: 11px; font-weight: 500; }
 .hero-secondary { display: flex; align-items: baseline; gap: 9px; margin-top: 10px; color: var(--muted); font-size: 12px; font-weight: 500; }
@@ -457,8 +457,8 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
   .card-panel-scroll { flex: 1; padding-bottom: 24px; scroll-padding-bottom: 24px; }
   .card-panel-header { min-height: 56px; }
   .card-panel-close, .panel-desktop-actions { display: none; }
-  .home-page-top { display: none; }
-  .settlement-hero { min-height: 0; padding: 8px 0 0; }
+  .screen-page-top .month-switch { display: none; }
+  .settlement-hero { min-height: 0; padding: 0; }
   .settlement-hero .hero-money { font-size: clamp(42px,11vw,60px); }
   .settlement-list .settlement-item { min-height: 115px; padding: 18px; }
   .settlement-list .settlement-item-copy { min-height: 77px; }

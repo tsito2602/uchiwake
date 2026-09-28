@@ -1,11 +1,11 @@
 import { displayColor } from './display-color';
 import { AppUpdateSettings, AppInfo } from './app-update-settings';
 import { AppearanceSettings } from './appearance-settings';
-import { AuthGate, AccountSettings, notifySessionExpired } from './auth';
+import { AuthGate, AccountSettings, notifySessionExpired, type AccountProps } from './auth';
 import { streamStatement } from './statement-import-stream';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowDownLeft, ArrowRight, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles } from 'lucide-react';
+import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, summary, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
 import { CardStatementPanel } from './card-statement-panel';
@@ -47,7 +47,12 @@ async function api<T>(path:string,options?:RequestInit):Promise<T> {
   if (!response.ok) { const data=await response.json().catch(()=>({error:'通信に失敗しました'})) as {error?:string}; throw new Error(data.error||'通信に失敗しました'); }
   return response.json();
 }
-function App({user,logout,signingOut,updateProfile}:React.ComponentProps<typeof AccountSettings>) {
+function App({user,logout,signingOut,updateProfile}:AccountProps) {
+  const [savingProfile,setSavingProfile]=useState(false);
+  async function saveProfile(name:string) {
+    setSavingProfile(true);
+    try { await updateProfile(name); } finally { setSavingProfile(false); }
+  }
   const [month,setMonth]=useState(today().slice(0,7));
   const [tab,setTab]=useState<Tab>('home');
   const transitionPage=useRouteTransition();
@@ -351,12 +356,12 @@ function App({user,logout,signingOut,updateProfile}:React.ComponentProps<typeof 
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button></nav>
       <div id="main-content">
-      <div className={`page-top ${tab==='home'?'home-page-top':tab==='ledger'||tab==='settings'?'screen-page-top':''}`}><h1 className="page-heading"><PageIcon aria-hidden="true"/>{draft&&tab==='import'?'明細を確認':({home:'精算',ledger:'明細',import:'明細を取り込む',settings:'設定'} as const)[tab]}</h1>{!draft&&tab!=='ledger'&&tab!=='settings'&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
+      <div className={`page-top ${tab==='import'?'':'screen-page-top'}`}><h1 className="page-heading"><PageIcon aria-hidden="true"/>{draft&&tab==='import'?'明細を確認':({home:'精算',ledger:'明細',import:'明細を取り込む',settings:'設定'} as const)[tab]}</h1>{!draft&&tab!=='ledger'&&tab!=='settings'&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
       {notice&&!importPanel&&<div className="notice" role="alert"><span>{notice}</span><button aria-label="閉じる" onClick={()=>setNotice('')}><X size={16}/></button></div>}
       {demoView&&<div className="demo-view-banner" role="status">デモ表示中 · サンプルデータ</div>}
       {!state?<div className="empty loading">{notice?'データを表示できませんでした。':'読み込んでいます…'}{notice&&<div><button className="secondary" onClick={()=>void load()}>再読み込み</button></div>}</div>:<>
       {tab==='home'&&<>
-        <section className="hero settlement-hero"><h2 className="page-heading"><Calculator aria-hidden="true"/>精算</h2>
+        <section className="hero settlement-hero">
           <button type="button" className="settlement-amount-toggle" aria-label={`現在は${showTotalFirst?'支払い合計':'ひとりあたり'}を大きく表示。タップして切り替え`} aria-pressed={showTotalFirst} onClick={()=>setShowTotalFirst(value=>!value)}>
             <span className="hero-label">{showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{showTotalFirst?'支払い合計':'ひとりあたり'}<span className="hero-basis">{showTotalFirst?'2人分':'2人で折半'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></span>
             <span className="hero-money">{hasSettlementData?<NumberTicker value={showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span>
@@ -382,7 +387,7 @@ function App({user,logout,signingOut,updateProfile}:React.ComponentProps<typeof 
 
       </>:demoView?<div className="empty">この月のデモ明細はありません。</div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
       {tab==='settings'&&<div className="settings-page">
-        <AccountSettings user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>
+        <AccountSettings user={user} signingOut={signingOut} updateProfile={saveProfile}/>
         <AppearanceSettings/>
         {state.demo_enabled&&<section className="section settings-section demo-settings"><h2>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
 
@@ -390,6 +395,7 @@ function App({user,logout,signingOut,updateProfile}:React.ComponentProps<typeof 
         <section className="section settings-section"><h2 className="section-heading"><Tags size={20} aria-hidden="true"/>費目</h2><p className="subtle">費目名・アイコン・色と、精算に含めるかを設定できます。</p><div className="card-settings-list category-settings-list">{categoryOptions.map(value=><button type="button" className="settings-card-button panel-source" data-panel-source={categorySettings?.saved.category===value.category?'true':undefined} key={value.category} onClick={event=>{setNotice('');setCategorySettings({saved:value,draft:value,view:'edit',origin:panelOrigin(event.currentTarget)});}}><CategoryIcon name={value.icon} color={value.color} size={21}/><span><strong>{value.category}</strong>{value.include_in_settlement===false&&<small>精算対象外</small>}</span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{const value={category:'',icon:'tag',color:defaultCardColor};setNotice('');setCategorySettings({saved:value,draft:value,isNew:true,view:'edit',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 費目を追加</button></section>
         <section className="section settings-section"><h2 className="section-heading"><Home size={20} aria-hidden="true"/>基本家賃</h2><p className="subtle">指定した月から毎月の精算に使います。金額が変わったら、新しい開始月を指定してください。</p><div className="rule-list">{state.rent_rules.map(rule=><button type="button" className="settings-rent-button" key={rule.effective_month} onClick={event=>{setRentStartMonth(rule.effective_month);setRentAmount(String(rule.amount));setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rule.amount},view:'fixed',initialView:'fixed',rentRuleMonth:rule.effective_month,origin:panelOrigin(event.currentTarget)});}}><Home size={21}/><span><strong>{yen(rule.amount)}</strong><small>{monthText(rule.effective_month)}から</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{setRentStartMonth(month);setRentAmount('');setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rent.amount},view:'fixed',initialView:'fixed',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 基本家賃を設定</button><p className="subtle">一時的な変更は精算画面の家賃から入力できます。</p></section>
         <AppUpdateSettings/>
+        <button type="button" className="settings-add-card settings-logout" disabled={signingOut || savingProfile} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
         <AppInfo/>
       </div>}
       </>}
