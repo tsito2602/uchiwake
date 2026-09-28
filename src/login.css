@@ -1,8 +1,12 @@
 /* Layout adapted from tsito2602/kondo (MIT; licenses/kondo-MIT.txt). */
 .login { min-height: 100svh; display: grid; place-items: center; padding: max(32px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); color: var(--ink); background: var(--canvas); }
 .login-panel { display: flex; flex-direction: column; align-items: center; gap: 24px; width: min(100%, 360px); text-align: center; }
-.login-brand { display: flex; align-items: center; gap: 8px; font-size: 28px; font-weight: 700; letter-spacing: -.035em; }
-.login-brand picture, .login-brand img { display: block; width: 52px; height: 52px; object-fit: contain; }
+.login-brand { display: flex; width: 100%; min-height: 52px; justify-content: center; align-items: center; gap: 8px; font-size: 28px; font-weight: 700; letter-spacing: -.035em; }
+/* Fit the visible mark, excluding the launch SVG’s transparent padding. */
+.login-brand-icon { display: block; flex: none; width: auto; height: 25px; aspect-ratio: 661 / 813; }
+.login-brand-icon .ink { fill: #30302f; }
+.login-brand-icon .mid { fill: #9c978f; }
+.login-brand-icon .pale { fill: #cbc5bb; }
 .login-panel h1 { margin: 0; font-size: clamp(24px, 6.5vw, 30px); font-weight: 600; letter-spacing: -.04em; line-height: 1.6; }
 .login-actions { display: flex; flex-direction: column; align-items: center; width: 100%; margin-top: 8px; gap: 12px; }
 .google-sign-in { display: flex; align-items: center; justify-content: center; position: relative; gap: 12px; width: min(280px, 100%); min-height: 44px; padding: 10px 16px; border: 1px solid #747775; border-radius: 999px; background: #fff; color: #1f1f1f; font-size: 14px; font-weight: 500; letter-spacing: .25px; transition: background .16s, box-shadow .16s; }
@@ -22,6 +26,9 @@
 @media (prefers-color-scheme: dark) { .google-sign-in { background: #131314; color: #e3e3e3; border-color: #8e918f; } .google-sign-in:hover:not(:disabled) { background: #242426; } .login-error { color: #ffa599; } }
 @media (prefers-color-scheme: dark) {
   body:has(.login), .login { background: #191919; color: #f5f1e9; }
+  .login-brand-icon .ink { fill: #f5f1e9; }
+  .login-brand-icon .mid { fill: #b6b0a6; }
+  .login-brand-icon .pale { fill: #817b72; }
   .login-status { color: #b6b0a6; }
   .login-retry { color: #f5f1e9; }
   .login :focus-visible { outline-color: #f5f1e9; }
