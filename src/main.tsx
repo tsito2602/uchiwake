@@ -1,3 +1,4 @@
+import type { EntrySort } from './entry-sort';
 import { CategoryEntriesPanel } from './category-entries-panel';
 import { displayColor } from './display-color';
 import { AppUpdateSettings, AppInfo } from './app-update-settings';
@@ -32,6 +33,8 @@ import './studio-action.css';
 import './theme.css';
 import './palette.css';
 import './settings.css';
+import './entry-sort-controls.css';
+import './entry-dock.css';
 
 type Tab = DockTab;
 type Editing = { type:'bill'; data:Partial<Bill>; view:'summary'|'edit'|'fixed'; initialView:'summary'|'fixed'; rentRuleMonth?:string; origin?:PanelOrigin; closing?:boolean };
@@ -87,6 +90,11 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const [amountDraft,setAmountDraft]=useState<Record<string,string>>({});
   const [openCard,setOpenCard]=useState<OpenCard|null>(null);
   const [categoryDetails,setCategoryDetails]=useState<{category:Category;origin?:PanelOrigin;closing?:boolean}|null>(null);
+  const [categorySort,setCategorySort]=useState<EntrySort>({key:'date',ascending:false});
+  const [cardSort,setCardSort]=useState<EntrySort>({key:'date',ascending:false});
+  const [groupByCard,setGroupByCard]=useState(false);
+  useEffect(()=>{setCategorySort({key:'date',ascending:false});setGroupByCard(false);},[categoryDetails?.category]);
+  useEffect(()=>{setCardSort({key:'date',ascending:false});},[openCard?.id,openCard?.type]);
   const [cardSettings,setCardSettings]=useState<OpenSettings|null>(null);
   const [categorySettings,setCategorySettings]=useState<{saved:CategoryAppearance;draft:CategoryAppearance;isNew?:boolean;view:'summary'|'edit';origin?:PanelOrigin;closing?:boolean}|null>(null);
   const [rentAmount,setRentAmount]=useState('');
@@ -285,11 +293,12 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const panelTitle=state?.cards.find(card=>card.id===(openCard?.type==='card'?openCard.id:panelStatements[0]?.card_id))?.name||panelStatements[0]?.title;
   const cardContext:DockContext|undefined=openCard?{
     label:'カードの明細',
+    entryControls:openCard.view!=='edit'&&panelStatements.length?{sort:cardSort,onSort:setCardSort}:undefined,
     onBack:()=>{if(busy)return;if(openCard.view==='edit'){setCategoryDraft({});setAmountDraft({});setOpenCard({...openCard,view:'details'});}else dismissCard();},
     actionLabel:openCard.view==='edit'?(busy?'保存中…':'変更を保存する'):openCard.view==='details'?'編集':!panelStatements.length?'明細を取り込む':'明細画面へ',
-    compact:openCard.view==='details',
+    compact:openCard.view==='details'||(openCard.view==='summary'&&!!panelStatements.length),
     commit:openCard.view==='edit',
-    actionIcon:openCard.view==='details'?'edit':undefined,
+    actionIcon:openCard.view==='details'?'edit':openCard.view==='summary'&&panelStatements.length?'details':undefined,
     disabled:busy||(openCard.view==='edit'&&(demoView||!entryChanges.length||!validEntryChanges)),
     trailingEdit:openCard.view==='summary'?{label:'明細を編集',disabled:busy||!panelStatements.length,onAction:()=>setOpenCard({...openCard,view:'edit'})}:undefined,
     secondaryAction:openCard.view!=='summary'&&panelStatements.length===1?{label:'削除',disabled:demoView||busy,onAction:()=>void removeStatement(panelStatements[0].id)}:undefined,
@@ -355,7 +364,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     disabled:busy||demoView||!validCategoryName(categorySettings.draft.category)||categoryNameDuplicate||(!categorySettings.isNew&&categorySettings.saved.icon===categorySettings.draft.icon&&categorySettings.saved.color===categorySettings.draft.color&&categorySettings.saved.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.saved.include_in_settlement!==false)===(categorySettings.draft.include_in_settlement!==false))
   }:undefined;
   const PageIcon=({home:Calculator,ledger:ReceiptText,settings:Settings,import:Camera} as const)[tab];
-  const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
+  const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,entryControls:{sort:categorySort,onSort:setCategorySort,groupByCard,onGroupByCard:setGroupByCard},backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
   const dockContext=(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||undefined;
   return <>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
@@ -407,8 +416,8 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
       </div>
     </main>
     <FloatingDock tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
-    {categoryDetails&&state&&<CategoryEntriesPanel category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
-    {openCard&&state&&panelTitle&&<CardStatementPanel key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
+    {categoryDetails&&state&&<CategoryEntriesPanel sort={categorySort} groupByCard={groupByCard} category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
+    {openCard&&state&&panelTitle&&<CardStatementPanel sort={cardSort} key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
     {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
       {notice&&<div className="notice" role="alert">{notice}</div>}

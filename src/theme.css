@@ -3,8 +3,8 @@
   --on-brand: #fff;
   --appearance-track: #e5e5e5;
   --dock-glass: #ffffff52;
-  --panel-tint: #ffffffa3;
-  --panel-header-tint: #ffffffe0;
+  --panel-tint: #ffffff80;
+  --panel-header-tint: #ffffffb3;
   --surface-glow: #ffffffbd;
   --history-current: #686868;
   --history-bar: #c8c8c8;
@@ -25,8 +25,8 @@
   --dock-glass: #18181859;
   --dock-border-top: #ffffff26;
   --dock-border-bottom: #ffffff10;
-  --panel-tint: #1c1c1ca3;
-  --panel-header-tint: #202020e0;
+  --panel-tint: #1c1c1c80;
+  --panel-header-tint: #202020b3;
   --surface-glow: #ffffff0e;
   --history-current: #bcbcbc;
   --history-bar: #666;

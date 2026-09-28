@@ -1,3 +1,4 @@
+import { sortEntries, type EntrySort } from './entry-sort';
 import { displayColor } from './display-color';
 import { useRef } from 'react';
 import { ArrowRight, CreditCard, Trash2, X } from 'lucide-react';
@@ -9,6 +10,7 @@ import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 
 type Props = {
   title: string;
+  sort: EntrySort;
   color?: string;
   categorySettings?:CategoryAppearance[];
   month: string;
@@ -33,11 +35,12 @@ type Props = {
 
 const yen=(amount:number)=>`¥${Math.round(amount).toLocaleString('ja-JP')}`;
 
-export function CardStatementPanel({title,color,categorySettings=[],month,statements,entries,demo,view,origin,closing,onClose,onExited,actionLabel,actionDisabled,busy,error,onAction,onChangeCategory,onChangeAmount,amountDraft,onDeleteStatement}:Props) {
+export function CardStatementPanel({title,sort,color,categorySettings=[],month,statements,entries,demo,view,origin,closing,onClose,onExited,actionLabel,actionDisabled,busy,error,onAction,onChangeCategory,onChangeAmount,amountDraft,onDeleteStatement}:Props) {
   const panel=useRef<HTMLElement>(null);
   usePanelMorph(panel,origin,closing,onExited,onClose);
   const total=statements.reduce((sum,item)=>sum+item.confirmed_total,0);
-  const cardEntries=entries.filter(entry=>statements.some(statement=>statement.id===entry.statement_id));
+  const matchingEntries=entries.filter(entry=>statements.some(statement=>statement.id===entry.statement_id));
+  const cardEntries=view==='edit'?matchingEntries:sortEntries(matchingEntries,sort);
 
   const settlementTotal=statements.reduce((sum,item)=>sum+statementSettlementAmount(item,cardEntries,categorySettings),0);
   const excluded=total-settlementTotal;
@@ -60,7 +63,7 @@ export function CardStatementPanel({title,color,categorySettings=[],month,statem
             {!group.entries.length&&<p className="card-panel-more">該当する明細はありません。</p>}
           </section>):statements.map(statement=><div className="card-panel-statement" key={statement.id}>
             <div className="card-panel-statement-title"><strong>{statements.length===1?'合計':statement.title}</strong><span>{yen(view==='edit'?entries.filter(entry=>entry.statement_id===statement.id).reduce((sum,entry)=>sum+entry.amount,0):statement.confirmed_total)}</span></div>
-            {entries.filter(entry=>entry.statement_id===statement.id).map(entry=><div className="card-panel-entry" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.spent_on||'利用日不明'}</small>{view!=='edit'?<small className="entry-category"><CategoryIcon name={categoryAppearance(entry.category,categorySettings).icon} color={categoryAppearance(entry.category,categorySettings).color} size={14}/>{entry.category}</small>:<select disabled={busy} aria-label={`${entry.title}の費目`} value={entry.category} onChange={event=>onChangeCategory(entry.id,event.target.value as Category)}>{allCategoryAppearances(categorySettings).map(({category})=><option key={category}>{category}</option>)}</select>}</div>{view==='edit'?<label className="entry-amount-editor"><span aria-hidden="true">¥</span><input type="number" inputMode="decimal" step="1" aria-label={`${entry.title}の金額（円）`} aria-invalid={!Number.isSafeInteger(entry.amount)||entry.amount===0||Math.abs(entry.amount)>100_000_000} disabled={busy} value={amountDraft[entry.id]??String(entry.amount)} onChange={event=>onChangeAmount(entry.id,event.target.value)}/></label>:<span>{yen(entry.amount)}</span>}</div>)}
+            {cardEntries.filter(entry=>entry.statement_id===statement.id).map(entry=><div className="card-panel-entry" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.spent_on||'利用日不明'}</small>{view!=='edit'?<small className="entry-category"><CategoryIcon name={categoryAppearance(entry.category,categorySettings).icon} color={categoryAppearance(entry.category,categorySettings).color} size={14}/>{entry.category}</small>:<select disabled={busy} aria-label={`${entry.title}の費目`} value={entry.category} onChange={event=>onChangeCategory(entry.id,event.target.value as Category)}>{allCategoryAppearances(categorySettings).map(({category})=><option key={category}>{category}</option>)}</select>}</div>{view==='edit'?<label className="entry-amount-editor"><span aria-hidden="true">¥</span><input type="number" inputMode="decimal" step="1" aria-label={`${entry.title}の金額（円）`} aria-invalid={!Number.isSafeInteger(entry.amount)||entry.amount===0||Math.abs(entry.amount)>100_000_000} disabled={busy} value={amountDraft[entry.id]??String(entry.amount)} onChange={event=>onChangeAmount(entry.id,event.target.value)}/></label>:<span>{yen(entry.amount)}</span>}</div>)}
           </div>)}
         </>:<div className="card-panel-empty"><p>この月の明細はまだありません。</p></div>}
       </div>

@@ -1,0 +1,13 @@
+.entry-sort-controls { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.entry-sort-button { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; gap: 5px; min-height: 44px; padding: 8px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; transition: background-color 220ms ease, color 220ms ease; }
+.entry-sort-button[aria-pressed='true'] { background: var(--soft); color: var(--ink); }
+.entry-sort-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.entry-sort-arrow { transform-origin: 6px 12px; transition: transform 280ms cubic-bezier(.22,1,.36,1); }
+.entry-sort-icon[data-ascending='true'] .entry-sort-arrow { transform: rotate(180deg); }
+.entry-sort-bar { transform-origin: 12px 12px; transition: transform 280ms cubic-bezier(.22,1,.36,1); }
+.entry-sort-bar-middle { transform: scaleX(.65); }
+.entry-sort-bar-last, .entry-sort-icon[data-ascending='true'] .entry-sort-bar-first { transform: scaleX(.3); }
+.entry-sort-icon[data-ascending='true'] .entry-sort-bar-last { transform: scaleX(1); }
+@media (prefers-reduced-motion: reduce) {
+  .entry-sort-button, .entry-sort-arrow, .entry-sort-bar { transition: none; }
+}
