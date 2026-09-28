@@ -86,7 +86,7 @@ function pieSlice(start:number,end:number) {
   // Two arcs also handle a single category occupying the entire circle.
   return `M 100 100 L ${point(start)} A 88 88 0 0 1 ${point((start+end)/2)} A 88 88 0 0 1 ${point(end)} Z`;
 }
-export function CategoryChart({data,settings=[],animateAmounts=true}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[];animateAmounts?:boolean}) {
+export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCategory}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[];animateAmounts?:boolean;onSelectCategory?:(category:Category,source:HTMLElement)=>void}) {
   const reduce=useReducedMotion();
   const [view,setView]=useState<'bar'|'pie'>('bar');
   const items=[...data].sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount));
@@ -108,14 +108,17 @@ export function CategoryChart({data,settings=[],animateAmounts=true}:{data:{cate
     </div>
     <AnimatePresence mode="wait" initial={false}><motion.div key={view} initial={{opacity:0,y:reduce?0:5}} animate={{opacity:1,y:0}} exit={{opacity:0,y:reduce?0:-3}} transition={{duration:reduce?0:.15}}>
     {view==='pie'&&<div className="category-pie">
-      {positive>0?<svg viewBox="0 0 200 200" role="img" aria-label="カテゴリ別の支払い割合。内訳は下の一覧に表示しています。">
-        {slices.map(item=><motion.path key={item.category} fill={displayColor(categoryAppearance(item.category,settings).color)} stroke="var(--canvas)" strokeWidth={1.5} initial={reduce?false:{d:item.path,scale:0,opacity:0}} animate={{d:item.path,scale:1,opacity:1}} transition={{duration:reduce?0:.5,ease}} style={{transformOrigin:'100px 100px'}}><title>{item.category}：{yen(item.amount)}（{Math.round(item.amount/positive*100)}%）</title></motion.path>)}
+      {positive>0?<svg viewBox="0 0 200 200" role={onSelectCategory?'group':'img'} aria-label="カテゴリ別の支払い割合。内訳は下の一覧に表示しています。">
+        {slices.map(item=><motion.path key={item.category} role={onSelectCategory?'button':undefined} tabIndex={onSelectCategory?0:undefined} aria-label={onSelectCategory?`${item.category}の明細を見る`:undefined} aria-haspopup={onSelectCategory?'dialog':undefined} onClick={onSelectCategory?event=>onSelectCategory(item.category,event.currentTarget.closest('.category-pie') as HTMLElement):undefined} onKeyDown={onSelectCategory?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSelectCategory(item.category,event.currentTarget.closest('.category-pie') as HTMLElement);}}:undefined} fill={displayColor(categoryAppearance(item.category,settings).color)} stroke="var(--canvas)" strokeWidth={1.5} initial={reduce?false:{d:item.path,scale:0,opacity:0}} animate={{d:item.path,scale:1,opacity:1}} transition={{duration:reduce?0:.5,ease}} style={{transformOrigin:'100px 100px'}}><title>{item.category}：{yen(item.amount)}（{Math.round(item.amount/positive*100)}%）</title></motion.path>)}
       </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
     </div>}
-    <ul><AnimatePresence initial={false}>{items.map((item,index)=><motion.li layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>
+    <ul><AnimatePresence initial={false}>{items.map((item,index)=>{
+      const content=<>
       <div className="category-chart-label"><span><CategoryIcon name={categoryAppearance(item.category,settings).icon} color={categoryAppearance(item.category,settings).color} size={17}/>{item.category}</span><span><strong>{animateAmounts?<NumberTicker value={item.amount}/>:yen(item.amount)}</strong><small>{item.amount<0?'返金':positive?`${Math.round(item.amount/positive*100)}%`:''}</small></span></div>
       {view==='bar'&&<div className={`category-chart-track${item.amount<0?' is-refund':''}`} aria-hidden="true"><motion.div initial={reduce?false:{scaleX:0}} whileInView={{scaleX:1}} viewport={{once:true,amount:.5}} animate={{width:`${Math.abs(item.amount)/maximum*100}%`}} transition={{duration:reduce?0:.55,ease,scaleX:{delay:reduce?0:index*.035,duration:reduce?0:.55,ease}}} style={{background:displayColor(categoryAppearance(item.category,settings).color),transformOrigin:'left'}}/></div>}
-    </motion.li>)}</AnimatePresence></ul>
+      </>;
+      return <motion.li layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>{onSelectCategory?<button type="button" className="category-chart-row panel-source" aria-label={`${item.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>onSelectCategory(item.category,event.currentTarget)}>{content}</button>:content}</motion.li>;
+    })}</AnimatePresence></ul>
     </motion.div></AnimatePresence>
     {refunds&&<p className="category-chart-note">返金はマイナス額で表示。割合はプラスのカテゴリ合計を基準にしています。{view==='pie'&&'円グラフにはプラスのカテゴリのみ表示しています。'}</p>}
   </section>;

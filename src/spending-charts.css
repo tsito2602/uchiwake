@@ -33,3 +33,9 @@
 .category-chart-track > div { height: 100%; border-radius: inherit; }
 .category-chart-track.is-refund > div { background-image: repeating-linear-gradient(135deg,transparent,transparent 4px,#ffffff66 4px,#ffffff66 7px); }
 .category-chart-note { margin-top: 16px; color: var(--muted); font-size: 11px; }
+
+.category-chart-row { display: block; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: 5px; }
+.category-chart-row:focus-visible { outline: 2px solid var(--ink); outline-offset: 6px; }
+.category-chart-row:active { opacity: .7; }
+.category-pie [role='button'] { cursor: pointer; }
+.category-pie [role='button']:focus-visible { outline: none; stroke: var(--ink); stroke-width: 3px; }

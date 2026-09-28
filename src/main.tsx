@@ -1,3 +1,4 @@
+import { CategoryEntriesPanel } from './category-entries-panel';
 import { displayColor } from './display-color';
 import { AppUpdateSettings, AppInfo } from './app-update-settings';
 import { AppearanceSettings } from './appearance-settings';
@@ -85,6 +86,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const [categoryDraft,setCategoryDraft]=useState<Record<string,Category>>({});
   const [amountDraft,setAmountDraft]=useState<Record<string,string>>({});
   const [openCard,setOpenCard]=useState<OpenCard|null>(null);
+  const [categoryDetails,setCategoryDetails]=useState<{category:Category;origin?:PanelOrigin;closing?:boolean}|null>(null);
   const [cardSettings,setCardSettings]=useState<OpenSettings|null>(null);
   const [categorySettings,setCategorySettings]=useState<{saved:CategoryAppearance;draft:CategoryAppearance;isNew?:boolean;view:'summary'|'edit';origin?:PanelOrigin;closing?:boolean}|null>(null);
   const [rentAmount,setRentAmount]=useState('');
@@ -112,7 +114,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     if(loadedMode.current!==demoView){loadedMode.current=demoView;setState(null);setHistory([]);}
     void load();
   },[month,demoView]);
-  useEffect(()=>{cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});},[month,demoView]);
+  useEffect(()=>{cardDestination.current=null;setCategoryDetails(null);setOpenCard(null);setCategoryDraft({});setAmountDraft({});},[month,demoView]);
   useEffect(()=>{setRentStartMonth(month);},[month]);
   useEffect(()=>{const active=state?.cards.filter(card=>card.active)||[];if(active.length&&!active.some(card=>card.id===selectedCardId))setSelectedCardId(active[0].id);},[state?.cards,selectedCardId]);
   const displayedMonth=state?.month??month;
@@ -205,6 +207,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     }catch(e){setNotice(`変更をすべて保存できませんでした。再度保存してください。${e instanceof Error?e.message:String(e)}`);}finally{setBusy(false);}
   }
   const addBill=(source?:HTMLElement)=>setEditing({type:'bill',view:'summary',initialView:'summary',origin:source?panelOrigin(source):undefined,data:state?.bills.find(b=>b.kind==='rent')||{due_month:month,kind:'rent',title:'家賃',amount:rent.amount,note:''}});
+  const dismissCategoryDetails=()=>setCategoryDetails(current=>current?{...current,closing:true}:null);
   const dismissCard=()=>setOpenCard(current=>current?{...current,closing:true}:null);
   const dismissBill=()=>setEditing(current=>current?{...current,closing:true}:null);
   const dismissSettings=()=>setCardSettings(current=>current?{...current,closing:true}:null);
@@ -263,6 +266,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     setImportPanel({origin:source instanceof HTMLElement?panelOrigin(source):undefined});
   };
   const selectTab=(value:Tab)=>{
+    setCategoryDetails(null);
     if(value==='import'){
       if(openCard){cardDestination.current='import';dismissCard();return;}
       openImport();return;
@@ -274,7 +278,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     const order:Tab[]=['home','ledger','settings','import'];
     transitionPage(order.indexOf(value)<order.indexOf(tab)?-1:1,update);
   };
-  const switchDemo=(enabled:boolean)=>{window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setScreenshots([]);setEditing(null);setDemoView(enabled);};
+  const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setScreenshots([]);setEditing(null);setDemoView(enabled);};
   const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&!!draft.card_id&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount&&!isReviewCategory(e.category,state?.category_settings));
   const chart=history.length?history.slice(-chartMonths):Array.from({length:chartMonths},(_,index)=>({month:bump(month,index-chartMonths+1),amount:0,total:0}));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
@@ -282,7 +286,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const cardContext:DockContext|undefined=openCard?{
     label:'カードの明細',
     onBack:()=>{if(busy)return;if(openCard.view==='edit'){setCategoryDraft({});setAmountDraft({});setOpenCard({...openCard,view:'details'});}else dismissCard();},
-    actionLabel:openCard.view==='edit'?(busy?'保存中…':'変更を保存する'):openCard.view==='details'?'編集':!panelStatements.length?'明細を取り込む':'すべての明細を見る',
+    actionLabel:openCard.view==='edit'?(busy?'保存中…':'変更を保存する'):openCard.view==='details'?'編集':!panelStatements.length?'明細を取り込む':'明細画面へ',
     compact:openCard.view==='details',
     commit:openCard.view==='edit',
     actionIcon:openCard.view==='details'?'edit':undefined,
@@ -351,7 +355,8 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
     disabled:busy||demoView||!validCategoryName(categorySettings.draft.category)||categoryNameDuplicate||(!categorySettings.isNew&&categorySettings.saved.icon===categorySettings.draft.icon&&categorySettings.saved.color===categorySettings.draft.color&&categorySettings.saved.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.saved.include_in_settlement!==false)===(categorySettings.draft.include_in_settlement!==false))
   }:undefined;
   const PageIcon=({home:Calculator,ledger:ReceiptText,settings:Settings,import:Camera} as const)[tab];
-  const dockContext=(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||undefined;
+  const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
+  const dockContext=(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||undefined;
   return <>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button></nav>
@@ -381,7 +386,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
       </>}
       {tab==='ledger'&&<>{state.statements.length? <>
         <div className="ledger-overview"><span>{monthText(displayedMonth)}のカード合計</span><strong><NumberTicker value={cardTotal}/></strong><small>引落月で表示 · 費目は後から変更できます</small></div>
-        {!!breakdown.length&&<CategoryChart data={breakdown} settings={state.category_settings}/>}
+        {!!breakdown.length&&<CategoryChart data={breakdown} settings={state.category_settings} onSelectCategory={(category,source)=>setCategoryDetails({category,origin:panelOrigin(source)})}/>}
         <h2 className="ledger-cards-heading">カード別</h2>
         {state.statements.map(s=><button className="statement-preview panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===s.id?'true':undefined} key={s.id} onClick={event=>setOpenCard({type:'statement',id:s.id,view:'details',origin:panelOrigin(event.currentTarget)})}><span className="statement-preview-heading"><CreditCard size={22} color={displayColor(state.cards.find(card=>card.id===s.card_id)?.color)}/><span><strong>{state.cards.find(card=>card.id===s.card_id)?.name||s.title}</strong><small>{state.entries.filter(e=>e.statement_id===s.id).length}件の明細</small></span><ChevronRight size={18}/></span><strong className="statement-preview-amount">{yen(s.confirmed_total)}</strong></button>)}
 
@@ -401,7 +406,8 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
       </>}
       </div>
     </main>
-    <FloatingDock tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(openCard||editing||cardSettings||importPanel||categorySettings)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[]),{id:'rent',label:'家賃',kind:'rent',onClick:()=>addBill()}]}}/>
+    <FloatingDock tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[]),{id:'rent',label:'家賃',kind:'rent',onClick:()=>addBill()}]}}/>
+    {categoryDetails&&state&&<CategoryEntriesPanel category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
     {openCard&&state&&panelTitle&&<CardStatementPanel key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
     {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
