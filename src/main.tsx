@@ -65,6 +65,8 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
   const api:Api=useMemo(()=>spaceApi(space.id),[space.id]);
   const personal=space.kind==='personal';
   const [allocationOpen,setAllocationOpen]=useState(false);
+  const [spaceDock,setSpaceDock]=useState<DockContext>();
+  const [allocationDock,setAllocationDock]=useState<DockContext>();
   const [savingProfile,setSavingProfile]=useState(false);
   async function saveProfile(name:string) {
     setSavingProfile(true);
@@ -138,10 +140,10 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
   useEffect(()=>{const active=state?.cards.filter(card=>card.active)||[];if(active.length&&!active.some(card=>card.id===selectedCardId))setSelectedCardId(active[0].id);},[state?.cards,selectedCardId]);
   useEffect(()=>()=>{requestId.current++;},[]);
   useEffect(()=>{
-    const refresh=()=>{if(document.visibilityState==='visible'&&!busy&&!openCard&&!editing&&!cardSettings&&!categorySettings&&!importPanel&&!allocationOpen)void load();};
+    const refresh=()=>{if(document.visibilityState==='visible'&&!busy&&!openCard&&!editing&&!cardSettings&&!categorySettings&&!importPanel&&!allocationOpen&&!spaceDock)void load();};
     const timer=window.setInterval(refresh,15000);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
     return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
-  },[month,demoView,busy,openCard,editing,cardSettings,categorySettings,importPanel,allocationOpen]);
+  },[month,demoView,busy,openCard,editing,cardSettings,categorySettings,importPanel,allocationOpen,spaceDock]);
   const displayedMonth=state?.month??month;
   const rent=useMemo(()=>rentForMonth(displayedMonth,state?.bills||[],state?.rent_rules||[]),[displayedMonth,state]);
   const splitItems=useMemo(()=>state?settlementItems(state,personal):[],[state,personal]);
@@ -385,9 +387,9 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
   }:undefined;
   const PageIcon=({home:Calculator,ledger:ReceiptText,settings:Settings,import:Camera} as const)[tab];
   const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,entryControls:{sort:categorySort,onSort:setCategorySort,groupByCard,onGroupByCard:setGroupByCard},backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
-  const dockContext=(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||undefined;
+  const dockContext=spaceDock||allocationDock||(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||undefined;
   return <>
-    <SpaceControls space={space} spaces={spaces} userId={user.id} members={state?.members??[]} disabled={busy||!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onRefresh={refreshSpaces} onReload={load}/>
+    <SpaceControls space={space} spaces={spaces} userId={user.id} members={state?.members??[]} disabled={busy||!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onRefresh={refreshSpaces} onReload={load} onDockChange={setSpaceDock}/>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button></nav>
       <div id="main-content">
@@ -438,8 +440,8 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
       </>}
       </div>
     </main>
-    <FloatingDock personal={personal} tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
-    {allocationOpen&&state?.settlement&&<SettlementSettingsPanel spaceId={space.id} month={month} members={state.members??[]} settings={state.settlement} items={splitItems} api={api} onClose={()=>setAllocationOpen(false)} onSaved={load}/>}
+    <FloatingDock personal={personal} tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(spaceDock||allocationDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
+    {allocationOpen&&state?.settlement&&<SettlementSettingsPanel spaceId={space.id} month={month} members={state.members??[]} settings={state.settlement} items={splitItems} api={api} onClose={()=>setAllocationOpen(false)} onSaved={load} onDockChange={setAllocationDock}/>}
     {categoryDetails&&state&&<CategoryEntriesPanel sort={categorySort} groupByCard={groupByCard} category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
     {openCard&&state&&panelTitle&&<CardStatementPanel sort={cardSort} key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
