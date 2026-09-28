@@ -375,7 +375,11 @@ async function openai(key:string,model:string,content:unknown[],extra:Record<str
 app.all('/api/*', () => error('見つかりません',404));
 app.get('*', c => {
   const path = new URL(c.req.url).pathname;
-  const asset = embeddedAssets[path] || (path.includes('.') ? undefined : embeddedAssets['/index.html']);
+  const comparison = path === '/__icon-check' || path.startsWith('/__icon-check/');
+  if (comparison && c.env.APP_ENV !== 'staging') return error('見つかりません',404);
+  const asset = comparison
+    ? embeddedAssets[path.endsWith('/') ? `${path}index.html` : path]
+    : embeddedAssets[path] || (path.includes('.') ? undefined : embeddedAssets['/index.html']);
   if (!asset) return error('見つかりません',404);
   const body = asset.encoding === 'base64' ? Uint8Array.from(atob(asset.body), char => char.charCodeAt(0)) : asset.body;
   return new Response(body,{headers:{'Content-Type':asset.mime,'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}});
