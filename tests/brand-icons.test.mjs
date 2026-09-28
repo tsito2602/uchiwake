@@ -15,7 +15,7 @@ function bounds({data,info}) {
 }
 test('透過PNGは背景・中央の穴が透明で、半透明の輪郭にも白い下地を含まない',async()=>{
   for(const theme of ['light','dark']) for(const size of [180,192,512]) {
-    const path=size===180?`public/brand-icons/apple-touch-v2-${theme}.png`:`public/brand-icons/uchiwake-v2-${theme}-${size}.png`;
+    const path=size===180?`public/brand-icons/apple-touch-v3-${theme}.png`:`public/brand-icons/uchiwake-v3-${theme}-${size}.png`;
     const {data,info}=await pixels(path);
     assert.equal(info.width,size);assert.equal(info.height,size);
     assert.equal(data[3],0);
@@ -32,25 +32,28 @@ test('透過PNGは背景・中央の穴が透明で、半透明の輪郭にも�
     assert.ok(edgePixels>30,'Antialiasing must remain smooth, not hard-thresholded');
   }
 });
-test('ホーム画面のマークを約14%拡大し、maskableは不透明の安全領域を維持する',async()=>{
+test('ホーム画面のマークを約14%拡大し、maskableも背景と中央の穴を透過する',async()=>{
   const svg=await readFile('public/icon-light.svg','utf8');
   const original=await sharp(Buffer.from(svg.replace('scale(1.14)','scale(1)'))).resize(512,512).png().toBuffer();
   const before=bounds(await pixels(original));
-  const after=bounds(await pixels('public/brand-icons/uchiwake-v2-light-512.png'));
+  const after=bounds(await pixels('public/brand-icons/uchiwake-v3-light-512.png'));
   for(const axis of ['width','height']) assert.ok(Math.abs(after[axis]/before[axis]-1.14)<.015);
   for(const theme of ['light','dark']) {
-    const {data}=await pixels(`public/brand-icons/uchiwake-v2-${theme}-maskable-512.png`);
-    for(let i=3;i<data.length;i+=4) assert.equal(data[i],255);
+    const {data}=await pixels(`public/brand-icons/uchiwake-v3-${theme}-maskable-512.png`);
+    assert.equal(data[3],0);
+    assert.equal(data[((511*512)+511)*4+3],0);
+    assert.equal(data[(Math.round(512*666/1254)*512+256)*4+3],0);
+    assert.ok(data.some((v,i)=>i%4===3&&v===255),'The mark must remain visible');
   }
 });
 test('ホーム画面用PNGは認証なしで取得でき、Worker経由でもバイト列が壊れない',async()=>{
   const html=await readFile('index.html','utf8');
-  assert.match(html,/rel="apple-touch-icon"[^>]*href="\/brand-icons\/apple-touch-v2-light\.png"/);
+  assert.match(html,/rel="apple-touch-icon"[^>]*href="\/brand-icons\/apple-touch-v3-light\.png"/);
   for(const theme of ['light','dark']) {
     const manifest=JSON.parse(await readFile(`public/manifest-${theme}.webmanifest`,'utf8'));
     assert.equal(manifest.icons.filter(icon=>icon.purpose==='any').length,2);
     assert.equal(manifest.icons.filter(icon=>icon.purpose==='maskable').length,1);
-    for(const path of [...manifest.icons.map(icon=>icon.src),`/brand-icons/apple-touch-v2-${theme}.png`]) {
+    for(const path of [...manifest.icons.map(icon=>icon.src),`/brand-icons/apple-touch-v3-${theme}.png`]) {
       const response=await app.fetch(new Request(`https://example.test${path}`),{});
       assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');
       assert.deepEqual(Buffer.from(await response.arrayBuffer()),await readFile(`public${path}`));

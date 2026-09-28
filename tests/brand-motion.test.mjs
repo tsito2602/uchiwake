@@ -82,11 +82,11 @@ test('動きを減らす設定・Canvas非対応では静止表示から安全�
 test('OSテーマ変更でアイコンとPWA設定を更新し、起動画面終了後も追従する',()=>{
   const app=launch({dark:true,alreadyReady:true});
   assert.equal(app.ids['app-icon'].attrs.href,'/icon-dark.svg');
-  assert.equal(app.ids['app-touch-icon'].attrs.href,'/brand-icons/apple-touch-v2-dark.png');
+  assert.equal(app.ids['app-touch-icon'].attrs.href,'/brand-icons/apple-touch-v3-dark.png');
   assert.equal(app.ids['app-manifest'].attrs.href,'/manifest-dark.webmanifest');
   app.advance(BOOT_HOLD_END);app.advance(240);
   app.darkMedia.matches=false;app.darkMedia.listener();
   assert.equal(app.ids['app-icon'].attrs.href,'/icon-light.svg');
-  assert.equal(app.ids['app-touch-icon'].attrs.href,'/brand-icons/apple-touch-v2-light.png');
+  assert.equal(app.ids['app-touch-icon'].attrs.href,'/brand-icons/apple-touch-v3-light.png');
   assert.equal(app.ids['app-theme-color'].attrs.content,'#fbf8f2');
 });

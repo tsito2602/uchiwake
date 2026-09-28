@@ -9,19 +9,19 @@
   "theme_color": "#fbf8f2",
   "icons": [
     {
-      "src": "/brand-icons/uchiwake-v2-light-192.png",
+      "src": "/brand-icons/uchiwake-v3-light-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/brand-icons/uchiwake-v2-light-512.png",
+      "src": "/brand-icons/uchiwake-v3-light-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/brand-icons/uchiwake-v2-light-maskable-512.png",
+      "src": "/brand-icons/uchiwake-v3-light-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
