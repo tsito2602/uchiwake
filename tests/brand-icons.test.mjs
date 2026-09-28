@@ -5,14 +5,18 @@ import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import app from '../dist/worker.mjs';
 
-// In-app artwork stays identical to the accepted baseline.
+// Only the requested first-stroke thickness may differ from the in-app baseline.
+const previousHead='M 451 254 Q 647 164 838 286 Q 856 298 848 315 L 819 365 Q 811 381 796 373 Q 642 289 482 350 Q 469 355 462 340 L 441 291 Q 434 266 451 254 Z';
 const originals = {
   'logo-light.svg':'67ca2bcb04ca3b40d08c7fbeb674ddfa310a3d217bfae8a1e6ba9e8c2ccc2966',
   'logo-dark.svg':'e9bfae5e7be5ff27a78f6dffc5f856e50e25f9551a264802ec046cd6213266ef',
 };
-test('アプリ内ロゴはバイト単位で維持する',async()=>{
+test('アプリ内ロゴは1画目だけ少し太くし、残りの図柄・配色は維持する',async()=>{
   for(const [name,hash] of Object.entries(originals)) {
-    assert.equal(createHash('sha256').update(await readFile(`public/${name}`)).digest('hex'),hash,name);
+    const svg=await readFile(`public/${name}`,'utf8');
+    const head=svg.match(/<path[^>]* d="([^"]+)"/)[1];
+    assert.match(head,/^M 451 250 Q 647 160/);
+    assert.equal(createHash('sha256').update(svg.replace(head,previousHead)).digest('hex'),hash,name);
   }
 });
 test('ホーム画面だけ白い細縁を付け、明暗で同じ図柄と14%の大きさを維持する',async()=>{
@@ -57,13 +61,13 @@ test('iPhoneに白縁入り透過PNGを明示し、明暗で共通のPNG候補�
   const html=await readFile('index.html','utf8');
   assert.match(html,/rel="icon" href="\/icon\.svg" type="image\/svg\+xml"/);
   assert.match(html,/rel="manifest" href="\/manifest\.webmanifest"/);
-  assert.match(html,/rel="apple-touch-icon" sizes="180x180" href="\/apple-touch-icon-v7\.png"/);
+  assert.match(html,/rel="apple-touch-icon" sizes="180x180" href="\/apple-touch-icon-v8\.png"/);
   assert.equal((html.match(/rel="apple-touch-icon"/g)||[]).length,1);
   for(const theme of ['light','dark']) {
     const manifest=JSON.parse(await readFile(`public/manifest-${theme}.webmanifest`,'utf8'));
     assert.equal(manifest.id,'/');
     assert.deepEqual(manifest.icons,[
-      ...[192,512].map(size=>({src:`/icon-v7-${size}.png`,sizes:`${size}x${size}`,type:'image/png',purpose:'any'})),
+      ...[192,512].map(size=>({src:`/icon-v8-${size}.png`,sizes:`${size}x${size}`,type:'image/png',purpose:'any'})),
       {src:'/icon.svg',sizes:'any',type:'image/svg+xml',purpose:'maskable'},
     ]);
     assert.equal(manifest.background_color,'#FFFFFF');
@@ -76,7 +80,7 @@ test('iPhoneに白縁入り透過PNGを明示し、明暗で共通のPNG候補�
 test('実際に登録するPNGはKondoと同じ書き出し条件で、180pxでも白縁が残る',async()=>{
   const source=(await readFile('public/icon-light.svg','utf8')).replace(/<rect\b[^>]*\/>/,'');
   for(const size of [180,192,512]) {
-    const name=size===180?'apple-touch-icon-v7.png':`icon-v7-${size}.png`;
+    const name=size===180?'apple-touch-icon-v8.png':`icon-v8-${size}.png`;
     const file=await readFile(`public/${name}`);
     const expected=await sharp(Buffer.from(source),{density:384}).resize(size,size).png({compressionLevel:9,palette:false}).toBuffer();
     assert.deepEqual(file,expected);
@@ -92,9 +96,12 @@ test('実際に登録するPNGはKondoと同じ書き出し条件で、180pxで�
     assert.equal(response.headers.get('content-type'),'image/png');
     assert.deepEqual(Buffer.from(await response.arrayBuffer()),file);
   }
-  assert.deepEqual(await readFile('public/apple-touch-icon.png'),await readFile('public/apple-touch-icon-v7.png'));
+  assert.deepEqual(await readFile('public/apple-touch-icon.png'),await readFile('public/apple-touch-icon-v8.png'));
+  const updatedHead=(await readFile('public/logo-light.svg','utf8')).match(/<path[^>]* d="([^"]+)"/)[1];
+  const selectedC=(await readFile('scripts/fixtures/uchiwake-v7.svg','utf8')).replaceAll('#30302f','#000000');
+  assert.equal(source,selectedC.replaceAll(previousHead,updatedHead),'only thicken C’s first stroke, using the same contour as the in-app logo');
   const response=await app.fetch(new Request('https://example.test/'),{});
-  assert.match(await response.text(),/rel="apple-touch-icon"[^>]*href="\/apple-touch-icon-v7\.png"/);
+  assert.match(await response.text(),/rel="apple-touch-icon"[^>]*href="\/apple-touch-icon-v8\.png"/);
 });
 test('SVGはWorker経由でも生成画像と同じバイト列で配信する',async()=>{
   for(const name of ['icon.svg','icon-light.svg','icon-dark.svg',...Object.keys(originals)]) {

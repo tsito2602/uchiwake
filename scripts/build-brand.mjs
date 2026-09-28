@@ -10,7 +10,7 @@ const chartOutline = 'M 320 517 Q 531 293 796 415 L 817 430 C 944 504 997 657 92
 function svg(theme, logo = false) {
   // Home-screen artwork stays dark with a deliberate white edge in both themes.
   // In-app logos keep their own light/dark palettes, with no edge.
-  const colors = BRAND_THEMES[logo ? theme : 'light'];
+  const colors = logo ? BRAND_THEMES[theme] : { ...BRAND_THEMES.light, ink: '#000000' };
   // Preserve the gap between strokes after thickening both white rims.
   const headOffset = logo ? '' : ' transform="translate(0 -28)"';
   const paths = pathData.map((d, i) => { const part = i === 2 ? 'mid' : i === 3 ? 'pale' : 'ink'; return `<path class="${part}" fill="${colors[part]}" d="${d}"${i === 0 ? headOffset : ''}/>`; }).join('');
@@ -26,13 +26,13 @@ const touchSource = svg('light');
 for (const size of [180, 192, 512]) {
   const png = await sharp(Buffer.from(touchSource), { density: 384 })
     .resize(size, size).png({ compressionLevel: 9, palette: false }).toBuffer();
-  await writeFile(size === 180 ? 'public/apple-touch-icon-v7.png' : `public/icon-v7-${size}.png`, png);
+  await writeFile(size === 180 ? 'public/apple-touch-icon-v8.png' : `public/icon-v8-${size}.png`, png);
   if (size === 180) await writeFile('public/apple-touch-icon.png', png);
 }
 for (const theme of ['light', 'dark']) {
   await writeFile(`public/icon-${theme}.svg`, svg(theme));
   await writeFile(`public/logo-${theme}.svg`, svg(theme, true));
-  const icons = [192, 512].map(size => ({src:`/icon-v7-${size}.png`, sizes:`${size}x${size}`, type:'image/png', purpose:'any'}));
+  const icons = [192, 512].map(size => ({src:`/icon-v8-${size}.png`, sizes:`${size}x${size}`, type:'image/png', purpose:'any'}));
   icons.push({src:'/icon.svg', sizes:'any', type:'image/svg+xml', purpose:'maskable'});
   // Every home-screen candidate is transparent and theme-independent, like Kondo.
   // Manifest colors describe the app shell, not a PNG/SVG background layer.

@@ -14,7 +14,7 @@ test('比較ページはstagingだけで配信し、未知のURLを通常アプ�
   }
   assert.equal((await get(`${base}/missing/`)).status,404);
   const main=await(await get('/')).text();
-  assert.match(main,/apple-touch-icon-v7\.png/);
+  assert.match(main,/apple-touch-icon-v8\.png/);
   assert.doesNotMatch(main,/__icon-check/);
 });
 test('A/Bは実機で比較した画像そのものを配信し、全案で登録条件を揃える',async()=>{
