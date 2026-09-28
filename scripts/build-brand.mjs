@@ -46,3 +46,5 @@ for (const theme of ['light', 'dark']) {
 }
 await writeFile('public/icon.svg', svg('light'));
 await build({entryPoints:['src/boot.ts'], outfile:'public/boot.js', bundle:true, minify:true, format:'iife', target:'es2022'});
+
+await build({entryPoints:['src/theme-init.ts'], outfile:'public/theme-init.js', bundle:true, minify:true, format:'iife', target:'es2022'});

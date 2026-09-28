@@ -1,6 +1,6 @@
 // Approved uchiwake launch: clockwise donut fill and continuous single-roll motion.
 export type Point=number[];
-export const BRAND_THEMES={light:{background:"#fbf8f2",ink:"#000000",mid:"#9c978f",pale:"#cbc5bb"},dark:{background:"#191919",ink:"#f5f1e9",mid:"#b6b0a6",pale:"#817b72"}} as const;
+export const BRAND_THEMES={light:{background:"#ffffff",ink:"#000000",mid:"#9c978f",pale:"#cbc5bb"},dark:{background:"#000000",ink:"#f5f1e9",mid:"#b6b0a6",pale:"#817b72"}} as const;
 // Share the installed icon's first-stroke placement across every brand surface.
 export const FIRST_STROKE_OFFSET_Y=-28;
 export type BrandTheme=keyof typeof BRAND_THEMES;

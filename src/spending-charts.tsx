@@ -64,14 +64,14 @@ export function SettlementChart({data,month}:{data:HistoryPoint[];month:string})
       onPointerUp={event=>{if(dragging.current!==event.pointerId)return;release();if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}}
       onPointerCancel={release} onLostPointerCapture={release}>
       <svg viewBox="0 0 1000 160" preserveAspectRatio="none" aria-hidden="true">
-        {point&&<motion.line x1={(index+.5)*slot} x2={(index+.5)*slot} y1="0" y2="156" stroke="#dedede" strokeDasharray="2 4" vectorEffect="non-scaling-stroke"/>}
+        {point&&<motion.line x1={(index+.5)*slot} x2={(index+.5)*slot} y1="0" y2="156" stroke="var(--line)" strokeDasharray="2 4" vectorEffect="non-scaling-stroke"/>}
         {data.map((item,i)=>{
           const selected=active===i;
           const height=item.total?Math.max(5,Math.abs(item.total)/maximum*132):3;
           const width=slot*(selected?.74:.42);
           // Entrance is separate from scrubbing, so the stagger never delays selection.
           return <g key={`${data.length}-${item.month}`} className="history-bar-grow" style={{'--bar-delay':`${i*Math.min(.045,.3/Math.max(1,data.length-1))}s`,animation:reduce?'none':undefined} as CSSProperties}>
-            <motion.rect initial={false} animate={{x:(i+.5)*slot-width/2,y:156-height*(selected?1.08:1),width,height:height*(selected?1.08:1),fill:selected?'#171717':item.month===month?'#686868':item.total?'#c8c8c8':'#e9e9e9'}} transition={{duration:reduce?0:.28,ease}} rx={Math.min(5,slot*.12)}/>
+            <motion.rect fill={selected?'var(--ink)':item.month===month?'var(--history-current)':item.total?'var(--history-bar)':'var(--soft)'} initial={false} animate={{x:(i+.5)*slot-width/2,y:156-height*(selected?1.08:1),width,height:height*(selected?1.08:1)}} transition={{duration:reduce?0:.28,ease}} rx={Math.min(5,slot*.12)}/>
           </g>;
         })}
       </svg>
@@ -108,7 +108,7 @@ export function CategoryChart({data,settings=[]}:{data:{category:Category;amount
     <AnimatePresence mode="wait" initial={false}><motion.div key={view} initial={{opacity:0,y:reduce?0:5}} animate={{opacity:1,y:0}} exit={{opacity:0,y:reduce?0:-3}} transition={{duration:reduce?0:.15}}>
     {view==='pie'&&<div className="category-pie">
       {positive>0?<svg viewBox="0 0 200 200" role="img" aria-label="カテゴリ別の支払い割合。内訳は下の一覧に表示しています。">
-        {slices.map(item=><motion.path key={item.category} fill={categoryAppearance(item.category,settings).color} stroke="white" strokeWidth={1.5} initial={reduce?false:{d:item.path,scale:0,opacity:0}} animate={{d:item.path,scale:1,opacity:1}} transition={{duration:reduce?0:.5,ease}} style={{transformOrigin:'100px 100px'}}><title>{item.category}：{yen(item.amount)}（{Math.round(item.amount/positive*100)}%）</title></motion.path>)}
+        {slices.map(item=><motion.path key={item.category} fill={categoryAppearance(item.category,settings).color} stroke="var(--canvas)" strokeWidth={1.5} initial={reduce?false:{d:item.path,scale:0,opacity:0}} animate={{d:item.path,scale:1,opacity:1}} transition={{duration:reduce?0:.5,ease}} style={{transformOrigin:'100px 100px'}}><title>{item.category}：{yen(item.amount)}（{Math.round(item.amount/positive*100)}%）</title></motion.path>)}
       </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
     </div>}
     <ul><AnimatePresence initial={false}>{items.map((item,index)=><motion.li layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>

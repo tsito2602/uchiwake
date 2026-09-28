@@ -39,14 +39,14 @@ function launch({dark=false,reduced=false,alreadyReady=false,canvas=true}={}) {
   let now=0,id=0;
   const timers=new Map(),frames=new Map(),events=new Map();
   const context=new Proxy({}, {get:(obj,key)=>obj[key] ?? (()=>{}),set:(obj,key,value)=>(obj[key]=value,true)});
-  const element=()=>({dataset:{},attrs:{},isConnected:true,classList:{add(){}},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},remove(){this.isConnected=false}});
+  const element=()=>({dataset:{},style:{},attrs:{},isConnected:true,classList:{add(){}},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},remove(){this.isConnected=false}});
   const ids=Object.fromEntries(['initial-boot','root','boot-canvas','boot-still','app-icon','app-manifest','app-theme-color'].map(k=>[k,element()]));
   ids['boot-canvas'].getContext=()=>canvas?context:null;
   if(alreadyReady) ids.root.dataset.bootReady='true';
   const media=matches=>({matches,addEventListener(_,fn){this.listener=fn},removeEventListener(){this.listener=null}});
   const darkMedia=media(dark),reducedMedia=media(reduced);
   const document={documentElement:element(),getElementById:k=>ids[k],addEventListener:(k,f)=>events.set(k,f),removeEventListener:k=>events.delete(k)};
-  const sandbox={document,matchMedia:q=>q.includes('color-scheme')?darkMedia:reducedMedia,performance:{now:()=>now},devicePixelRatio:1,
+  const sandbox={document,Event,addEventListener:(k,f)=>events.set(k,f),dispatchEvent:e=>events.get(e.type)?.(e),matchMedia:q=>q.includes('color-scheme')?darkMedia:reducedMedia,performance:{now:()=>now},devicePixelRatio:1,
     setTimeout:(fn,ms)=>{timers.set(++id,{fn,at:now+ms});return id},clearTimeout:k=>timers.delete(k),requestAnimationFrame:fn=>{frames.set(++id,fn);return id},cancelAnimationFrame:k=>frames.delete(k)};
   sandbox.window=sandbox;
   vm.runInNewContext(boot,sandbox);
@@ -94,5 +94,5 @@ test('OSテーマ変更はアプリ内だけに適用し、ホーム用アイコ
   assert.equal(app.ids['app-icon'].attrs.href,undefined);
   assert.equal(app.ids['app-manifest'].attrs.href,undefined);
   assert.equal(app.ids['boot-still'].src,'/logo-light.svg');
-  assert.equal(app.ids['app-theme-color'].attrs.content,'#fbf8f2');
+  assert.equal(app.ids['app-theme-color'].attrs.content,'#ffffff');
 });

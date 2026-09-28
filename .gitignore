@@ -9,3 +9,5 @@ dist/
 *.tsbuildinfo
 *.log
 worker/generated-assets.ts
+
+public/theme-init.js

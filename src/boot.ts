@@ -1,24 +1,23 @@
-import { BRAND_THEMES, BOOT_HOLD_END, BOOT_EXIT_DURATION, drawBrand, type BrandTheme } from './brand-motion';
+import { initializeTheme, THEME_EVENT } from './theme';
+import { BOOT_HOLD_END, BOOT_EXIT_DURATION, drawBrand, type BrandTheme } from './brand-motion';
 
 const screen = document.getElementById('initial-boot');
 const root = document.getElementById('root');
 const canvas = document.getElementById('boot-canvas') as HTMLCanvasElement | null;
 const still = document.getElementById('boot-still') as HTMLImageElement | null;
-const dark = matchMedia('(prefers-color-scheme: dark)');
+initializeTheme();
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-let theme: BrandTheme = dark.matches ? 'dark' : 'light';
+let theme: BrandTheme = document.documentElement.dataset.brandTheme === 'dark' ? 'dark' : 'light';
 let elapsed = 0;
 const ctx = canvas?.getContext('2d');
 function syncTheme() {
-  theme = dark.matches ? 'dark' : 'light';
-  document.documentElement.dataset.brandTheme = theme;
+  theme = document.documentElement.dataset.brandTheme === 'dark' ? 'dark' : 'light';
   // Home-screen artwork stays fixed; only the in-app appearance follows this theme.
-  document.getElementById('app-theme-color')?.setAttribute('content', BRAND_THEMES[theme].background);
   if (still) still.src = `/logo-${theme}.svg`;
   if (ctx && canvas && screen?.isConnected) drawBrand(ctx, canvas.width, canvas.height, elapsed, theme);
 }
 syncTheme();
-dark.addEventListener('change', syncTheme);
+window.addEventListener(THEME_EVENT, syncTheme);
 
 if (screen && root && canvas) {
   let ready = root.dataset.bootReady === 'true';

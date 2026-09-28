@@ -23,13 +23,10 @@
 .account-avatar { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--soft); font-size: 17px; }
 .auth-notice { position: fixed; z-index: 100; top: max(16px, env(safe-area-inset-top)); left: 16px; right: 16px; max-width: 600px; margin: auto; padding: 16px; border-radius: 12px; background: var(--paper); color: var(--ink); box-shadow: 0 4px 24px #0002; font-size: 13px; }
 .auth-notice button { float: right; border: 0; background: none; color: inherit; font-size: 20px; }
-@media (prefers-color-scheme: dark) { .google-sign-in { background: #131314; color: #e3e3e3; border-color: #8e918f; } .google-sign-in:hover:not(:disabled) { background: #242426; } .login-error { color: #ffa599; } }
-@media (prefers-color-scheme: dark) {
-  body:has(.login), .login { background: #191919; color: #f5f1e9; }
-  .login-brand-icon .ink { fill: #f5f1e9; }
-  .login-brand-icon .mid { fill: #b6b0a6; }
-  .login-brand-icon .pale { fill: #817b72; }
-  .login-status { color: #b6b0a6; }
-  .login-retry { color: #f5f1e9; }
-  .login :focus-visible { outline-color: #f5f1e9; }
-}
+
+:root[data-brand-theme='dark'] .google-sign-in { background: #131314; color: #e3e3e3; border-color: #8e918f; }
+:root[data-brand-theme='dark'] .google-sign-in:hover:not(:disabled) { background: #242426; }
+:root[data-brand-theme='dark'] .login-error { color: #ffa599; }
+:root[data-brand-theme='dark'] .login-brand-icon .ink { fill: #f5f1e9; }
+:root[data-brand-theme='dark'] .login-brand-icon .mid { fill: #b6b0a6; }
+:root[data-brand-theme='dark'] .login-brand-icon .pale { fill: #817b72; }

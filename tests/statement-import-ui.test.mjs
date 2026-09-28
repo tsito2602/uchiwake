@@ -102,14 +102,14 @@ test('新しい明細をパネル内だけで追従し、動きを減らす設�
   assert.equal(moves.pop().top,0);
 });
 
-test('編集できる行をアイコンで示し、確認チェックは黒いアニメーションとキーボード操作を備える',()=>{
+test('編集できる行をアイコンで示し、確認チェックはテーマ色のアニメーションとキーボード操作を備える',()=>{
   const markup=review({...props,checked:true});
   assert.equal((markup.match(/class="import-entry-edit"/g)||[]).length,16);
   assert.ok(markup.includes('import-edit-hint'));
   assert.match(markup,/data-checked="true"><input type="checkbox" checked=""/);
   assert.ok(markup.includes('元の明細と内容・金額を確認した'));
   const css=readFileSync(new URL('../src/statement-import.css',import.meta.url),'utf8');
-  assert.match(css,/input:checked \+ \.import-confirm-check \{[^}]*background: #171717;[^}]*animation: import-check-pop/);
+  assert.match(css,/input:checked \+ \.import-confirm-check \{[^}]*background: var\(--brand\);[^}]*animation: import-check-pop/);
   assert.ok(css.includes('input:focus-visible + .import-confirm-check'));
   assert.ok(css.includes('@keyframes import-check-draw'));
 });
