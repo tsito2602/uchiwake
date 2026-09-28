@@ -69,16 +69,18 @@ export function CategoryPie({items,settings,onSelectCategory}:{items:Item[];sett
     const index=hit(event);if(index===null)return;
     reset();stopReveal.current();
     lastPointer.current=performance.now();
-    // Pointer focus must not show the readout before the hold threshold.
+    // Touch feedback is immediate; the timer only distinguishes hold from tap.
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const next={id:event.pointerId,x:event.clientX,y:event.clientY,index,held:false,moved:false};
     press.current=next;
-    timer.current=window.setTimeout(()=>{if(press.current===next&&!next.moved){next.held=true;setActive(next.index);}},350);
+    setActive(index);
+    timer.current=window.setTimeout(()=>{if(press.current===next&&!next.moved){next.held=true;}},350);
   };
   const pointerMove=(event:PointerEvent<SVGSVGElement>)=>{
     const current=press.current;if(!current||current.id!==event.pointerId)return;
-    if(current.held){setActive(hit(event));return;}
+    setActive(hit(event));
+    if(current.held)return;
     if(Math.hypot(event.clientX-current.x,event.clientY-current.y)>10){current.moved=true;window.clearTimeout(timer.current);}
   };
   const pointerUp=(event:PointerEvent<SVGSVGElement>)=>{
@@ -109,6 +111,6 @@ export function CategoryPie({items,settings,onSelectCategory}:{items:Item[];sett
           style={{transform:highlighted?`translate(${Math.cos(angle)*3}px,${Math.sin(angle)*3}px) scale(1.045)`:'translate(0px,0px) scale(1)'}}/>;
       })}</g>
     </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
-    {selected&&<div className="category-pie-readout" role="status" aria-live="polite" data-position={Math.sin(selectedAngle)<0?'bottom':'top'}><span>{selected.category}</span><strong>{yen(selected.amount)}</strong></div>}
+    {selected&&<div className="category-pie-readout" role="status" aria-live="polite" data-position={Math.sin(selectedAngle)<0?'bottom':'top'}><strong>{yen(selected.amount)}</strong><span>{selected.category}</span></div>}
   </div>;
 }
