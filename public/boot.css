@@ -1,0 +1,39 @@
+#initial-boot {
+  --boot-bg: #fbf8f2;
+  --boot-ink: #30302f;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: var(--boot-bg);
+  color: var(--boot-ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  #initial-boot { --boot-bg: #191919; --boot-ink: #f5f1e9; }
+}
+:root[data-brand-theme='light'] #initial-boot { --boot-bg: #fbf8f2; --boot-ink: #30302f; }
+:root[data-brand-theme='dark'] #initial-boot { --boot-bg: #191919; --boot-ink: #f5f1e9; }
+.boot-brand { display: grid; justify-items: center; gap: 22px; }
+.boot-symbol { position: relative; width: 240px; height: 190px; }
+.boot-symbol canvas, .boot-symbol img { position: absolute; inset: 0; width: 100%; height: 100%; }
+#boot-still { visibility: hidden; }
+.boot-name { display: flex; margin: 0; font-size: 28px; font-weight: 650; letter-spacing: .045em; line-height: 1; }
+.boot-name span { display: inline-block; opacity: 0; }
+.boot-running .boot-name span {
+  animation: boot-letter 320ms cubic-bezier(.22, 1, .36, 1) both;
+  animation-delay: calc(2150ms + var(--letter) * 60ms);
+}
+.boot-leaving { animation: boot-leave 240ms ease-out both; }
+@keyframes boot-letter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes boot-leave { to { opacity: 0; } }
+.boot-static #boot-canvas { visibility: hidden; }
+.boot-static #boot-still { visibility: visible; }
+.boot-static .boot-name span { animation: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  #boot-canvas { visibility: hidden; }
+  #boot-still { visibility: visible; }
+  .boot-running .boot-name span { animation: none; opacity: 1; }
+  .boot-leaving { animation: none; }
+}

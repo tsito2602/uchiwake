@@ -54,6 +54,12 @@ function App() {
   const [editing,setEditing]=useState<Editing|null>(null);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
+  useEffect(()=>{
+    if (!state && !notice) return;
+    const root=document.getElementById('root');
+    if(root) root.dataset.bootReady='true';
+    document.dispatchEvent(new Event('uchiwake:ready'));
+  },[state,notice]);
   const [aiMode,setAiMode]=useState<AiMode>('demo');
   const [importMonth,setImportMonth]=useState(month);
   const [screenshots,setScreenshots]=useState<{name:string;image:string}[]>([]);
