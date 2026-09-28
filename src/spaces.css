@@ -9,6 +9,8 @@
 .settlement-hero .hero-secondary[hidden]{display:none}
 
 .space-floating-panel .space-manage h3{font-size:15px;margin:24px 0 8px}
+/* Match the 15px content inset below the card detail header. */
+.space-floating-panel > .card-panel-scroll{padding-top:15px}
 .space-floating-panel .space-invite{padding:20px 0 28px}
 .space-floating-panel .field input{width:100%;box-sizing:border-box}
 .space-floating-panel .mode-options{display:flex}
