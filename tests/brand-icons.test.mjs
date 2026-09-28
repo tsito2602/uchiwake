@@ -1,69 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import sharp from 'sharp';
+import {createHash} from 'node:crypto';
 import app from '../dist/worker.mjs';
 
-const palette = [[48,48,47],[156,151,143],[203,197,187]];
-const pixels = source => sharp(source).ensureAlpha().raw().toBuffer({resolveWithObject:true});
-function bounds({data,info}) {
-  let top=info.height,bottom=0,left=info.width,right=0;
-  for(let y=0;y<info.height;y++) for(let x=0;x<info.width;x++) if(data[(y*info.width+x)*4+3]>127) {
-    top=Math.min(top,y);bottom=Math.max(bottom,y);left=Math.min(left,x);right=Math.max(right,x);
-  }
-  return {height:bottom-top+1,width:right-left+1};
-}
-test('透過PNGは背景・中央の穴が透明で、半透明の輪郭にも白い下地を含まない',async()=>{
-  for(const size of [180,192,512]) {
-    const path=size===180?'public/brand-icons/apple-touch-v4.png':`public/brand-icons/uchiwake-v4-${size}.png`;
-    const {data,info}=await pixels(path);
-    assert.equal(info.width,size);assert.equal(info.height,size);
-    assert.equal(data[3],0);
-    assert.equal(data[((size-1)*size+size-1)*4+3],0);
-    assert.equal(data[(Math.round(size*671.46/1254)*size+Math.round(size/2))*4+3],0);
-    let edgePixels=0;
-    for(let i=0;i<data.length;i+=4) {
-      const a=data[i+3];
-      if(a<32) continue;
-      if(a<255) edgePixels++;
-      const distance=Math.min(...palette.map(color=>Math.max(...color.map((v,c)=>Math.abs(v-data[i+c])))));
-      assert.ok(distance<=9,`${path}: unexpected matte at pixel ${i/4}: ${[...data.subarray(i,i+4)]}`);
-    }
-    assert.ok(edgePixels>30,'Antialiasing must remain smooth, not hard-thresholded');
+// Freeze the pre-resize SVG bytes, not another approximation of the design.
+// Baseline: ff254711030539af11f111fa540f61dbe63e60dd.
+const originals = {
+  'icon.svg':'aa62157249bd46cdc349fad12e610fbe1edff9a301401e02a40ccd9c8df7ce1f',
+  'icon-light.svg':'91f15cc5fccb26018703411ffad309995ace578b51c3286c747fe48303ca5cc1',
+  'icon-dark.svg':'c949755a8e2d41322f3ddd71d21e9b3607ac0fc92e3c4a93db2c77ae38e4c990',
+  'logo-light.svg':'67ca2bcb04ca3b40d08c7fbeb674ddfa310a3d217bfae8a1e6ba9e8c2ccc2966',
+  'logo-dark.svg':'e9bfae5e7be5ff27a78f6dffc5f856e50e25f9551a264802ec046cd6213266ef',
+};
+test('サイズ変更前のSVGを配色・余白・形状も含めバイト単位で復元する',async()=>{
+  for(const [name,hash] of Object.entries(originals)) {
+    assert.equal(createHash('sha256').update(await readFile(`public/${name}`)).digest('hex'),hash,name);
   }
 });
-test('ホーム画面のマークを約14%拡大し、maskableも背景と中央の穴を透過する',async()=>{
-  const svg=await readFile('public/icon-light.svg','utf8');
-  const original=await sharp(Buffer.from(svg.replace('scale(1.14)','scale(1)'))).resize(512,512).png().toBuffer();
-  const before=bounds(await pixels(original));
-  const after=bounds(await pixels('public/brand-icons/uchiwake-v4-512.png'));
-  for(const axis of ['width','height']) assert.ok(Math.abs(after[axis]/before[axis]-1.14)<.015);
-  {
-    const {data}=await pixels('public/brand-icons/uchiwake-v4-maskable-512.png');
-    assert.equal(data[3],0);
-    assert.equal(data[((511*512)+511)*4+3],0);
-    assert.equal(data[(Math.round(512*666/1254)*512+256)*4+3],0);
-    assert.ok(data.some((v,i)=>i%4===3&&v===255),'The mark must remain visible');
-  }
-});
-test('ホーム画面用PNGは認証なしで取得でき、Worker経由でもバイト列が壊れない',async()=>{
+test('PNG用の追加指定を外して元のSVG・manifest参照へ戻す',async()=>{
   const html=await readFile('index.html','utf8');
-  assert.match(html,/rel="apple-touch-icon"[^>]*href="\/brand-icons\/apple-touch-v4\.png"/);
-  assert.match(html,/rel="icon"[^>]*href="\/brand-icons\/apple-touch-v4\.png"/);
-  assert.match(html,/rel="manifest"[^>]*href="\/manifest-v4\.webmanifest"/);
-  const canonical=await readFile('public/manifest-v4.webmanifest','utf8');
-  for(const name of ['manifest','manifest-light','manifest-dark']) {
-    const source=await readFile(`public/${name}.webmanifest`,'utf8');
-    assert.equal(source,canonical,'Legacy manifests must not select different home icons');
-    const manifest=JSON.parse(source);
+  assert.match(html,/rel="icon" href="\/icon\.svg" type="image\/svg\+xml"/);
+  assert.match(html,/rel="manifest" href="\/manifest\.webmanifest"/);
+  assert.doesNotMatch(html,/apple-touch-icon|brand-icons/);
+  for(const theme of ['light','dark']) {
+    const manifest=JSON.parse(await readFile(`public/manifest-${theme}.webmanifest`,'utf8'));
     assert.equal(manifest.id,'/');
-    assert.equal(manifest.background_color,'#FFFFFF');
-    assert.equal(manifest.icons.filter(icon=>icon.purpose==='any').length,2);
-    assert.equal(manifest.icons.filter(icon=>icon.purpose==='maskable').length,1);
-    for(const path of [...manifest.icons.map(icon=>icon.src),'/brand-icons/apple-touch-v4.png']) {
-      const response=await app.fetch(new Request(`https://example.test${path}`),{});
-      assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');
-      assert.deepEqual(Buffer.from(await response.arrayBuffer()),await readFile(`public${path}`));
-    }
+    assert.deepEqual(manifest.icons,[{src:`/icon-${theme}.svg`,sizes:'any',type:'image/svg+xml',purpose:'any maskable'}]);
+  }
+  assert.equal(await readFile('public/manifest-v4.webmanifest','utf8'),await readFile('public/manifest.webmanifest','utf8'));
+});
+test('復元したSVGはWorker経由でも元画像と同じバイト列で配信する',async()=>{
+  for(const name of Object.keys(originals)) {
+    const response=await app.fetch(new Request(`https://example.test/${name}`),{});
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('content-type'),'image/svg+xml');
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()),await readFile(`public/${name}`));
   }
 });

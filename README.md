@@ -97,8 +97,8 @@ Cloudflare Workers Builds で `tsito2602/uchiwake` の `staging` ブランチを
 
 形状と配色の原本は `src/brand-motion.ts`、起動処理は `src/boot.ts` です。
 `npm run dev` / `npm run build` は `scripts/build-brand.mjs` で起動スクリプトと
-ライト・ダークのアプリ内SVGとホーム画面用の固定PNG・manifestを生成します。
-OSテーマに合わせて起動画面の配色を切り替えます。ホーム画面用の参照画像は交換しません。
+ライト・ダークのSVGとmanifestを生成します。OSテーマに合わせて起動画面・
+favicon・manifestを切り替えます。サイズ変更前の構成に復元しています。
 動きを減らす設定では静止ロゴを表示し、データ取得後すぐに進みます。
 初期データの取得失敗も起動画面を閉じ、応答停止時には8秒で操作を解放します。
 
@@ -155,14 +155,9 @@ Google側にも登録してください。HTTPではSecure Cookieを使ったロ
 
 ## ホーム画面アイコン
 
-`scripts/build-brand.mjs` が元のベクターから背景なしのRGBA PNGを直接生成します。
-白い背景からの色抜き・縁取りは行わず、半透明ピクセルにもマーク本来の色を維持します。
-ホーム画面用マークは従来より14%拡大しています（ログイン画面・起動アニメーションは変更なし）。
-180pxのApple Touch Icon・192/512pxの通常アイコン・maskableをすべて透過に揃えます。
-Kondoと同じdensity 384・true-colour RGBAのPNG生成処理を使用します。
-maskableは安全領域を保った別サイズで、背景は描画しません。
-ホーム画面用は明暗とも同じ画像です。白い図形への切り替えはアプリ内だけで行います。
-PNGはビルド時に `public/brand-icons` に生成され、Workerにはbase64で埋め込み、配信時に復元します。
-`v4` の画像・manifestを固定で指定します。manifestの背景指定はKondoと同じ `#FFFFFF`、
-PNGそのものは透明です。過去のテーマ別manifest URLも同じ画像・設定へ揃えています。
-実機での経緯と未確認点は `docs/ICON_APPEARANCE.md` を参照してください。
+ユーザーから「サイズ変更前は背景が切り替わっていた」と報告を受け、
+`ff254711030539af11f111fa540f61dbe63e60dd` のSVG・サイズ・配色・登録方法を復元しました。
+元のライト／ダークSVGを使い、追加したApple Touch IconのPNG指定は外しています。
+SVGのハッシュを固定したテストで元画像との完全一致を確認します。
+既存v4 manifestのURLも復元したSVGへ向け、インストールIDとデータは維持します。
+復元後のiPhone実機結果は未確認です。経緯は `docs/ICON_APPEARANCE.md` に記録しています。
