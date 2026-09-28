@@ -22,6 +22,7 @@ export function CategorySettingsPanel({value,view,isNew,origin,closing,busy,erro
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
     <section className="card-panel category-settings-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="category-settings-title" ref={panel}>
+      <div className="card-panel-glass" aria-hidden="true"/>
       <header className="card-panel-header"><span className="card-panel-icon"><CategoryIcon name={value.icon} color={value.color} size={24}/></span><div><h2 tabIndex={-1} id="category-settings-title">{isNew?'費目を追加':'費目の設定'}</h2>{!isNew&&<span>{value.category}</span>}</div><button className="card-panel-close" aria-label="閉じる" onClick={onClose}><X size={20}/></button></header>
       <div className="card-panel-scroll">
         {error&&<p className="notice" role="alert">{error}</p>}

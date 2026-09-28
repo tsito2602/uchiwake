@@ -34,7 +34,8 @@
 }
 html, body, #root { background: var(--canvas); color: var(--ink); }
 .hero { background: var(--canvas); }
-.card-panel, .modal { background: var(--panel-tint); box-shadow: inset 0 1px 0 var(--surface-glow), 0 12px 40px #0003; }
+.modal { background: var(--panel-tint); }
+.card-panel, .modal { box-shadow: inset 0 1px 0 var(--surface-glow), 0 12px 40px #0003; }
 .modal-head { background: var(--panel-header-tint); }
 :root[data-brand-theme='dark'] .floating-nav-host::before { background: linear-gradient(to bottom, #0000, #00000099); }
 :root[data-brand-theme='dark'] .fuse-add-veil { background: #00000075; }

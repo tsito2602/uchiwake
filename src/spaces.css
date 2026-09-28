@@ -17,12 +17,6 @@
 .space-floating-panel .panel-desktop-actions{gap:8px;flex-wrap:wrap}
 @media(min-width:760px){.space-floating-panel .panel-desktop-actions{display:flex}.space-floating-panel .panel-desktop-actions>button{flex:1 1 auto;width:auto}}
 
-/* Glass and live content are siblings with explicit paint order. Keep the blur
-   off the scroll ancestor, and avoid a negative-z pseudo-element behind it. */
-.card-panel.space-floating-panel { position: relative; z-index: 0; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
-.space-panel-glass { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: var(--panel-tint); -webkit-backdrop-filter: blur(32px) saturate(1.05); backdrop-filter: blur(32px) saturate(1.05); pointer-events: none; }
-.space-floating-panel > :is(.card-panel-header, .card-panel-scroll, .card-panel-footer) { position: relative; z-index: 1; }
-
 .allocation-breakdown-trigger { display: flex; align-items: center; gap: 7px; width: max-content; max-width: 100%; margin: 12px 0 8px; padding: 8px 0; border: 0; background: none; color: var(--ink); font-size: 12px; }
 .allocation-breakdown-trigger small { color: var(--muted); font-size: 11px; margin-left: 3px; }
 .allocation-breakdown-summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0 22px; border-bottom: 1px solid var(--line); }

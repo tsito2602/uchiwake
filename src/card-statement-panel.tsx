@@ -51,6 +51,7 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
     <section className="card-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="card-panel-title" ref={panel}>
+      <div className="card-panel-glass" aria-hidden="true"/>
       <header className="card-panel-header"><span className="card-panel-icon"><CreditCard size={22} color={displayColor(color)}/></span><div><h2 tabIndex={-1} id="card-panel-title">{view==='edit'?'明細を編集':title}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</span></div><button className="card-panel-close" aria-label="明細を閉じる" onClick={onClose}><X size={20}/></button></header>
       <div className="card-panel-scroll">
         {error&&<p className="notice" role="alert">{error}</p>}

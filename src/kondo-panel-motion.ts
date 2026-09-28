@@ -2,6 +2,7 @@
 export type PanelOrigin = {left:number;top:number;width:number;height:number};
 export const panelTiming:KeyframeAnimationOptions={duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'both'};
 const completedEntrances=new WeakMap<Animation,CSSNumberish>();
+const panelSurfaces=new WeakMap<Animation,Animation>();
 
 export function animatePanelBackground(main:HTMLElement,blur=true) {
   const bounds=main.getBoundingClientRect();
@@ -27,20 +28,25 @@ export function animatePanelSurroundings(panel:HTMLElement,main:HTMLElement|null
 
 export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
   const bounds=panel.getBoundingClientRect();
-  // Button/menu entries only slide and fade. An all-zero animated clip is
-  // visually redundant, but can cull a long scroller's initial paint tiles.
-  // Reserve clipping for the actual expansion from a large source card.
   const full:Keyframe={transform:'translateY(0px)',opacity:1};
   let folded:Keyframe={transform:'translateY(48px)',opacity:0};
-  if(source&&source.width>100&&source.height>65&&source.top+source.height>bounds.top&&source.top<bounds.bottom&&source.left+source.width>bounds.left&&source.left<bounds.right){
+  const glass=panel.querySelector<HTMLElement>(':scope > .card-panel-glass');
+  let surface:Animation|undefined;
+  if(glass&&source&&source.width>100&&source.height>65&&source.top+source.height>bounds.top&&source.top<bounds.bottom&&source.left+source.width>bounds.left&&source.left<bounds.right){
     const top=Math.max(0,source.top-bounds.top);
     const right=Math.max(0,bounds.right-source.left-source.width);
     const bottom=Math.max(0,bounds.bottom-source.top-source.height);
     const left=Math.max(0,source.left-bounds.left);
-    full.clipPath=`inset(0px 0px 0px 0px round ${window.getComputedStyle(panel).borderRadius||'0px'})`;
-    folded={clipPath:`inset(${top}px ${right}px ${bottom}px ${left}px round 16px)`,transform:'translateY(0px)',opacity:0};
+    // Expand the empty glass surface, never the ancestor of scrolling content.
+    // An ancestor clip can leave stale scroll tiles even after it is removed.
+    surface=glass.animate([
+      {clipPath:`inset(${top}px ${right}px ${bottom}px ${left}px round 16px)`},
+      {clipPath:`inset(0px 0px 0px 0px round ${window.getComputedStyle(panel).borderRadius||'0px'})`},
+    ],{...panelTiming,fill:'backwards'});
+    folded={transform:'translateY(0px)',opacity:0};
   }
   const animation=panel.animate([folded,full],{...panelTiming,fill:'backwards'});
+  if(surface)panelSurfaces.set(animation,surface);
   // Backwards fill alone still retains a finished animation/compositing layer.
   // Detach it entirely while reading/scrolling, preserving only the exit time.
   // A dismissal during the entrance keeps its live timeline and reverses it.
@@ -48,8 +54,16 @@ export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
     if(animation.playbackRate<=0||animation.playState!=='finished')return;
     completedEntrances.set(animation,animation.currentTime??320);
     animation.cancel();
+    surface?.cancel();
   },()=>undefined);
   return animation;
+}
+
+export function cancelPanel(animation:Animation) {
+  animation.cancel();
+  panelSurfaces.get(animation)?.cancel();
+  panelSurfaces.delete(animation);
+  completedEntrances.delete(animation);
 }
 
 export function reversePanel(animation:Animation,companions:Animation[]) {
@@ -62,7 +76,9 @@ export function reversePanel(animation:Animation,companions:Animation[]) {
   if(completedTime!==undefined)animation.currentTime=completedTime;
   animation.playbackRate=-1.15;
   animation.play();
-  for(const companion of companions){
+  const surface=panelSurfaces.get(animation);
+  for(const companion of [...(surface?[surface]:[]),...companions]){
+    companion.effect?.updateTiming({fill:'both'});
     companion.currentTime=time;
     companion.playbackRate=-1.15;
     companion.play();

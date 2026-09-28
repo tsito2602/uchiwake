@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
-import { animatePanel, animatePanelSurroundings, reversePanel, type PanelOrigin } from './kondo-panel-motion';
+import { animatePanel, animatePanelSurroundings, cancelPanel, reversePanel, type PanelOrigin } from './kondo-panel-motion';
 import { revealPanelField } from './panel-focus';
 import { lockOverlayBackground } from './overlay-lock';
 import { registerPanel } from './panel-stack';
@@ -57,7 +57,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       viewport?.removeEventListener('resize',updateViewport);
       viewport?.removeEventListener('scroll',updateViewport);
       node.removeEventListener('focusin',reveal);cancelAnimationFrame(revealFrame);
-      motion.current?.cancel();
+      if(motion.current)cancelPanel(motion.current);
       companions.current.forEach(animation=>animation.cancel());
       if(reduced&&parent)parent.style.filter=parentFilter||'';
       shell.style.removeProperty('--panel-depth');

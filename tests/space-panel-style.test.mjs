@@ -1,45 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+const read=name=>readFileSync(new URL(`../src/${name}`,import.meta.url),'utf8');
 
-const css=readFileSync(new URL('../src/spaces.css',import.meta.url),'utf8');
-const source=readFileSync(new URL('../src/space-panel.tsx',import.meta.url),'utf8');
-
-// These are rendering-structure guards, not a substitute for iOS visual QA.
-// Background depth/blur, nested return, and entrance/exit are covered separately
-// by panel-motion.test.mjs. Glass must not be an ancestor of the scroll content.
-test('スペースパネルの半透明と背景ブラーは専用レイヤーに保持する',()=>{
-  const panel=css.match(/\.card-panel\.space-floating-panel\s*\{([^}]+)\}/)?.[1];
-  const glass=css.match(/\.space-panel-glass\s*\{([^}]+)\}/)?.[1];
-  assert.ok(panel);assert.ok(glass);
-  assert.match(panel,/background:\s*transparent/);
-  // More specific than the shared .card-panel rule, regardless of CSS load order.
-  assert.match(panel,/(?:^|;)\s*-webkit-backdrop-filter:\s*none/);
-  assert.match(panel,/(?:^|;)\s*backdrop-filter:\s*none/);
-  assert.match(glass,/background:\s*var\(--panel-tint\)/);
-  assert.match(glass,/(?:^|;)\s*-webkit-backdrop-filter:\s*blur\(32px\) saturate\(1\.05\)/);
-  assert.match(glass,/(?:^|;)\s*backdrop-filter:\s*blur\(32px\) saturate\(1\.05\)/);
-  assert.match(glass,/position:\s*absolute/);
-  assert.match(glass,/inset:\s*0/);
-  assert.match(glass,/border-radius:\s*inherit/);
-  assert.match(glass,/pointer-events:\s*none/);
-});
-
-test('ブラーはスクロール領域の外に置き、内容を明示的に前面へ描く',()=>{
-  assert.match(source,/<section\b[^>]*className="card-panel space-floating-panel"[^>]*>\s*<div className="space-panel-glass" aria-hidden="true"\/>\s*<header/);
-  assert.match(source,/<div className="card-panel-scroll">\{children\}<\/div>/);
-  assert.match(css,/\.space-panel-glass\s*\{[^}]*z-index:\s*0/);
-  assert.match(css,/\.space-floating-panel > :is\(\.card-panel-header, \.card-panel-scroll, \.card-panel-footer\)\s*\{[^}]*position:\s*relative;\s*z-index:\s*1/);
-  assert.doesNotMatch(css,/\.space-floating-panel\s*::(?:before|after)/);
-  assert.doesNotMatch(css,/\.space-floating-panel\s*>\s*\.card-panel-scroll\s*\{[^}]*(?:filter|clip-path|mask|isolation)\s*:/);
-});
-
-test('カード明細と同じブラー・共通の開閉処理を使い、設定カード全体から開く',()=>{
-  const shared=readFileSync(new URL('../src/kondo-style.css',import.meta.url),'utf8');
-  const cards=readFileSync(new URL('../src/card-statement-panel.tsx',import.meta.url),'utf8');
-  const app=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');
-  const material=selector=>selector.match(/(?:^|;)\s*backdrop-filter:\s*([^;]+)/)?.[1];
-  assert.equal(material(css.match(/\.space-panel-glass\s*\{([^}]+)\}/)[1]),material(shared.match(/\.card-panel\s*\{([^}]+)\}/)[1]));
-  for(const component of [source,cards])assert.match(component,/usePanelMorph\(panel,origin,closing,onExited,/);
-  assert.ok(app.includes("openSpaceSettings(event.currentTarget.closest<HTMLElement>('.settings-section')??event.currentTarget)"));
+// Guard the shared rendering boundary; actual iOS paint still needs device QA.
+test('全パネルのブラーは空の背景要素に限定し、スクロール内容を前面に保持する',()=>{
+ const css=read('kondo-style.css');
+ const panel=css.match(/^\.card-panel\s*\{([^}]+)\}/m)?.[1];
+ const glass=css.match(/^\.card-panel-glass\s*\{([^}]+)\}/m)?.[1];
+ assert.match(panel,/background:\s*transparent/);
+ assert.doesNotMatch(panel,/(?:backdrop-filter|clip-path|filter)\s*:/);
+ assert.match(glass,/background:\s*var\(--panel-tint\)/);
+ assert.match(glass,/backdrop-filter:\s*blur\(32px\) saturate\(1\.05\)/);
+ assert.match(glass,/pointer-events:\s*none/);
+ assert.match(css,/\.card-panel > :is\(\.card-panel-header, \.card-panel-scroll, \.card-panel-footer\)\s*\{[^}]*z-index:\s*1/);
+ assert.match(css,/\.card-panel-scroll\s*\{[^}]*transform:\s*translateZ\(0\)/);
+ for(const file of ['space-panel.tsx','card-statement-panel.tsx','card-settings-panel.tsx','category-settings-panel.tsx','bill-panel.tsx','category-entries-panel.tsx','statement-import-panel.tsx']){
+  const source=read(file);
+  assert.match(source,/role="dialog"[^>]*>\s*<div className="card-panel-glass" aria-hidden="true"\/>/,file);
+  assert.match(source,/usePanelMorph\(panel,origin,closing,onExited,/,file);
+ }
+ assert.doesNotMatch(read('spaces.css'),/\.space-panel-glass|\.card-panel\.space-floating-panel/);
 });

@@ -1,20 +1,23 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { animatePanel, animatePanelBackground, animatePanelSurroundings, reversePanel } from '../src/kondo-panel-motion.ts';
+import { animatePanel, animatePanelBackground, animatePanelSurroundings, cancelPanel, reversePanel } from '../src/kondo-panel-motion.ts';
 
 // Web Animations API double: verify geometry and interruption without a browser.
 const bounds={left:12,top:12,right:378,bottom:740,width:366,height:728};
 function opening(origin){
-  let recorded;
+  let recorded,surface;
   globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
-  const panel={getBoundingClientRect:()=>bounds,animate:(frames,timing)=>{recorded={frames,timing,finished:new Promise(()=>{})};return recorded;}};
+  const glass={animate:(frames,timing)=>(surface={frames,timing})};
+  const panel={getBoundingClientRect:()=>bounds,querySelector:()=>glass,animate:(frames,timing)=>{recorded={frames,timing,finished:new Promise(()=>{})};return recorded;}};
   animatePanel(panel,origin);
-  return recorded;
+  return {...recorded,surface};
 }
-test('カード位置から全面パネルをクリップで開く（文字や金額を拡大しない）',()=>{
-  const {frames,timing}=opening({left:20,top:400,width:350,height:115});
-  assert.deepEqual(frames[0],{clipPath:'inset(388px 8px 225px 8px round 16px)',transform:'translateY(0px)',opacity:0});
-  assert.equal(frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
+test('カード位置から背景だけを展開し、スクロール内容は切り抜かない',()=>{
+  const {frames,timing,surface}=opening({left:20,top:400,width:350,height:115});
+  assert.deepEqual(frames[0],{transform:'translateY(0px)',opacity:0});
+  assert.ok(frames.every(frame=>!('clipPath' in frame)));
+  assert.equal(surface.frames[0].clipPath,'inset(388px 8px 225px 8px round 16px)');
+  assert.equal(surface.frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
   assert.deepEqual(timing,{duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'backwards'});
 });
 test('小ボタン・領域外からはスクロール内容を切り抜かず48pxの動きで開く',()=>{
@@ -29,15 +32,15 @@ test('小ボタン・領域外からはスクロール内容を切り抜かず48
 });
 test('スペース設定の入口カード全体を起点にすると明細カードと同じ展開になる',()=>{
   // The 62px label row sits inside 24px padding and a 1px border on each side.
-  const {frames,timing}=opening({left:20,top:136,width:350,height:112});
-  assert.equal(frames[0].clipPath,'inset(124px 8px 492px 8px round 16px)');
+  const {frames,timing,surface}=opening({left:20,top:136,width:350,height:112});
+  assert.equal(surface.frames[0].clipPath,'inset(124px 8px 492px 8px round 16px)');
   assert.equal(frames[0].transform,'translateY(0px)');
-  assert.equal(frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
+  assert.equal(surface.frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
   assert.deepEqual(timing,opening({left:20,top:400,width:350,height:115}).timing);
 });
 test('画面端のカードでもクリップの余白が負にならない',()=>{
-  const {frames}=opening({left:0,top:0,width:390,height:800});
-  assert.equal(frames[0].clipPath,'inset(0px 0px 0px 0px round 16px)');
+  const {surface}=opening({left:0,top:0,width:390,height:800});
+  assert.equal(surface.frames[0].clipPath,'inset(0px 0px 0px 0px round 16px)');
 });
 test('開き終えたパネルはクリップを残さず、閉じる直前だけ終端の保持を戻す',()=>{
   const {timing}=opening({left:20,top:400,width:350,height:115});
@@ -128,7 +131,7 @@ test('開き終わったクリップを完全に解除し、同じ終端から�
   play(){this.plays++;this.playState='running';}
  };
  globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
- animatePanel({getBoundingClientRect:()=>bounds,animate:()=>animation});
+ animatePanel({getBoundingClientRect:()=>bounds,querySelector:()=>null,animate:()=>animation});
  animation.currentTime=320;animation.playState='finished';resolveFinished();await Promise.resolve();
  assert.equal(animation.cancels,1);
  assert.equal(animation.playState,'idle');
@@ -150,10 +153,36 @@ test('開く途中の取消しやアンマウントでは、古い完了処理�
    effect:{updateTiming(){}},play(){},cancel(){this.cancels++;this.currentTime=null;this.playState='idle';}
   };
   globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
-  animatePanel({getBoundingClientRect:()=>bounds,animate:()=>animation});
+  animatePanel({getBoundingClientRect:()=>bounds,querySelector:()=>null,animate:()=>animation});
   if(unmount){animation.cancel();rejectFinished(new Error('unmounted'));}
   else {reversePanel(animation,[]);assert.equal(animation.currentTime,96);animation.currentTime=0;animation.playState='finished';resolveFinished();}
   await Promise.resolve();
   assert.equal(animation.cancels,unmount?1:0);
+ }
+});
+
+
+test('背景の展開も途中取消・完了後の逆再生・破棄を本体と同期する',async()=>{
+ for(const early of [true,false]){
+  let finish;
+  const create=()=>({currentTime:96,playbackRate:1,playState:'running',cancels:0,plays:0,
+   effect:{updateTiming(next){this.fill=next.fill;}},
+   cancel(){this.cancels++;this.currentTime=null;this.playState='idle';},
+   play(){this.plays++;this.playState='running';}
+  });
+  const panel=create(),glass=create();
+  panel.finished=new Promise(resolve=>finish=resolve);
+  globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
+  animatePanel({getBoundingClientRect:()=>bounds,querySelector:()=>({animate:()=>glass}),animate:()=>panel},{left:20,top:136,width:350,height:112});
+  if(!early){panel.currentTime=320;panel.playState='finished';finish();await Promise.resolve();assert.equal(glass.cancels,1);}
+  reversePanel(panel,[]);
+  assert.equal(glass.currentTime,early?96:320);
+  assert.equal(glass.currentTime,panel.currentTime);
+  assert.equal(glass.playbackRate,panel.playbackRate);
+  assert.equal(glass.effect.fill,'both');
+  assert.equal(glass.plays,1);
+  cancelPanel(panel);
+  assert.equal(glass.cancels,early?1:2);
+  assert.equal(panel.cancels,glass.cancels);
  }
 });

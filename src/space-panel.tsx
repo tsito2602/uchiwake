@@ -35,7 +35,7 @@ export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin
  return createPortal(<div className="card-panel-backdrop" onClick={event=>{if(!suspended&&event.target===event.currentTarget)context.onBack();}}>
   <div className="card-panel-scrim" aria-hidden="true"/>
   <section ref={panel} className="card-panel space-floating-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-   <div className="space-panel-glass" aria-hidden="true"/>
+   <div className="card-panel-glass" aria-hidden="true"/>
    <header className="card-panel-header"><span className="card-panel-icon"><Icon size={22}/></span><div><h2 id={titleId} tabIndex={-1}>{title}</h2></div></header>
    <div className="card-panel-scroll">{children}</div>
    <footer className="card-panel-footer panel-desktop-actions">
