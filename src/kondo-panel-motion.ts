@@ -12,6 +12,18 @@ export function animatePanelBackground(main:HTMLElement,blur=true) {
   ],panelTiming);
 }
 
+export function animatePanelSurroundings(panel:HTMLElement,main:HTMLElement|null,parents:HTMLElement[]) {
+  // Keep the parent's layout and scroll position alive. Reverse this together
+  // with the child so the return surface is visible before the child disappears.
+  const parent=parents.at(-1);
+  if(parent)return [parent.animate([{opacity:1},{opacity:0}],panelTiming)];
+  // Nested panels share the outer scrim and page depth without restarting them.
+  const scrim=panel.parentElement?.querySelector<HTMLElement>('.card-panel-scrim');
+  const animations=scrim?[scrim.animate([{opacity:0},{opacity:1}],panelTiming)]:[];
+  if(main)animations.push(animatePanelBackground(main));
+  return animations;
+}
+
 export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
   const bounds=panel.getBoundingClientRect();
   const full={clipPath:`inset(0px 0px 0px 0px round ${window.getComputedStyle(panel).borderRadius||'0px'})`,transform:'translateY(0px)',opacity:1};

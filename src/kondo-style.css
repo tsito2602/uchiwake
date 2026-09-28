@@ -368,8 +368,9 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .settlement-list .settlement-item:hover { background: var(--soft); }
 .demo-view-banner { width: fit-content; margin-bottom: 20px; padding: 8px 13px; border-radius: 999px; background: var(--soft); color: var(--ink); font-size: 12px; font-weight: 650; }
 .demo-settings .mode-options { margin-top: 17px; }
-.card-panel-backdrop { position: fixed; z-index: 60; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; isolation: isolate; }
+.card-panel-backdrop { position: fixed; z-index: calc(60 + var(--panel-depth, 0)); inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; isolation: isolate; }
 .card-panel-scrim { position: absolute; z-index: -1; inset: 0; background: #00000014; pointer-events: none; }
+.card-panel-backdrop[data-panel-nested='true'] > .card-panel-scrim { visibility: hidden; }
 .card-panel { display: flex; flex-direction: column; width: min(100%, 600px); max-height: min(88dvh, 850px); min-height: 0; overflow: hidden; border: 0; border-radius: 28px; background: var(--paper); -webkit-backdrop-filter: blur(32px) saturate(1.05); backdrop-filter: blur(32px) saturate(1.05); box-shadow: inset 0 1px 0 #ffffffbd, 0 12px 40px #0003; }
 .card-panel-header { flex-shrink: 0; }
 .card-panel-header h2:focus { outline: none; }

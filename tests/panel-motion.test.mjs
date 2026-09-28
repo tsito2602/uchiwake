@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { animatePanel, animatePanelBackground, reversePanel } from '../src/kondo-panel-motion.ts';
+import { animatePanel, animatePanelBackground, animatePanelSurroundings, reversePanel } from '../src/kondo-panel-motion.ts';
 
 // Web Animations API double: verify geometry and interruption without a browser.
 const bounds={left:12,top:12,right:378,bottom:740,width:366,height:728};
@@ -51,6 +51,30 @@ test('途中で閉じても同じタイムラインを逆再生し、背景と�
       assert.equal(animation.playbackRate,-1.15);
       assert.equal(animation.plays,1);
     }
+  }
+});
+
+test('子パネルの往復は親の表示だけを同期し、共通の暗幕と背景を点滅させない',()=>{
+  globalThis.window={innerWidth:390,innerHeight:844};
+  const calls=[];
+  const target=name=>({getBoundingClientRect:()=>bounds,animate:(frames,timing)=>{
+    const animation={name,frames,timing,currentTime:320,playbackRate:1,plays:0,play(){this.plays++;}};
+    calls.push(animation);return animation;
+  }});
+  const page=target('page'),scrim=target('scrim'),parent=target('parent'),childScrim=target('child scrim');
+  const outer=animatePanelSurroundings({parentElement:{querySelector:()=>scrim}},page,[]);
+  assert.deepEqual(outer.map(a=>a.name),['scrim','page']);
+  const nested=animatePanelSurroundings({parentElement:{querySelector:()=>childScrim}},page,[parent]);
+  assert.deepEqual(calls.map(a=>a.name),['scrim','page','parent']);
+  assert.deepEqual(nested[0].frames,[{opacity:1},{opacity:0}]);
+  assert.equal(nested[0].timing.fill,'both');
+  for(const time of [96,320]){
+    const child={currentTime:time,playbackRate:1,play(){}};
+    reversePanel(child,nested);
+    assert.equal(nested[0].currentTime,time);
+    assert.equal(nested[0].playbackRate,child.playbackRate);
+    // Returning to the parent never reverses the still-open outer backdrop.
+    assert.ok(outer.every(a=>a.playbackRate===1&&a.plays===0));
   }
 });
 
