@@ -152,3 +152,14 @@ Google IDトークンの署名、issuer、audience、期限、nonce、確認済�
 Google側にも登録してください。HTTPではSecure Cookieを使ったログインを開始しません。
 
 公式仕様: https://developers.google.com/identity/openid-connect/openid-connect
+
+## ホーム画面アイコン
+
+`scripts/build-brand.mjs` が元のベクターから背景なしのRGBA PNGを直接生成します。
+白い背景からの色抜き・縁取りは行わず、半透明ピクセルにもマーク本来の色を維持します。
+ホーム画面用マークは従来より14%拡大しています（ログイン画面・起動アニメーションは変更なし）。
+180pxのApple Touch Iconと192/512pxの通常アイコンは透過、Android用maskableは
+安全領域を保った別サイズ・不透明な全面背景です。ライト／ダークをそれぞれ生成します。
+PNGはビルド時に `public/brand-icons` に生成され、Workerにはbase64で埋め込み、配信時に復元します。
+`v2` の新しいURLを使用します。既存のホーム画面アイコンが更新されない場合は、
+Safariでサイトを開き直してホーム画面へ再追加してください。iOS独自のガラス効果は端末側の表示設定です。

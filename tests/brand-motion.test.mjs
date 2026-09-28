@@ -35,7 +35,7 @@ function launch({dark=false,reduced=false,alreadyReady=false,canvas=true}={}) {
   const timers=new Map(),frames=new Map(),events=new Map();
   const context=new Proxy({}, {get:(obj,key)=>obj[key] ?? (()=>{}),set:(obj,key,value)=>(obj[key]=value,true)});
   const element=()=>({dataset:{},attrs:{},isConnected:true,classList:{add(){}},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},remove(){this.isConnected=false}});
-  const ids=Object.fromEntries(['initial-boot','root','boot-canvas','boot-still','app-icon','app-manifest','app-theme-color'].map(k=>[k,element()]));
+  const ids=Object.fromEntries(['initial-boot','root','boot-canvas','boot-still','app-icon','app-touch-icon','app-manifest','app-theme-color'].map(k=>[k,element()]));
   ids['boot-canvas'].getContext=()=>canvas?context:null;
   if(alreadyReady) ids.root.dataset.bootReady='true';
   const media=matches=>({matches,addEventListener(_,fn){this.listener=fn},removeEventListener(){this.listener=null}});
@@ -82,9 +82,11 @@ test('動きを減らす設定・Canvas非対応では静止表示から安全�
 test('OSテーマ変更でアイコンとPWA設定を更新し、起動画面終了後も追従する',()=>{
   const app=launch({dark:true,alreadyReady:true});
   assert.equal(app.ids['app-icon'].attrs.href,'/icon-dark.svg');
+  assert.equal(app.ids['app-touch-icon'].attrs.href,'/brand-icons/apple-touch-v2-dark.png');
   assert.equal(app.ids['app-manifest'].attrs.href,'/manifest-dark.webmanifest');
   app.advance(BOOT_HOLD_END);app.advance(240);
   app.darkMedia.matches=false;app.darkMedia.listener();
   assert.equal(app.ids['app-icon'].attrs.href,'/icon-light.svg');
+  assert.equal(app.ids['app-touch-icon'].attrs.href,'/brand-icons/apple-touch-v2-light.png');
   assert.equal(app.ids['app-theme-color'].attrs.content,'#fbf8f2');
 });

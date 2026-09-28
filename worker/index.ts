@@ -376,7 +376,9 @@ app.all('/api/*', () => error('見つかりません',404));
 app.get('*', c => {
   const path = new URL(c.req.url).pathname;
   const asset = embeddedAssets[path] || (path.includes('.') ? undefined : embeddedAssets['/index.html']);
-  return asset ? new Response(asset.body,{headers:{'Content-Type':asset.mime,'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}}) : error('見つかりません',404);
+  if (!asset) return error('見つかりません',404);
+  const body = asset.encoding === 'base64' ? Uint8Array.from(atob(asset.body), char => char.charCodeAt(0)) : asset.body;
+  return new Response(body,{headers:{'Content-Type':asset.mime,'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}});
 });
 app.onError((e,c) => { console.error(JSON.stringify({event:'request_error',path:c.req.path,message:e instanceof Error?e.message:'unknown'})); return error('処理に失敗しました。もう一度お試しください',500); });
 export default app;
