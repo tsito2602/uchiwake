@@ -1,3 +1,4 @@
+import { displayColor } from './display-color';
 import { useId, useRef } from 'react';
 import { Pencil, X } from 'lucide-react';
 import type { CategoryAppearance } from './domain';
@@ -27,7 +28,7 @@ export function CategorySettingsPanel({value,view,isNew,origin,closing,busy,erro
         {view==='summary'?<dl className="card-settings-summary">
           <div><dt>費目名</dt><dd>{value.category}</dd></div>
           <div><dt>アイコン</dt><dd className="category-icon-label" aria-label={categoryIcons.find(item=>item.value===value.icon)?.label}><CategoryIcon name={value.icon} color={value.color}/></dd></div>
-          <div><dt>カラー</dt><dd className="card-settings-color"><i aria-hidden="true" style={{background:value.color}}/>{colors.find(item=>item.value===value.color)?.label}</dd></div>
+          <div><dt>カラー</dt><dd className="card-settings-color"><i aria-hidden="true" style={{background:displayColor(value.color)}}/>{colors.find(item=>item.value===value.color)?.label}</dd></div>
         </dl>:<div className="bill-panel-form">
           <label className="field"><span>費目名</span><input value={value.category} maxLength={30} placeholder="例：旅行費" disabled={busy} onChange={event=>onChange({...value,category:event.target.value})}/></label>
           <fieldset className="category-icon-picker" disabled={busy}><legend>アイコン</legend><div className="category-icon-options">{categoryIcons.map(icon=><label key={icon.value}>

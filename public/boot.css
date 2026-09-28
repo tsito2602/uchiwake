@@ -16,8 +16,8 @@
 :root[data-brand-theme='light'] #initial-boot { --boot-bg: #ffffff; --boot-ink: #30302f; }
 :root[data-brand-theme='dark'] #initial-boot { --boot-bg: #000000; --boot-ink: #f5f1e9; }
 .boot-brand { display: grid; justify-items: center; gap: 22px; }
-.boot-symbol { position: relative; width: 240px; height: 190px; }
-.boot-symbol canvas, .boot-symbol img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.boot-symbol { position: relative; width: 176px; height: 142px; }
+.boot-symbol canvas, .boot-symbol img { position: absolute; left: -40px; top: -52.4px; width: 256px; height: 202.606px; }
 #boot-still { visibility: hidden; }
 .boot-name { display: flex; margin: 0; font-size: 28px; font-weight: 650; letter-spacing: .045em; line-height: 1; }
 .boot-name span { display: inline-block; opacity: 0; }

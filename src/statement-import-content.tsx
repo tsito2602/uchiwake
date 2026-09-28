@@ -1,3 +1,4 @@
+import { displayColor } from './display-color';
 import { NativeMonthPicker } from './native-month-picker';
 import { Camera, Check, ChevronDown, CreditCard, FileImage, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
 import type { CategoryAppearance, SharedCard, EntryDraft } from './domain';
@@ -13,7 +14,7 @@ export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnab
 }) {
   const card=cards.find(item=>item.id===cardId);
   return <div className="import-setup">
-    <label className="import-card-select"><CreditCard size={24} color={card?.color} aria-hidden="true"/><span className="import-card-copy" aria-hidden="true"><span>取り込むカード</span><strong>{card?.name}</strong></span><ChevronDown size={18} aria-hidden="true"/><select aria-label="取り込むカード" value={cardId} onChange={event=>onCard(event.target.value)}>{cards.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <label className="import-card-select"><CreditCard size={24} color={displayColor(card?.color)} aria-hidden="true"/><span className="import-card-copy" aria-hidden="true"><span>取り込むカード</span><strong>{card?.name}</strong></span><ChevronDown size={18} aria-hidden="true"/><select aria-label="取り込むカード" value={cardId} onChange={event=>onCard(event.target.value)}>{cards.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <div className="import-month"><span>引落月</span><NativeMonthPicker value={month} onChange={onMonth} label="引落年月を選択"/></div>
     {demoEnabled&&<div className="import-mode" role="group" aria-label="読み取り方法"><button aria-pressed={mode==='live'} onClick={()=>onMode('live')}>画像を読み取る</button><button aria-pressed={mode==='demo'} onClick={()=>onMode('demo')}>デモで試す</button></div>}
     {mode==='live'&&!liveEnabled&&<p className="import-hint" role="status">AIの接続設定を確認できません。Cloudflareの実行環境にOPENAI_API_KEYを設定し、画面を再読み込みしてください。</p>}
@@ -36,7 +37,7 @@ function ReceiptLines(){return <><FileImage size={22}/><div><span>スーパー</
 
 export function ImportEntryLine({entry,settings}:{entry:EntryDraft;settings:CategoryAppearance[]}) {
   const appearance=categoryAppearance(entry.category,settings);
-  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:appearance.color}}>{entry.category}</span></span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
+  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color)}}>{entry.category}</span></span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
 }
 
 export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {

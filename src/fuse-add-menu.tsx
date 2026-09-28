@@ -1,3 +1,4 @@
+import { displayColor } from './display-color';
 import { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CreditCard, Home } from 'lucide-react';
@@ -70,7 +71,7 @@ export function FuseAddMenu({options,closing,onClose,onSelect,onExited}:{options
     <div className="fuse-add-veil" onClick={onClose}/>
     <div className="fuse-add-options" role="menu" aria-label="追加する項目">{options.map(option=>{
       const Icon=option.kind==='rent'?Home:CreditCard;
-      return <button key={option.id} role="menuitem" onClick={()=>onSelect(option)}><span>{option.label}</span><Icon size={25} strokeWidth={1.8} color={option.color}/></button>;
+      return <button key={option.id} role="menuitem" onClick={()=>onSelect(option)}><span>{option.label}</span><Icon size={25} strokeWidth={1.8} color={displayColor(option.color)}/></button>;
     })}</div>
   </div>,document.body);
 }

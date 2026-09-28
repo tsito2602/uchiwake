@@ -1,0 +1,61 @@
+/* Accessible display pairs; palette IDs in saved records remain unchanged. */
+:root {
+  --palette-171717: #171717;
+  --palette-64748b: #64748b;
+  --palette-475569: #475569;
+  --palette-8b6552: #8b6552;
+  --palette-b48632: #956f2a;
+  --palette-c77830: #a96629;
+  --palette-3675d5: #3675d5;
+  --palette-2387b5: #217ea8;
+  --palette-238d9b: #20828f;
+  --palette-25857d: #24827a;
+  --palette-37866b: #368369;
+  --palette-6e8b3d: #647e38;
+  --palette-5359b8: #5359b8;
+  --palette-8b5fc7: #8b5fc7;
+  --palette-a955a4: #a955a4;
+  --palette-d05d8c: #b9537d;
+  --palette-cb5c5c: #bd5656;
+  --palette-bd424c: #bd424c;
+  --palette-738778: #697b6d;
+  --palette-b78d6a: #916f54;
+  --palette-8995a5: #6e7784;
+  --palette-c0a16e: #88724e;
+  --palette-8a87a4: #75738b;
+  --palette-6f98a1: #5a7b82;
+  --palette-a28c80: #857369;
+  --palette-b48a96: #8e6d76;
+  --palette-9c94b4: #7a738c;
+  --palette-989898: #757575;
+}
+:root[data-brand-theme="dark"] {
+  --palette-171717: #e8e8e8;
+  --palette-64748b: #818ea1;
+  --palette-475569: #848d9a;
+  --palette-8b6552: #a58778;
+  --palette-b48632: #b48632;
+  --palette-c77830: #c87b34;
+  --palette-3675d5: #5a8edd;
+  --palette-2387b5: #4097bf;
+  --palette-238d9b: #3b9aa6;
+  --palette-25857d: #489992;
+  --palette-37866b: #579983;
+  --palette-6e8b3d: #7b954e;
+  --palette-5359b8: #8387cc;
+  --palette-8b5fc7: #a07cd1;
+  --palette-a955a4: #b975b5;
+  --palette-d05d8c: #d46a95;
+  --palette-cb5c5c: #d17070;
+  --palette-bd424c: #ce7179;
+  --palette-738778: #7e9183;
+  --palette-b78d6a: #b78d6a;
+  --palette-8995a5: #8995a5;
+  --palette-c0a16e: #c0a16e;
+  --palette-8a87a4: #8e8ba7;
+  --palette-6f98a1: #6f98a1;
+  --palette-a28c80: #a28c80;
+  --palette-b48a96: #b48a96;
+  --palette-9c94b4: #9c94b4;
+  --palette-989898: #989898;
+}

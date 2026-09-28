@@ -2,8 +2,16 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { SignJWT, decodeJwt, exportJWK, generateKeyPair } from 'jose';
 import app from '../dist/worker.mjs';
+import { DatabaseSync } from 'node:sqlite';
+const sqlite = new DatabaseSync(':memory:');
+const profileDB = { prepare(sql) {
+  assert.match(sql, /user_profiles/, 'Authentication must not query household data');
+  const statement = sqlite.prepare(sql);
+  const bound = args => ({ run: async () => statement.run(...args), first: async () => statement.get(...args) ?? null });
+  return { ...bound([]), bind: (...args) => bound(args) };
+} };
 import { authEnv, auth, sessionCookie } from './auth-fixture.mjs';
-const env = { ...authEnv, APP_ENV: 'staging', DB: { prepare() { assert.fail('Authentication must not query household data'); } } };
+const env = { ...authEnv, APP_ENV: 'staging', DB: profileDB };
 const origin = 'https://example.test';
 const request = (path, options = {}, bindings = env) => app.fetch(new Request(`${origin}${path}`, options), bindings);
 const cookieHeader = response => response.headers.get('set-cookie')?.split(';')[0];
@@ -99,7 +107,7 @@ test('Google callback verifies signature, issuer, audience, expiry, nonce, verif
       [{ nonce: null }, '/?auth_error=failed'], [{ corruptSignature: true }, '/?auth_error=failed'],
     ]) {
       const start = await request('/api/auth/google'), cookie = cookieHeader(start), flow = decodeJwt(cookie.split('=')[1]);
-      const idToken = await new SignJWT({ sub: 'real-google-sub', email: 'member@example.test', email_verified: true, name: 'Member', nonce: flow.nonce, iss: 'https://accounts.google.com', aud: env.GOOGLE_CLIENT_ID, exp: Math.floor(Date.now()/1000)+300, ...override }).setIssuedAt().setProtectedHeader({ alg: 'RS256', kid: jwk.kid }).sign(privateKey);
+      const idToken = await new SignJWT({ sub: 'real-google-sub', email: 'member@example.test', email_verified: true, name: 'Member', picture: 'https://lh3.googleusercontent.com/avatar', nonce: flow.nonce, iss: 'https://accounts.google.com', aud: env.GOOGLE_CLIENT_ID, exp: Math.floor(Date.now()/1000)+300, ...override }).setIssuedAt().setProtectedHeader({ alg: 'RS256', kid: jwk.kid }).sign(privateKey);
       globalThis.fetch = async (url, options) => {
         if (String(url) === 'https://www.googleapis.com/oauth2/v3/certs') return Response.json({ keys: [jwk] });
         assert.equal(String(url), 'https://oauth2.googleapis.com/token');
@@ -114,9 +122,34 @@ test('Google callback verifies signature, issuer, audience, expiry, nonce, verif
       if (expected === '/') {
         assert.ok(session);
         const me = await request('/api/auth/session', { headers: { Cookie: session.split(';')[0] } });
-        assert.equal((await me.json()).user.id, 'real-google-sub');
+        const user = (await me.json()).user;
+        assert.equal(user.id, 'real-google-sub');
+        assert.equal(user.avatarUrl, 'https://lh3.googleusercontent.com/avatar');
         assert.ok(!session.includes(idToken));
       } else assert.equal(session, undefined);
     }
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test('display names persist across sessions, stay scoped to the signed-in user, and reject invalid changes', async () => {
+  const headers = { Cookie: auth, Origin: origin, 'Content-Type': 'application/json' };
+  const put = (body, custom = headers) => request('/api/auth/profile', { method: 'PUT', headers: custom, body: JSON.stringify(body) });
+  assert.equal((await put({ name: 'Unauthorized' }, { Origin: origin, 'Content-Type': 'application/json' })).status, 401);
+  assert.equal((await put({ name: 'Cross site' }, { ...headers, Origin: 'https://attacker.test' })).status, 401);
+  for (const name of ['', '  ', 'x'.repeat(101), 'line\nline', null]) assert.equal((await put({ name })).status, 400);
+  const updated = await put({ name: '  新しい表示名  ', id: 'real-google-sub' });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).user.name, '新しい表示名');
+  const fresh = await sessionCookie({ name: 'Google name' });
+  assert.equal((await (await request('/api/auth/session', { headers: { Cookie: fresh } })).json()).user.name, '新しい表示名');
+  const other = await sessionCookie({ sub: 'different-user', name: 'Other' });
+  assert.equal((await (await request('/api/auth/session', { headers: { Cookie: other } })).json()).user.name, 'Other');
+  assert.equal(sqlite.prepare('SELECT display_name FROM user_profiles WHERE user_id=?').get('real-google-sub').display_name, null);
+});
+test('provider avatar URLs accept Google HTTPS images and ignore untrusted hosts or schemes', async () => {
+  for (const picture of ['https://googleusercontent.com.attacker.test/a', 'javascript:alert(1)', 'http://lh3.googleusercontent.com/a', 'https://evil@lh3.googleusercontent.com/a']) {
+    const cookie = await sessionCookie({ sub: 'avatar-url-test', picture });
+    const user = (await (await request('/api/auth/session', { headers: { Cookie: cookie } })).json()).user;
+    assert.equal(user.avatarUrl, undefined);
+  }
 });

@@ -1,14 +1,16 @@
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTPayload } from 'jose';
+import { googleAvatar, profileFor, saveDisplayName, saveProviderAvatar } from './profile';
 
 export type AuthBindings = {
+  DB?: D1Database;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   SESSION_SECRET?: string;
   ALLOWED_EMAILS?: string;
 };
-export type AuthUser = { id: string; email: string; name: string };
+export type AuthUser = { id: string; email: string; name: string; avatarUrl?: string };
 type AuthEnv = { Bindings: AuthBindings };
 const SESSION_COOKIE = '__Host-uchiwake_session';
 const FLOW_COOKIE = '__Host-uchiwake_oauth';
@@ -37,11 +39,24 @@ export async function sessionUser<E extends AuthEnv>(c: Context<E>): Promise<Aut
   try {
     const payload = await verify(value, c.env, new URL(c.req.url).origin, 'session');
     if (typeof payload.sub !== 'string' || !payload.sub || typeof payload.email !== 'string' || !allowed(payload.email, c.env)) return null;
-    return { id: payload.sub, email: payload.email, name: typeof payload.name === 'string' ? payload.name : '' };
+    return { id: payload.sub, email: payload.email, name: typeof payload.name === 'string' ? payload.name : '', avatarUrl: googleAvatar(payload.picture) };
   } catch { return null; }
 }
 export const authRoutes = new Hono<AuthEnv>();
-authRoutes.get('/session', async c => c.json({ user: await sessionUser(c), configured: authConfigured(c.env) }));
+authRoutes.get('/session', async c => {
+  const user = await sessionUser(c);
+  return c.json({ user: user ? await profileFor(c.env.DB, user) : null, configured: authConfigured(c.env) });
+});
+authRoutes.put('/profile', async c => {
+  const user = await sessionUser(c);
+  if (!user) return c.json({ error: 'ログインし直してください' }, 401);
+  if (!c.env.DB) return c.json({ error: '表示名を保存できませんでした' }, 503);
+  const body = await c.req.json().catch(() => null);
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  if (!name || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) return c.json({ error: '表示名は1〜100文字で入力してください' }, 400);
+  await saveDisplayName(c.env.DB, user.id, name);
+  return c.json({ user: await profileFor(c.env.DB, { ...user, name }) });
+});
 authRoutes.get('/google', async c => {
   if (!authConfigured(c.env)) return c.redirect('/?auth_error=unavailable', 303);
   const origin = new URL(c.req.url).origin;
@@ -81,7 +96,9 @@ authRoutes.get('/google/callback', async c => {
     const { payload } = await jwtVerify(result.id_token, googleKeys, { algorithms: ['RS256'], issuer: ['https://accounts.google.com', 'accounts.google.com'], audience: c.env.GOOGLE_CLIENT_ID!, requiredClaims: ['exp', 'iat', 'sub'] });
     if (payload.nonce !== flow.nonce || (payload.azp !== undefined && payload.azp !== c.env.GOOGLE_CLIENT_ID) || !payload.sub || payload.email_verified !== true || typeof payload.email !== 'string') return fail('failed');
     if (!allowed(payload.email, c.env)) return fail('not_allowed');
-    const session = await token({ sub: payload.sub, email: payload.email, name: typeof payload.name === 'string' ? payload.name.slice(0, 100) : '' }, c.env, origin, 'session', SESSION_SECONDS);
+    const picture = googleAvatar(payload.picture);
+    await saveProviderAvatar(c.env.DB, payload.sub, picture);
+    const session = await token({ sub: payload.sub, email: payload.email, name: typeof payload.name === 'string' ? payload.name.slice(0, 100) : '', ...(picture ? { picture } : {}) }, c.env, origin, 'session', SESSION_SECONDS);
     setCookie(c, SESSION_COOKIE, session, { ...cookieOptions, maxAge: SESSION_SECONDS });
     return c.redirect('/', 303);
   } catch {

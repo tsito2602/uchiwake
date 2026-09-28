@@ -27,7 +27,7 @@ app.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store');
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('Referrer-Policy', 'no-referrer');
-  c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.googleusercontent.com https://googleusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
   if (c.req.path.startsWith('/api/')) {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
       if (c.req.header('Origin') !== new URL(c.req.url).origin) return error('この画面から操作してください', 401);

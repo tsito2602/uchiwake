@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
   --on-brand: #fff;
+  --dock-glass: #ffffff52;
   --panel-tint: #ffffffa3;
   --panel-header-tint: #ffffffe0;
   --surface-glow: #ffffffbd;
@@ -19,10 +20,10 @@
   --content-card: #1c1c1c;
   --brand: #fff;
   --on-brand: #171717;
-  --dock-glass: #181818d9;
+  --dock-glass: #18181859;
   --dock-border-top: #ffffff26;
   --dock-border-bottom: #ffffff10;
-  --panel-tint: #1c1c1ce6;
+  --panel-tint: #1c1c1ca3;
   --panel-header-tint: #202020e0;
   --surface-glow: #ffffff0e;
   --history-current: #bcbcbc;
@@ -55,8 +56,6 @@ html, body, #root { background: var(--canvas); color: var(--ink); }
 .import-confirm-check, .import-complete-symbol { color: var(--on-brand); }
 .import-review-confirm[data-checked='true'], .import-review-confirm input:checked + .import-confirm-check { border-color: var(--brand); }
 .import-review-confirm input:focus-visible + .import-confirm-check { outline-color: var(--brand); }
-/* Keep the neutral black choice legible without changing the saved palette. */
-:root[data-brand-theme='dark'] svg.lucide[stroke='#171717'] { stroke: var(--ink); }
 :root[data-brand-theme='dark'] .color-swatch > span { outline: 1px solid #ffffff30; }
 
 .browse-dock .dock-add { color: var(--on-brand); }
