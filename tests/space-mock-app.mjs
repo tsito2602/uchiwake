@@ -5,6 +5,8 @@ const config={uniform:true,common:{mode:'equal',shares:[{user_id:'google-test-id
 export default {fetch(request,env,...rest){
  const headers=new Headers(request.headers);headers.set('X-Space-Id','legacy');
  const DB={...env.DB,prepare(sql){
+  if(sql.includes('CREATE TABLE IF NOT EXISTS space_preferences'))return {run:async()=>({success:true})};
+  if(sql.includes('FROM space_preferences'))return {bind(){return {first:async()=>null};}};
   const result=sql.includes('FROM spaces s JOIN space_members')?{id:'legacy',name:'家計',kind:'shared',owner_id:'google-test-id'}:sql.includes('FROM settlement_rules')?{month:'0000-01',scope:'month',revision:1,config:JSON.stringify(config)}:null;
   if(result)return {bind(){return {first:async()=>result,all:async()=>({results:[result]})};}};
   if(sql.includes('FROM space_members m'))return {bind(){return {all:async()=>({results:[{user_id:'google-test-id',name:'本人',active:1},{user_id:'partner',name:'相手',active:1}]})};}};

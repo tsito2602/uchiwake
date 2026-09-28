@@ -1,4 +1,5 @@
 import { spacesRoutes, membership, membersFor, settlementFor, type SpaceEnv } from './spaces';
+import { readSpacePreferences } from './space-preferences';
 import { settlementItems, settlementAmounts, defaultConfig, type SettlementConfig } from '../src/spaces';
 import { authRoutes, authConfigured, sessionUser, type AuthBindings } from './auth';
 import { ImportError, upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
@@ -63,17 +64,18 @@ app.get('/api/state', async c => {
     const members=await membersFor(c.env.DB,c.get('spaceId'));
     return c.json({...demoState(month),space:c.get('space'),members,settlement:await settlementFor(c.env.DB,c.get('space'),month,members),ai_enabled:Boolean(c.env.OPENAI_API_KEY)});
   }
-  const [bills, statements, entries, cards, rentRules, categorySettings] = await Promise.all([
+  const [bills, statements, entries, cards, rentRules, categorySettings, preferences] = await Promise.all([
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC').bind(month,c.get('spaceId')).all(),
     c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at,revision FROM card_statements WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC').bind(month,c.get('spaceId')).all(),
     c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? AND s.space_id = ? ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(month,c.get('spaceId')).all(),
     c.env.DB.prepare('SELECT id,name,active,color FROM shared_cards WHERE space_id = ? AND deleted_at IS NULL ORDER BY created_at,id').bind(c.get('spaceId')).all(),
     c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules WHERE space_id = ? ORDER BY effective_month DESC').bind(c.get('spaceId')).all(),
-    readCategorySettings(c.env.DB,c.get('spaceId'))
+    readCategorySettings(c.env.DB,c.get('spaceId')),
+    readSpacePreferences(c.env.DB,c.get('spaceId'))
   ]);
   const members=await membersFor(c.env.DB,c.get('spaceId'));
-  const settlement=await settlementFor(c.env.DB,c.get('space'),month,members,!!(bills.results.length||statements.results.length||rentRules.results.some(r=>String(r.effective_month)<=month)));
-  return c.json({ space:c.get('space'),members,settlement,month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, category_settings:allCategoryAppearances(categorySettings), ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
+  const settlement=await settlementFor(c.env.DB,c.get('space'),month,members,!!(bills.results.some(b=>preferences.rent_enabled||b.kind!=='rent')||statements.results.length||(preferences.rent_enabled&&rentRules.results.some(r=>String(r.effective_month)<=month))));
+  return c.json({ space:c.get('space'),members,settlement,month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, space_preferences:preferences, category_settings:allCategoryAppearances(categorySettings), ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
 });
 
 app.post('/api/category-settings', async c => {
@@ -129,18 +131,19 @@ app.get('/api/settlement-history', async c => {
   const [year,value]=month.split('-').map(Number);
   const start=new Date(Date.UTC(year,value-60,1)).toISOString().slice(0,7);
   const id=c.get('spaceId'),personal=c.get('space').kind==='personal';
-  const [bills,statements,entries,rentRules,settings,rules,members]=await Promise.all([
+  const [bills,statements,entries,rentRules,settings,rules,members,preferences]=await Promise.all([
     c.env.DB.prepare('SELECT * FROM bills WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,start,month).all<Bill>(),
     c.env.DB.prepare('SELECT * FROM card_statements WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,start,month).all<CardStatement>(),
     c.env.DB.prepare('SELECT e.* FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.space_id=? AND s.due_month BETWEEN ? AND ?').bind(id,start,month).all<CardEntry>(),
     c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules WHERE space_id=? AND effective_month<=?').bind(id,month).all<RentRule>(),
     readCategorySettings(c.env.DB,id),
     c.env.DB.prepare('SELECT month,scope,config FROM settlement_rules WHERE space_id=? AND month<=? ORDER BY month DESC').bind(id,month).all<{month:string;scope:string;config:string}>(),
-    membersFor(c.env.DB,id)
+    membersFor(c.env.DB,id),
+    readSpacePreferences(c.env.DB,id)
   ]);
   return c.json({months:Array.from({length:60},(_,index)=>{
     const key=new Date(Date.UTC(year,value-60+index,1)).toISOString().slice(0,7);
-    const items=settlementItems({month:key,cards:[],bills:bills.results.filter(b=>b.due_month===key),statements:statements.results.filter(s=>s.due_month===key),entries:entries.results,rent_rules:rentRules.results,category_settings:settings},personal);
+    const items=settlementItems({month:key,cards:[],bills:bills.results.filter(b=>b.due_month===key),statements:statements.results.filter(s=>s.due_month===key),entries:entries.results,rent_rules:rentRules.results,category_settings:settings,space_preferences:preferences},personal);
     const total=items.reduce((n,item)=>n+item.amount,0);
     const rule=rules.results.find(r=>r.scope==='month'&&r.month===key)??rules.results.find(r=>r.scope==='default'&&r.month<=key);
     const config=rule?JSON.parse(rule.config) as SettlementConfig:defaultConfig(members);

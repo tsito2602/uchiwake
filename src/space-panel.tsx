@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { LucideIcon } from 'lucide-react';
 import type { DockContext } from './floating-dock';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
@@ -30,7 +31,7 @@ export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin
  const panel=useRef<HTMLElement>(null);
  usePanelMorph(panel,origin,closing,onExited,context.onBack);
  useSpaceDock(context,onDockChange);
- return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)context.onBack();}}>
+ return createPortal(<div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)context.onBack();}}>
   <div className="card-panel-scrim" aria-hidden="true"/>
   <section ref={panel} className="card-panel space-floating-panel" role="dialog" aria-modal="true" aria-labelledby="space-panel-title">
    <header className="card-panel-header"><span className="card-panel-icon"><Icon size={22}/></span><div><h2 id="space-panel-title" tabIndex={-1}>{title}</h2></div></header>
@@ -43,5 +44,5 @@ export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin
     {context.secondaryAction&&<button type="button" className="delete-action" disabled={context.secondaryAction.disabled} onClick={context.secondaryAction.onAction}>{context.secondaryAction.label}</button>}
    </footer>
   </section>
- </div>;
+ </div>,document.body);
 }

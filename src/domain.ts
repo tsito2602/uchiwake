@@ -10,7 +10,8 @@ export type SharedCard = { id: string; name: string; active: boolean; color: str
 export type RentRule = { effective_month: string; amount: number };
 export type CardStatement = { id: string; card_id: string | null; due_month: string; title: string; confirmed_total: number; created_at: string; revision?:number };
 export type EntryDraft = Pick<CardEntry, 'spent_on' | 'title' | 'category' | 'amount'>;
-export type State = { bills: Bill[]; statements: CardStatement[]; entries: CardEntry[]; cards: SharedCard[]; category_settings:CategoryAppearance[]; rent_rules: RentRule[]; ai_enabled: boolean; demo_enabled: boolean; month: string };
+export type SpacePreferences = {rent_enabled:boolean;revision:number};
+export type State = { bills: Bill[]; statements: CardStatement[]; entries: CardEntry[]; cards: SharedCard[]; category_settings:CategoryAppearance[]; rent_rules: RentRule[]; space_preferences?:SpacePreferences; ai_enabled: boolean; demo_enabled: boolean; month: string };
 export function rentForMonth(month: string, bills: Pick<Bill,'kind'|'amount'>[], rules: RentRule[]) {
   const overrides = bills.filter(bill => bill.kind === 'rent');
   if (overrides.length) return { amount: overrides.reduce((sum,bill)=>sum+bill.amount,0), overridden: true };

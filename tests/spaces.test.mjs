@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { spaceFixture } from './spaces-fixture.mjs';
 const {outputFiles}=await build({entryPoints:[new URL('../src/spaces.ts',import.meta.url).pathname],bundle:true,write:false,format:'esm',platform:'node'});
-const {allocate,settlementAmounts,validateConfig}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {allocate,settlementAmounts,settlementItems,validateConfig}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 const equal=(...ids)=>({mode:'equal',shares:ids.map(user_id=>({user_id,weight:1}))});
 const percent=(...weights)=>({mode:'percent',shares:weights.map(([user_id,weight])=>({user_id,weight}))});
 const config=(common,items={})=>({uniform:!Object.keys(items).length,common,items});
@@ -140,5 +140,76 @@ test('個人では精算除外の費目も支出合計に含まれ、共有へ�
   await json(await f.call('owner','/category-settings/'+encodeURIComponent('食費'),'PUT',{icon:'utensils',color:'#b78d6a',include_in_settlement:false},space));
   const history=await json(await f.call('owner','/settlement-history?month=2026-09','GET',undefined,space));assert.equal(history.months.at(-1).total,1500);
   assert.equal((await f.call('owner',`/spaces/${space}/invites`,'POST',{})).status,403);
+ }finally{f.db.close();}
+});
+
+test('家賃をオフにすると基本・個別家賃を集計から外し、再有効化で同じ金額と割合へ戻る',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);await invite(f,space,'b');
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-08',scope:'default',revision:0,config:config(equal('owner','b'))}));
+  await json(await f.call('owner','/rent-rules/2026-08','PUT',{amount:100000},space.id));
+  await json(await f.call('owner','/bills','POST',{due_month:'2026-09',title:'家賃',kind:'rent',amount:120000},space.id),201);
+  await json(await f.call('owner','/bills','POST',{due_month:'2026-09',title:'電気',kind:'utilities',amount:3000},space.id),201);
+  const card=await json(await f.call('owner','/cards','POST',{name:'生活費'},space.id),201);
+  await json(await f.call('owner','/statements','POST',{card_id:card.id,due_month:'2026-09',title:'明細',confirmed_total:2000,entries:[{spent_on:'',title:'買い物',category:'食費',amount:2000}]},space.id),201);
+  const read=async()=>json(await f.call('b','/state?month=2026-09','GET',undefined,space.id));
+  const before=await read();assert.deepEqual(before.space_preferences,{rent_enabled:true,revision:0});
+  for(const [enabled,revision,total] of [[false,0,5000],[true,1,125000]]){
+   await json(await f.call('b',`/spaces/${space.id}/preferences`,'PUT',{rent_enabled:enabled,revision}));
+   const state=await read(),items=settlementItems(state);
+   assert.equal(items.some(i=>i.key==='rent'),enabled);
+   assert.equal(items.reduce((n,i)=>n+i.amount,0),total);
+   assert.deepEqual(state.bills,before.bills);assert.deepEqual(state.rent_rules,before.rent_rules);assert.deepEqual(state.settlement,before.settlement);
+   assert.equal(settlementAmounts(items,state.settlement.config).b,total/2);
+   const {months}=await json(await f.call('b','/settlement-history?month=2026-09','GET',undefined,space.id));
+   assert.deepEqual(months.at(-1),{month:'2026-09',total,amount:total/2});
+   assert.equal(months.at(-2).total,enabled?100000:0);
+   const personal=await json(await f.call('owner','/state?month=2026-09','GET',undefined,'personal:owner'));
+   assert.equal(personal.space_preferences.rent_enabled,true);
+  }
+ }finally{f.db.close();}
+});
+
+test('家賃の設定はスペースのメンバーだけが変更でき、古い版や不正な入力を拒否する',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);await invite(f,space,'b');
+  const path=`/spaces/${space.id}/preferences`;
+  assert.equal((await f.call('outsider',path,'PUT',{rent_enabled:false,revision:0})).status,404);
+  for(const body of [{rent_enabled:'false',revision:0},{rent_enabled:0,revision:0},{rent_enabled:false},{rent_enabled:false,revision:-1}])assert.equal((await f.call('b',path,'PUT',body)).status,400);
+  const concurrent=await Promise.all(['owner','b'].map(user=>f.call(user,path,'PUT',{rent_enabled:false,revision:0})));
+  assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
+  assert.equal((await f.call('owner',path,'PUT',{rent_enabled:true,revision:0})).status,409);
+  const state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space.id));
+  assert.deepEqual(state.space_preferences,{rent_enabled:false,revision:1});
+  await json(await f.call('owner',`/spaces/${space.id}/members/b`,'DELETE'));
+  assert.equal((await f.call('b',path,'PUT',{rent_enabled:true,revision:1})).status,404);
+ }finally{f.db.close();}
+});
+
+test('個人の家賃も無効にでき、既存DBは新しい設定表を自動作成して従来どおり有効から始める',async()=>{
+ const f=spaceFixture();try{
+  await f.call('owner','/spaces');const space='personal:owner';
+  f.db.exec('DROP TABLE space_preferences');
+  await json(await f.call('owner','/rent-rules/2026-09','PUT',{amount:80000},space));
+  const state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space));
+  assert.deepEqual(state.space_preferences,{rent_enabled:true,revision:0});
+  await json(await f.call('owner',`/spaces/${space}/preferences`,'PUT',{rent_enabled:false,revision:0}));
+  const next=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space));
+  assert.equal(settlementItems(next,true).reduce((n,i)=>n+i.amount,0),0);
+  const history=await json(await f.call('owner','/settlement-history?month=2026-09','GET',undefined,space));assert.equal(history.months.at(-1).total,0);
+  const demo=await json(await f.call('owner','/state?month=2026-09&demo=1','GET',undefined,space));
+  assert.equal(settlementItems(demo,true).some(i=>i.key==='rent'),true);
+  assert.equal(f.db.prepare('SELECT rent_enabled FROM space_preferences WHERE space_id=?').get(space).rent_enabled,0);
+ }finally{f.db.close();}
+});
+
+test('個人・共有のスペース名は作成者だけが変更でき、再取得しても保持する',async()=>{
+ const f=spaceFixture();try{
+  const shared=await create(f);await invite(f,shared,'b');
+  for(const id of ['personal:owner',shared.id]){
+   await json(await f.call('owner',`/spaces/${id}/name`,'PUT',{name:'わが家'}));
+   const spaces=await json(await f.call('owner','/spaces'));assert.equal(spaces.spaces.find(s=>s.id===id).name,'わが家');
+   assert.notEqual((await f.call('b',`/spaces/${id}/name`,'PUT',{name:'変更'})).status,200);
+  }
  }finally{f.db.close();}
 });

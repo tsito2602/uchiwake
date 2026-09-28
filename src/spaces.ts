@@ -31,7 +31,7 @@ export function allocate(amount:number,split:Split):Record<string,number> {
  [...rows].sort((a,b)=>a.remainder===b.remainder?a.id.localeCompare(b.id):a.remainder>b.remainder?-1:1).slice(0,remainder).forEach(r=>r.amount++);
  return Object.fromEntries(rows.map(r=>[r.id,sign*r.amount]));
 }
-export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'entries'|'bills'|'rent_rules'|'category_settings'>,personal=false) {
+export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'entries'|'bills'|'rent_rules'|'category_settings'|'space_preferences'>,personal=false) {
  const items=new Map<string,{key:string;label:string;amount:number}>();
  for(const card of state.cards)items.set(`card:${card.id}`,{key:`card:${card.id}`,label:card.name,amount:0});
  for(const s of state.statements){
@@ -39,7 +39,7 @@ export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'e
   const item=items.get(key)??{key,label:s.title,amount:0};
   item.amount+=personal?s.confirmed_total:statementSettlementAmount(s,state.entries,state.category_settings);items.set(key,item);
  }
- items.set('rent',{key:'rent',label:'家賃',amount:rentForMonth(state.month,state.bills,state.rent_rules).amount});
+ if(state.space_preferences?.rent_enabled!==false)items.set('rent',{key:'rent',label:'家賃',amount:rentForMonth(state.month,state.bills,state.rent_rules).amount});
  for(const b of state.bills.filter(b=>b.kind!=='card'&&b.kind!=='rent'))items.set(`bill:${b.id}`,{key:`bill:${b.id}`,label:b.title,amount:b.amount});
  return [...items.values()];
 }

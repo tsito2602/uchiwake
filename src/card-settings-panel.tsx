@@ -1,3 +1,4 @@
+import { SettingsToggle } from './settings-toggle';
 import { displayColor } from './display-color';
 import { useRef } from 'react';
 import { CreditCard, Pencil, Trash2, X } from 'lucide-react';
@@ -22,7 +23,7 @@ export function CardSettingsPanel({card,view,origin,closing,busy,name,active,col
         <div><dt>カード名</dt><dd>{card?.name}</dd></div>
         <div><dt>アイコンのカラー</dt><dd className="card-settings-color"><i aria-hidden="true" style={{background:displayColor(savedColor)}}/>{cardColors.find(item=>item.value===savedColor)?.label??savedColor}</dd></div>
         <div><dt>使用状態</dt><dd>{card?.active?'使用中':'使用停止中'}</dd></div>
-      </dl>:<div className="bill-panel-form"><label className="field"><span>カード名</span><input value={name} maxLength={40} placeholder="例：生活費カード" onChange={event=>onName(event.target.value)} disabled={busy} onKeyDown={event=>{if(event.key==='Enter'&&!actionDisabled)onSave();}}/></label><ColorSwatchPicker value={color} onChange={onColor} disabled={busy}/>{card&&<label className="card-settings-active"><span>使用する</span><input type="checkbox" role="switch" checked={active} disabled={busy} onChange={event=>onActive(event.target.checked)}/><span className="card-active-switch" aria-hidden="true"><span className="card-active-switch-thumb"/></span></label>}</div>}</div>
+      </dl>:<div className="bill-panel-form"><label className="field"><span>カード名</span><input value={name} maxLength={40} placeholder="例：生活費カード" onChange={event=>onName(event.target.value)} disabled={busy} onKeyDown={event=>{if(event.key==='Enter'&&!actionDisabled)onSave();}}/></label><ColorSwatchPicker value={color} onChange={onColor} disabled={busy}/>{card&&<SettingsToggle label="使用する" checked={active} disabled={busy} onChange={onActive}/>}</div>}</div>
       <footer className="card-panel-footer panel-desktop-actions"><button disabled={actionDisabled} onClick={onSave} aria-label={actionLabel}>{view==='summary'?<Pencil size={22}/>:actionLabel}</button>{deleteAction&&<button className="delete-action" disabled={deleteAction.disabled} onClick={deleteAction.onAction} aria-label={deleteAction.label}><Trash2 size={22}/></button>}</footer>
     </section>
   </div>;

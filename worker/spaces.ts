@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import type { AuthBindings, AuthUser } from './auth';
 import { googleAvatar } from './profile';
+import { saveSpacePreferences } from './space-preferences';
 import { defaultConfig, validateConfig, type Member, type Space, type SettlementConfig, type SettlementSettings } from '../src/spaces';
 export type SpaceEnv = {Bindings:AuthBindings&{DB:D1Database;APP_ENV:string;OPENAI_API_KEY?:string};Variables:{user:AuthUser;space:Space;spaceId:string}};
 export const spacesRoutes=new Hono<SpaceEnv>();
@@ -110,9 +111,15 @@ spacesRoutes.post('/:id/invites',async c=>{
  return c.json({code:code.match(/.{4}/g)!.join('-'),expires_at:expires},201);
 });
 spacesRoutes.put('/:id/name',async c=>{
- const space=c.get('space');if(space.kind!=='shared'||space.owner_id!==c.get('user').id)return fail('変更できるのは作成者だけです',403);
+ const space=c.get('space');if(space.owner_id!==c.get('user').id)return fail('変更できるのは作成者だけです',403);
  const body=await c.req.json().catch(()=>null),name=cleanName(body?.name);if(!name)return fail('スペース名は1〜40文字で入力してください');
  await c.env.DB.prepare('UPDATE spaces SET name=? WHERE id=?').bind(name,space.id).run();return c.json({ok:true});
+});
+spacesRoutes.put('/:id/preferences',async c=>{
+ const body=await c.req.json().catch(()=>null);
+ if(typeof body?.rent_enabled!=='boolean'||!Number.isSafeInteger(body?.revision)||body.revision<0)return fail('家賃の設定を確認してください');
+ if(!await saveSpacePreferences(c.env.DB,c.get('spaceId'),body.rent_enabled,body.revision))return fail('ほかのメンバーが変更しました。最新の設定を確認してください',409);
+ return c.json({rent_enabled:body.rent_enabled,revision:body.revision+1});
 });
 spacesRoutes.delete('/:id/space',async c=>{
  const space=c.get('space');if(space.kind!=='shared'||space.owner_id!==c.get('user').id)return fail('削除できるのは共有スペースの作成者だけです',403);

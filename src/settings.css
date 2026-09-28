@@ -37,3 +37,12 @@
 .account-save-status:empty { display: none; }
 .palette-hint { margin: 0 0 12px; }
 :root[data-brand-theme='dark'] .swatch-check { color: #171717; }
+
+.settings-group-heading { padding: 4px 4px 0; }
+.settings-group-heading > small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.settings-group-heading h2 { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.settings-group-heading h2 svg { flex-shrink: 0; }
+.settings-common-heading { margin-top: 24px; }
+.settings-page .settings-space-delete { color: var(--danger); }
+.space-management-settings .space-member { font-size: 14px; }
+.space-management-settings .space-members { margin-top: -8px; }
