@@ -27,7 +27,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const currentLayer=registerPanel(node);layer.current=currentLayer;
     const shell=node.parentElement!;
     const parent=currentLayer.parents.at(-1);
-    const parentOpacity=parent?.style.opacity;
+    const parentFilter=parent?.style.filter;
     shell.style.setProperty('--panel-depth',String(currentLayer.parents.length));
     shell.dataset.panelNested=String(!currentLayer.ownsBackground);
     const viewport=window.visualViewport;
@@ -51,7 +51,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       companions.current=animatePanelSurroundings(node,main,currentLayer.parents);
     }else{
       if(main&&currentLayer.ownsBackground)main.style.filter='blur(6px)';
-      if(parent)parent.style.opacity='0';
+      if(parent)parent.style.filter='blur(6px)';
     }
     return()=>{
       viewport?.removeEventListener('resize',updateViewport);
@@ -59,7 +59,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       node.removeEventListener('focusin',reveal);cancelAnimationFrame(revealFrame);
       motion.current?.cancel();
       companions.current.forEach(animation=>animation.cancel());
-      if(reduced&&parent)parent.style.opacity=parentOpacity||'';
+      if(reduced&&parent)parent.style.filter=parentFilter||'';
       shell.style.removeProperty('--panel-depth');
       delete shell.dataset.panelNested;
       unlockBackground();

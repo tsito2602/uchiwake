@@ -54,7 +54,7 @@ test('途中で閉じても同じタイムラインを逆再生し、背景と�
   }
 });
 
-test('子パネルの往復は親の表示だけを同期し、共通の暗幕と背景を点滅させない',()=>{
+test('子パネルの背後で親を保持して縮小・ぼかしを同期し、共通の背景は維持する',()=>{
   globalThis.window={innerWidth:390,innerHeight:844};
   const calls=[];
   const target=name=>({getBoundingClientRect:()=>bounds,animate:(frames,timing)=>{
@@ -66,7 +66,11 @@ test('子パネルの往復は親の表示だけを同期し、共通の暗幕�
   assert.deepEqual(outer.map(a=>a.name),['scrim','page']);
   const nested=animatePanelSurroundings({parentElement:{querySelector:()=>childScrim}},page,[parent]);
   assert.deepEqual(calls.map(a=>a.name),['scrim','page','parent']);
-  assert.deepEqual(nested[0].frames,[{opacity:1},{opacity:0}]);
+  assert.equal(nested[0].frames[0].scale,'1');
+  assert.equal(nested[0].frames[1].scale,'.94');
+  assert.equal(nested[0].frames[0].filter,'blur(0px)');
+  assert.equal(nested[0].frames[1].filter,'blur(6px)');
+  assert.ok(nested[0].frames.every(frame=>!('opacity' in frame)&&!('display' in frame)&&!('visibility' in frame)));
   assert.equal(nested[0].timing.fill,'both');
   for(const time of [96,320]){
     const child={currentTime:time,playbackRate:1,play(){}};
@@ -76,6 +80,12 @@ test('子パネルの往復は親の表示だけを同期し、共通の暗幕�
     // Returning to the parent never reverses the still-open outer backdrop.
     assert.ok(outer.every(a=>a.playbackRate===1&&a.plays===0));
   }
+  // A third panel recedes only its immediate parent, preserving all earlier
+  // layers and their scroll/content rather than replaying or hiding them.
+  const middle=target('middle');
+  const deep=animatePanelSurroundings({},page,[parent,middle]);
+  assert.deepEqual(deep.map(a=>a.name),['middle']);
+  assert.deepEqual(calls.map(a=>a.name),['scrim','page','parent','middle']);
 });
 
 test('追加メニューとパネルの背景はスクロール位置に関わらず画面中央へ同じ縮尺で縮む',()=>{
