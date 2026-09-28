@@ -23,7 +23,7 @@ const dateLabel=(date:string)=>{
 export function CategoryEntriesPanel({category,entries,statements,cards,category_settings,month,origin,closing,onClose,onExited}:Props) {
   const panel=useRef<HTMLElement>(null);
   const [groupByCard,setGroupByCard]=useState(false);
-  const [ascending,setAscending]=useState(false);
+  const [sort,setSort]=useState<{key:'date'|'amount';ascending:boolean}>({key:'date',ascending:false});
   usePanelMorph(panel,origin,closing,onExited,onClose);
   const appearance=categoryAppearance(category,category_settings);
   const statementCards=new Map(statements.filter(item=>item.due_month===month).map(item=>{
@@ -32,8 +32,9 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
   }));
   const rows=entries.filter(entry=>entry.category===category&&statementCards.has(entry.statement_id))
     .sort((a,b)=>{
+      if(sort.key==='amount')return (sort.ascending?1:-1)*(a.amount-b.amount)||a.id.localeCompare(b.id);
       if(!a.spent_on||!b.spent_on)return Number(!a.spent_on)-Number(!b.spent_on)||a.id.localeCompare(b.id);
-      return (ascending?1:-1)*a.spent_on.localeCompare(b.spent_on)||a.id.localeCompare(b.id);
+      return (sort.ascending?1:-1)*a.spent_on.localeCompare(b.spent_on)||a.id.localeCompare(b.id);
     });
   const groups=[...new Map(rows.map(entry=>{
     const card=statementCards.get(entry.statement_id)!;
@@ -50,7 +51,6 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
       </div><span>{yen(entry.amount)}</span>
     </div>;
   };
-  const SortIcon=ascending?ArrowUpNarrowWide:ArrowDownWideNarrow;
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
     <section className="card-panel category-entries-panel" role="dialog" aria-modal="true" aria-labelledby="category-entries-title" ref={panel}>
@@ -62,7 +62,13 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
             <button type="button" aria-pressed={!groupByCard} onClick={()=>setGroupByCard(false)}>すべて</button>
             <button type="button" aria-pressed={groupByCard} onClick={()=>setGroupByCard(true)}>カード別</button>
           </div>
-          <button type="button" className="category-entries-sort" aria-label={`利用日の${ascending?'降順':'昇順'}に並べ替え`} title={ascending?'古い順（タップで新しい順）':'新しい順（タップで古い順）'} onClick={()=>setAscending(value=>!value)}><span>{ascending?'古い順':'新しい順'}</span><SortIcon size={20} aria-hidden="true"/></button>
+          <div className="category-entries-sorts" role="group" aria-label="明細の並べ替え">{([{key:'date',label:'日付',name:'利用日'},{key:'amount',label:'金額',name:'金額'}] as const).map(option=>{
+            const active=sort.key===option.key;
+            const ascending=active&&sort.ascending;
+            const nextAscending=active?!sort.ascending:false;
+            const SortIcon=ascending?ArrowUpNarrowWide:ArrowDownWideNarrow;
+            return <button key={option.key} type="button" className="category-entries-sort" aria-pressed={active} aria-label={`${option.name}の${nextAscending?'昇順':'降順'}に並べ替え`} title={`${option.label}${active?`：${ascending?'昇順':'降順'}`:''}（タップで${nextAscending?'昇順':'降順'}）`} onClick={()=>setSort({key:option.key,ascending:nextAscending})}><span>{option.label}</span><SortIcon size={20} aria-hidden="true"/></button>;
+          })}</div>
         </div>
         {groupByCard?groups.map(group=><section className="card-panel-statement category-card-group" aria-label={group.name} key={group.id}>
           <div className="card-panel-statement-title"><h3><CreditCard size={18} color={displayColor(group.color)} aria-hidden="true"/><span>{group.name}</span></h3><span>{group.entries.length}件 · {yen(group.entries.reduce((sum,entry)=>sum+entry.amount,0))}</span></div>

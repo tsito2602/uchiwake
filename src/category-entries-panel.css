@@ -1,4 +1,4 @@
-.category-entries-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 10px; }
+.category-entries-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 10px; }
 .category-entries-modes { display: flex; padding: 3px; border-radius: 14px; background: var(--appearance-track); }
 .category-entries-modes button { min-height: 44px; padding: 8px 14px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 .category-entries-modes button[aria-pressed='true'] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 4px #0000000d; }
@@ -12,3 +12,7 @@
 .category-card-group h3 { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; font-size: 13px; font-weight: 600; }
 .category-card-group h3 > span { overflow-wrap: anywhere; }
 .category-card-group + .category-card-group { margin-top: 12px; border-top: 1px solid var(--line); }
+
+.category-entries-sorts { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.category-entries-sort[aria-pressed="true"] { background: var(--soft); color: var(--ink); }
+.category-entries-sort[aria-pressed="false"] svg { color: var(--muted); }
