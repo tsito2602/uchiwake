@@ -1,8 +1,9 @@
 .history-chart { position: relative; margin-top: 14px; color: var(--ink); }
-.history-tooltip { position: absolute; z-index: 2; top: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb,var(--canvas) 88%,transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); pointer-events: none; white-space: nowrap; visibility: hidden; }
+.history-tooltip { position: absolute; z-index: 2; isolation: isolate; top: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 8px; pointer-events: none; white-space: nowrap; visibility: hidden; }
+.history-tooltip::before { content: ''; position: absolute; z-index: -1; inset: -12px -18px; background: color-mix(in srgb,var(--canvas) 75%,transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); mask-image: radial-gradient(ellipse at center,#000 35%,#0008 62%,transparent 72%); -webkit-mask-image: radial-gradient(ellipse at center,#000 35%,#0008 62%,transparent 72%); }
 .history-tooltip[data-visible="true"] { visibility: visible; }
-.history-tooltip span { color: var(--muted); font-size: 12px; }
-.history-tooltip strong { color: var(--ink); font-size: 20px; line-height: 1.25; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
+.history-tooltip span { color: var(--muted); font-size: 10px; }
+.history-tooltip strong { color: var(--ink); font-size: 15px; line-height: 1.25; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
 .history-tooltip small { color: var(--muted); font-size: 10px; }
 .history-plot { height: 156px; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .history-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
