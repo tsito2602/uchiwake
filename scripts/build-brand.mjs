@@ -6,11 +6,13 @@ const { pathData, BRAND_THEMES } = await import(`data:text/javascript;base64,${B
 function svg(theme, adaptive = false, logo = false) {
   const colors = BRAND_THEMES[theme];
   const dark = BRAND_THEMES.dark;
-  const style = adaptive ? `<style>@media(prefers-color-scheme:dark){.ink{fill:${dark.ink}}.mid{fill:${dark.mid}}.pale{fill:${dark.pale}}}</style>` : '';
+  const style = adaptive ? `<style>@media(prefers-color-scheme:dark){.background{fill:${dark.background}}.ink{fill:${dark.ink}}.mid{fill:${dark.mid}}.pale{fill:${dark.pale}}}</style>` : '';
   const paths = pathData.map((d, i) => { const part = i === 2 ? 'mid' : i === 3 ? 'pale' : 'ink'; return `<path class="${part}" fill="${colors[part]}" d="${d}"/>`; }).join('');
-  // Keep the working SVG registration. Only remove the plate and enlarge the mark.
+  // Preserve the known-working tile. Scale only the five original paths;
+  // there is no separate white outline or matte underneath those paths.
+  const background = logo ? '' : `<rect class="background" width="1254" height="1254" rx="250" fill="${colors.background}"/>`;
   const artwork = logo ? paths : `<g transform="translate(627 627) scale(1.14) translate(-627 -627)">${paths}</g>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${logo ? '-248 -240 1750 1385' : '0 0 1254 1254'}" role="img" aria-label="uchiwake">${style}${artwork}</svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${logo ? '-248 -240 1750 1385' : '0 0 1254 1254'}" role="img" aria-label="uchiwake">${style}${background}${artwork}</svg>\n`;
 }
 for (const theme of ['light', 'dark']) {
   await writeFile(`public/icon-${theme}.svg`, svg(theme));

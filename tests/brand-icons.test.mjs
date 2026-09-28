@@ -15,7 +15,11 @@ test('アプリ内ロゴはバイト単位で維持する',async()=>{
     assert.equal(createHash('sha256').update(await readFile(`public/${name}`)).digest('hex'),hash,name);
   }
 });
-test('SVGの背景と穴は透明で、輪郭に下地を含まず、マークだけ14%拡大する',async()=>{
+test('背景は成功版と同一に保ち、白い下地のない図柄だけ14%拡大する',async()=>{
+  const hashes={
+    light:'91f15cc5fccb26018703411ffad309995ace578b51c3286c747fe48303ca5cc1',
+    dark:'c949755a8e2d41322f3ddd71d21e9b3607ac0fc92e3c4a93db2c77ae38e4c990',
+  };
   const palettes={light:[[48,48,47],[156,151,143],[203,197,187]],dark:[[245,241,233],[182,176,166],[129,123,114]]};
   const render=svg=>sharp(Buffer.from(svg)).resize(512,512).ensureAlpha().raw().toBuffer();
   const height=data=>{
@@ -24,11 +28,18 @@ test('SVGの背景と穴は透明で、輪郭に下地を含まず、マーク�
   };
   for(const theme of ['light','dark']) {
     const svg=await readFile(`public/icon-${theme}.svg`,'utf8');
-    assert.doesNotMatch(svg,/<rect|stroke=/);
-    const data=await render(svg),before=await render(svg.replace('scale(1.14)','scale(1)'));
+    // Removing ONLY the scale group must exactly recover the original asset.
+    const unscaled=svg.replace('<g transform="translate(627 627) scale(1.14) translate(-627 -627)">','').replace('</g>','');
+    assert.equal(createHash('sha256').update(unscaled).digest('hex'),hashes[theme]);
+    assert.equal((svg.match(/<rect\b/g)||[]).length,1);
+    assert.doesNotMatch(svg,/stroke=/);
+    const foreground=svg.replace(/<rect\b[^>]*\/>/,'');
+    const data=await render(foreground),before=await render(foreground.replace('scale(1.14)','scale(1)'));
     assert.ok(Math.abs(height(data)/height(before)-1.14)<.015);
     assert.equal(data[3],0);
     assert.equal(data[(Math.round(512*671.46/1254)*512+256)*4+3],0);
+    const composed=await render(svg),hole=(Math.round(512*671.46/1254)*512+256)*4;
+    assert.deepEqual([...composed.subarray(hole,hole+4)],theme==='light'?[251,248,242,255]:[25,25,25,255]);
     for(let i=0;i<data.length;i+=4)if(data[i+3]>=32){
       const delta=Math.min(...palettes[theme].map(color=>Math.max(...color.map((v,c)=>Math.abs(v-data[i+c])))));
       assert.ok(delta<=9,'No white matte or extra outline at partially transparent edges');
