@@ -2,11 +2,13 @@
 export type Point=number[];
 export const BRAND_THEMES={light:{background:"#fbf8f2",ink:"#30302f",mid:"#9c978f",pale:"#cbc5bb"},dark:{background:"#191919",ink:"#f5f1e9",mid:"#b6b0a6",pale:"#817b72"}} as const;
 export type BrandTheme=keyof typeof BRAND_THEMES;
-export const NAME_DELAY=2150;
-export const NAME_STAGGER=60;
-export const NAME_DURATION=320;
+// Compress the entire approved sequence uniformly, preserving its easing and path.
+export const BOOT_TIME_SCALE=0.8;
+export const NAME_DELAY=1720;
+export const NAME_STAGGER=48;
+export const NAME_DURATION=256;
 export const BOOT_HOLD_END=NAME_DELAY+7*NAME_STAGGER+NAME_DURATION;
-export const BOOT_EXIT_DURATION=240;
+export const BOOT_EXIT_DURATION=192;
  export const pathData=[
   'M 451 254 Q 647 164 838 286 Q 856 298 848 315 L 819 365 Q 811 381 796 373 Q 642 289 482 350 Q 469 355 462 340 L 441 291 Q 434 266 451 254 Z',
   'M 320 517 Q 531 293 796 415 L 693 567 Q 541 488 381 611 C 324 644 273 580 312 530 Z',
@@ -94,6 +96,7 @@ export const BOOT_EXIT_DURATION=240;
  }
 
 export function drawBrand(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, theme: BrandTheme) {
+  t /= BOOT_TIME_SCALE;
   const palette = BRAND_THEMES[theme];
   const colors = [palette.ink, palette.ink, palette.mid, palette.pale, palette.ink];
   ctx.setTransform(1, 0, 0, 1, 0, 0);

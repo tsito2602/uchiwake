@@ -90,8 +90,10 @@ Cloudflare Workers Builds で `tsito2602/uchiwake` の `staging` ブランチを
 
 起動画面は、切れ目から時計回りに満ちるドーナツが「う」に変形します。
 一画目は採用した2案目の連続した回転軌道で移動し、元の丸い形に収まります。
-名前は `uchiwake`。Kondo の起動画面と同じ 7px の上昇、320ms の
-`cubic-bezier(.22,1,.36,1)`、1文字60ms差で現れます。開始だけロゴの着地に合わせています。
+名前は `uchiwake`。Kondo の起動画面と同じ 7px の上昇と
+`cubic-bezier(.22,1,.36,1)` で現れます。採用した動き全体を20%短縮し、
+名前は1720ms後から1文字48ms差・256msで表示、フェードアウトは192msです。
+データ取得済みなら起動演出全体は約2.50秒（従来約3.13秒）で完了します。
 
 形状と配色の原本は `src/brand-motion.ts`、起動処理は `src/boot.ts` です。
 `npm run dev` / `npm run build` は `scripts/build-brand.mjs` で起動スクリプトと
