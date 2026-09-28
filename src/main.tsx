@@ -219,7 +219,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const dismissCard=()=>setOpenCard(current=>current?{...current,closing:true}:null);
   const dismissBill=()=>setEditing(current=>current?{...current,closing:true}:null);
   const dismissSettings=()=>setCardSettings(current=>current?{...current,closing:true}:null);
-  const openSettings=(card?:SharedCard,source?:HTMLElement)=>setCardSettings({card,view:card?'summary':'edit',name:card?.name||'',active:card?.active??true,color:card?.color??defaultCardColor,origin:source?panelOrigin(source):undefined});
+  const openSettings=(card?:SharedCard,source?:HTMLElement)=>setCardSettings({card,view:'edit',name:card?.name||'',active:card?.active??true,color:card?.color??defaultCardColor,origin:source?panelOrigin(source):undefined});
   const dismissCategorySettings=()=>setCategorySettings(current=>current?{...current,closing:true}:null);
   async function saveCategorySettings() {
     if(!categorySettings||demoView||busy)return;
@@ -340,7 +340,7 @@ function App({user,logout,signingOut,updateProfile}:AccountProps) {
   const settingsContext:DockContext|undefined=cardSettings?{
     commit:cardSettings.view==='edit',compact:cardSettings.view==='summary',actionIcon:cardSettings.view==='summary'?'edit':undefined,label:'共有カード',
     secondaryAction:cardSettings.view==='edit'&&cardSettings.card?{label:'カードを削除',disabled:demoView||busy,onAction:()=>void removeCard(cardSettings.card!)}:undefined,
-    onBack:()=>{if(busy)return;setNotice('');if(cardSettings.view==='edit'&&cardSettings.card){const card=cardSettings.card;setCardSettings({...cardSettings,view:'summary',name:card.name,active:card.active,color:card.color??defaultCardColor});}else dismissSettings();},
+    onBack:()=>{if(busy)return;setNotice('');dismissSettings();},
     actionLabel:cardSettings.view==='summary'?'カードを編集':busy?'保存中…':cardSettings.card?'変更を保存する':'カードを追加',
     onAction:()=>{if(cardSettings.view==='summary'){setCardSettings({...cardSettings,view:'edit'});return;}if(cardSettings.card)void updateCard(cardSettings.card,cardSettings.name.trim(),cardSettings.active,cardSettings.color);else void createCard(cardSettings.name,cardSettings.color);},
     disabled:busy||(cardSettings.view==='edit'&&(demoView||!cardSettings.name.trim()||(!!cardSettings.card&&cardSettings.name.trim()===cardSettings.card.name&&cardSettings.active===cardSettings.card.active&&cardSettings.color===(cardSettings.card.color??defaultCardColor))))

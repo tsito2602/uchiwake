@@ -374,6 +374,7 @@ export function FluidDockSurface({
   const shape = useRef<{ islands: DockIsland[]; tension: number } | null>(null);
   const target = useRef("");
   const measuredMode = useRef<string | undefined>(undefined);
+  const selectionKind = useRef<string|null>(null);
   const width = useRef(0);
   const height = useRef(56);
   const frame = useRef(0);
@@ -383,6 +384,7 @@ export function FluidDockSurface({
     tension: number;
     start: number;
     plan: DockMorphPlan;
+    revealSelection: boolean;
   } | null>(null);
   const presses = useRef(
     new Map<
@@ -471,6 +473,9 @@ export function FluidDockSurface({
       const m = morph.current;
       const t = Math.min(1, Math.max(0, (now - m.start) / 600));
       shape.current = morphDock(m.from, m.to, m.tension, t, m.plan);
+      // Fade selection fills over the final 240ms, on the same clock as the contour.
+      const reveal=Math.min(1,Math.max(0,(t-.6)/.4));
+      if(m.revealSelection)root.current?.style.setProperty('--dock-selection-reveal',String(reveal*reveal*(3-2*reveal)));
       if (t >= 1) {
         morph.current = null;
         if(root.current)root.current.dataset.morphing='false';
@@ -502,6 +507,9 @@ export function FluidDockSurface({
       ".thumb-dock-content:not([data-outgoing])",
     );
     const tabs = content?.querySelector<HTMLElement>(".safari-dock");
+    const nextSelection=tabs?'tabs':content?.querySelector('.category-entries-modes')?'groups':content?.querySelector('.entry-sort-controls')?'sorts':null;
+    const revealSelection=!!nextSelection&&nextSelection!==selectionKind.current;
+    selectionKind.current=nextSelection;
     // All three browse surfaces participate in the same persistent material:
     // Context actions may split into four islands; measure each visible island.
     controls.current = tabs
@@ -544,6 +552,7 @@ export function FluidDockSurface({
     if (!from || resized || reduceMotion()) {
       morph.current = null;
       node.dataset.morphing='false';
+      node.style.setProperty('--dock-selection-reveal','1');
       cancelAnimationFrame(frame.current);
       frame.current = 0;
       shape.current = { islands, tension: 0 };
@@ -553,7 +562,9 @@ export function FluidDockSurface({
     // Interrupted transitions start at the exact rendered geometry, not a layout
     // endpoint. Both the glass mask and its border use that same contour.
     node.dataset.morphing='true';
+    node.style.setProperty('--dock-selection-reveal',revealSelection?'0':'1');
     morph.current = {
+      revealSelection,
       from: from.islands,
       to: islands,
       tension: from.tension,
