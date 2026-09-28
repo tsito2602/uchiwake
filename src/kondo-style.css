@@ -371,13 +371,12 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .card-panel-backdrop { position: fixed; z-index: calc(60 + var(--panel-depth, 0)); inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; isolation: isolate; }
 .card-panel-scrim { position: absolute; z-index: -1; inset: 0; background: #00000014; pointer-events: none; }
 .card-panel-backdrop[data-panel-nested='true'] > .card-panel-scrim { visibility: hidden; }
-.card-panel { position: relative; z-index: 0; display: flex; flex-direction: column; width: min(100%, 600px); max-height: min(88dvh, 850px); min-height: 0; overflow: hidden; border: 0; border-radius: 28px; background: transparent; box-shadow: inset 0 1px 0 #ffffffbd, 0 12px 40px #0003; }
-/* Only this empty surface is clipped/blurred. The live scroller never belongs
-   to a backdrop-filter or animated clip-path layer (including child editors). */
-.card-panel-glass { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: var(--panel-tint); -webkit-backdrop-filter: blur(32px) saturate(1.05); backdrop-filter: blur(32px) saturate(1.05); pointer-events: none; }
-.card-panel > :is(.card-panel-header, .card-panel-scroll, .card-panel-footer) { position: relative; z-index: 1; }
-/* Retain a scrolling layer across entrance cancellation and nested returns. */
-.card-panel-scroll { transform: translateZ(0); }
+/* The fixed glass is outside the sole scrolling viewport. Do not nest a
+   scrolling body under a second overflow/clip container. */
+.card-panel-frame { position: relative; display: flex; flex-direction: column; width: min(100%, 600px); max-height: min(88dvh, 850px); min-height: 0; border: 0; border-radius: 28px; }
+.card-panel-glass { position: absolute; inset: 0; z-index: 0; border-radius: inherit; box-shadow: inset 0 1px 0 #ffffffbd, 0 12px 40px #0003; background: var(--panel-tint); -webkit-backdrop-filter: blur(32px) saturate(1.05); backdrop-filter: blur(32px) saturate(1.05); pointer-events: none; }
+.card-panel { position: relative; z-index: 1; display: block; width: 100%; max-height: inherit; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 88px; scroll-padding-bottom: 24px; border: 0; border-radius: inherit; background: transparent; }
+.card-panel > .card-panel-header { position: sticky; top: 0; z-index: 2; background: var(--panel-header-tint); }
 .card-panel-header { flex-shrink: 0; }
 .card-panel-header h2:focus { outline: none; }
 .card-panel-header { display: flex; align-items: center; gap: 12px; padding: 20px 22px 16px; }
@@ -387,7 +386,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .card-panel-header h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 19px; line-height: 1.3; }
 .card-panel-header > div > span { color: var(--muted); font-size: 12px; }
 .card-panel-close { display: grid; place-items: center; flex: 0 0 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--soft); color: var(--ink); }
-.card-panel-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 22px 20px; }
+.card-panel-scroll { min-height: 0; padding: 0 22px 20px; }
 .card-panel-total { display: flex; flex-direction: column; gap: 4px; padding: 15px 0 26px; }
 .card-panel-total > span { color: var(--muted); font-size: 13px; }
 .card-panel-total > strong { color: var(--ink); font-size: clamp(36px, 9vw, 48px); font-weight: 730; letter-spacing: -.06em; line-height: 1.1; }
@@ -460,8 +459,9 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 @media (max-width: 759px) {
   .context-host { z-index: 70; }
   .card-panel-backdrop { top: var(--panel-viewport-top, 0px); bottom: auto; height: var(--panel-viewport-height, 100dvh); align-items: flex-end; padding: 12px max(12px,env(safe-area-inset-right)) calc(var(--dock-bottom-gap) + var(--dock-height) + var(--dock-safe-bottom) + 16px) max(12px,env(safe-area-inset-left)); }
-  .card-panel { width: 100%; height: 100%; max-height: 100%; }
-  .card-panel-scroll { flex: 1; padding-bottom: 24px; scroll-padding-bottom: 24px; }
+  .card-panel-frame { width: 100%; height: 100%; max-height: 100%; }
+  .card-panel { height: 100%; }
+  .card-panel-scroll { padding-bottom: 24px; }
   .card-panel-header { min-height: 56px; }
   .card-panel-close, .panel-desktop-actions { display: none; }
   .screen-page-top .month-switch { display: none; }

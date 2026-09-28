@@ -34,17 +34,19 @@ export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin
  useSpaceDock(context,onDockChange);
  return createPortal(<div className="card-panel-backdrop" onClick={event=>{if(!suspended&&event.target===event.currentTarget)context.onBack();}}>
   <div className="card-panel-scrim" aria-hidden="true"/>
-  <section ref={panel} className="card-panel space-floating-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+  <div className="card-panel-frame">
    <div className="card-panel-glass" aria-hidden="true"/>
-   <header className="card-panel-header"><span className="card-panel-icon"><Icon size={22}/></span><div><h2 id={titleId} tabIndex={-1}>{title}</h2></div></header>
-   <div className="card-panel-scroll">{children}</div>
-   <footer className="card-panel-footer panel-desktop-actions">
-    <button type="button" onClick={context.onBack}>戻る</button>
-    {context.detailAction&&<button type="button" disabled={context.detailAction.disabled} onClick={context.detailAction.onAction}>{context.detailAction.label}</button>}
-    {context.auxiliaryAction&&<button type="button" disabled={context.auxiliaryAction.disabled} onClick={context.auxiliaryAction.onAction}>{context.auxiliaryAction.label}</button>}
-    {!context.backOnly&&<button type="button" disabled={context.disabled} onClick={context.onAction}>{context.actionLabel}</button>}
-    {context.secondaryAction&&<button type="button" className="delete-action" disabled={context.secondaryAction.disabled} onClick={context.secondaryAction.onAction}>{context.secondaryAction.label}</button>}
-   </footer>
-  </section>
+   <section ref={panel} className="card-panel space-floating-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <header className="card-panel-header"><span className="card-panel-icon"><Icon size={22}/></span><div><h2 id={titleId} tabIndex={-1}>{title}</h2></div></header>
+    <div className="card-panel-scroll">{children}</div>
+    <footer className="card-panel-footer panel-desktop-actions">
+     <button type="button" onClick={context.onBack}>戻る</button>
+     {context.detailAction&&<button type="button" disabled={context.detailAction.disabled} onClick={context.detailAction.onAction}>{context.detailAction.label}</button>}
+     {context.auxiliaryAction&&<button type="button" disabled={context.auxiliaryAction.disabled} onClick={context.auxiliaryAction.onAction}>{context.auxiliaryAction.label}</button>}
+     {!context.backOnly&&<button type="button" disabled={context.disabled} onClick={context.onAction}>{context.actionLabel}</button>}
+     {context.secondaryAction&&<button type="button" className="delete-action" disabled={context.secondaryAction.disabled} onClick={context.secondaryAction.onAction}>{context.secondaryAction.label}</button>}
+    </footer>
+   </section>
+  </div>
  </div>,document.body);
 }

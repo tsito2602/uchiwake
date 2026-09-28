@@ -49,18 +49,20 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
   };
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
-    <section className="card-panel category-entries-panel" role="dialog" aria-modal="true" aria-labelledby="category-entries-title" ref={panel}>
+    <div className="card-panel-frame">
       <div className="card-panel-glass" aria-hidden="true"/>
-      <header className="card-panel-header"><span className="card-panel-icon"><CategoryIcon name={appearance.icon} color={appearance.color} size={24}/></span><div><h2 id="category-entries-title" tabIndex={-1}>{category}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月 · {appearance.include_in_settlement===false?'精算対象外':'精算対象'}</span></div><button className="card-panel-close" aria-label="カテゴリの明細を閉じる" onClick={onClose}><X size={20}/></button></header>
-      <div className="card-panel-scroll">
-        <div className="card-panel-total"><span>利用合計 · {rows.length}件</span><strong>{yen(rows.reduce((sum,entry)=>sum+entry.amount,0))}</strong></div>
-        <div key={String(groupByCard)} className="category-entries-results">{groupByCard?groups.map(group=><section className="card-panel-statement category-card-group" aria-label={group.name} key={group.id}>
-          <div className="card-panel-statement-title"><h3><CreditCard size={18} color={displayColor(group.color)} aria-hidden="true"/><span>{group.name}</span></h3><span>{group.entries.length}件 · {yen(group.entries.reduce((sum,entry)=>sum+entry.amount,0))}</span></div>
-          {group.entries.map(renderEntry)}
-        </section>):<div className="card-panel-statement">{rows.map(renderEntry)}</div>}</div>
-        {!rows.length&&<p className="card-panel-empty">このカテゴリの明細はありません。</p>}
-      </div>
-      <footer className="card-panel-footer panel-desktop-actions"><button onClick={onClose}>閉じる</button></footer>
-    </section>
+      <section className="card-panel category-entries-panel" role="dialog" aria-modal="true" aria-labelledby="category-entries-title" ref={panel}>
+        <header className="card-panel-header"><span className="card-panel-icon"><CategoryIcon name={appearance.icon} color={appearance.color} size={24}/></span><div><h2 id="category-entries-title" tabIndex={-1}>{category}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月 · {appearance.include_in_settlement===false?'精算対象外':'精算対象'}</span></div><button className="card-panel-close" aria-label="カテゴリの明細を閉じる" onClick={onClose}><X size={20}/></button></header>
+        <div className="card-panel-scroll">
+          <div className="card-panel-total"><span>利用合計 · {rows.length}件</span><strong>{yen(rows.reduce((sum,entry)=>sum+entry.amount,0))}</strong></div>
+          <div key={String(groupByCard)} className="category-entries-results">{groupByCard?groups.map(group=><section className="card-panel-statement category-card-group" aria-label={group.name} key={group.id}>
+            <div className="card-panel-statement-title"><h3><CreditCard size={18} color={displayColor(group.color)} aria-hidden="true"/><span>{group.name}</span></h3><span>{group.entries.length}件 · {yen(group.entries.reduce((sum,entry)=>sum+entry.amount,0))}</span></div>
+            {group.entries.map(renderEntry)}
+          </section>):<div className="card-panel-statement">{rows.map(renderEntry)}</div>}</div>
+          {!rows.length&&<p className="card-panel-empty">このカテゴリの明細はありません。</p>}
+        </div>
+        <footer className="card-panel-footer panel-desktop-actions"><button onClick={onClose}>閉じる</button></footer>
+      </section>
+    </div>
   </div>;
 }

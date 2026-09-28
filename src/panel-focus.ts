@@ -14,10 +14,11 @@ export function dockKeyboardInset(layoutHeight:number,viewport:Pick<VisualViewpo
 
 export function revealPanelField(focused:Element|null) {
   const editor=panelEditor(focused);
-  const scroll=editor?.closest<HTMLElement>('.card-panel-scroll');
+  const scroll=editor?.closest<HTMLElement>('.card-panel');
   if(!editor||!scroll)return;
   const bounds=scroll.getBoundingClientRect();
-  const top=bounds.top+12,bottom=bounds.bottom-12;
+  const header=scroll.querySelector<HTMLElement>(':scope > .card-panel-header');
+  const top=Math.max(bounds.top,header?.getBoundingClientRect().bottom??bounds.top)+12,bottom=bounds.bottom-12;
   if(bottom<=top)return;
   const input=editor.getBoundingClientRect();
   const field=editor.closest('.field')?.getBoundingClientRect();

@@ -1,5 +1,5 @@
-.statement-import-panel { min-height: min(640px,88dvh); }
-.statement-import-panel .card-panel-scroll { flex: 1; }
+.statement-import-frame { min-height: min(640px,88dvh); }
+
 .soft-orbit-glow { position: absolute; inset: 0; z-index: 3; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
 .soft-orbit-glow canvas { position: absolute; left: -30px; top: -30px; width: calc(100% + 60px); height: calc(100% + 60px); pointer-events: none; }
 .import-border-beam { position: absolute; inset: 0; z-index: 4; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
@@ -158,7 +158,7 @@
 @keyframes import-check-draw { to { stroke-dashoffset: 0; } }
 @keyframes import-category-arrive { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes import-breathe { from { opacity: .4; } to { opacity: 1; } }
-@media(max-width:620px) { .statement-import-panel { min-height: 0; } }
+@media(max-width:620px) { .statement-import-frame { min-height: 0; } }
 @media(prefers-reduced-motion:reduce) {
   .import-sorted-entry,.import-category-tag,.import-skeleton > div { animation: none !important; }
   .import-thinking-text { animation: none !important; background: none; color: var(--muted); }

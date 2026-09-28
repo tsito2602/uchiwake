@@ -25,9 +25,12 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const node=panel.current;
     if(!node)return;
     const currentLayer=registerPanel(node);layer.current=currentLayer;
-    const shell=node.parentElement!;
-    const parent=currentLayer.parents.at(-1);
-    const parentFilter=parent?.style.filter;
+    const frame=node.parentElement!;
+    const shell=frame.parentElement!;
+    const parentFrames=currentLayer.parents.map(parent=>parent.parentElement!);
+    const parent=parentFrames.at(-1);
+    const parentContent=parent?.querySelector<HTMLElement>(':scope > .card-panel');
+    const parentFilter=parentContent?.style.filter;
     shell.style.setProperty('--panel-depth',String(currentLayer.parents.length));
     shell.dataset.panelNested=String(!currentLayer.ownsBackground);
     const viewport=window.visualViewport;
@@ -47,11 +50,11 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const oldFilter=main?.style.filter;
     if(!reduced){
-      motion.current=animatePanel(node,origin);
-      companions.current=animatePanelSurroundings(node,main,currentLayer.parents);
+      motion.current=animatePanel(frame,origin);
+      companions.current=animatePanelSurroundings(frame,main,parentFrames);
     }else{
       if(main&&currentLayer.ownsBackground)main.style.filter='blur(6px)';
-      if(parent)parent.style.filter='blur(6px)';
+      if(parentContent)parentContent.style.filter='blur(6px)';
     }
     return()=>{
       viewport?.removeEventListener('resize',updateViewport);
@@ -59,7 +62,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       node.removeEventListener('focusin',reveal);cancelAnimationFrame(revealFrame);
       if(motion.current)cancelPanel(motion.current);
       companions.current.forEach(animation=>animation.cancel());
-      if(reduced&&parent)parent.style.filter=parentFilter||'';
+      if(reduced&&parentContent)parentContent.style.filter=parentFilter||'';
       shell.style.removeProperty('--panel-depth');
       delete shell.dataset.panelNested;
       unlockBackground();
