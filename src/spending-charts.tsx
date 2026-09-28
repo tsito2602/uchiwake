@@ -7,6 +7,7 @@ import { CategoryIcon } from './category-icon';
 import type { Category, CategoryAppearance } from './domain';
 import './spending-charts.css';
 import { NumberTicker } from './number-ticker';
+import { CategoryPie } from './category-pie';
 import { historyIndexAt, historyLabelLeft } from './chart-interaction';
 
 export type HistoryPoint={month:string;amount:number;total:number};
@@ -58,7 +59,6 @@ export function SettlementChart({data,month}:{data:HistoryPoint[];month:string})
     if(event.key==='Escape')setActive(null);
   }
   return <div className="history-chart">
-    <div className="history-readout" aria-hidden="true"><div className="history-tooltip" data-visible={!!point} style={labelStyle}>{displayPoint&&<strong key={displayPoint.month}>{yen(displayPoint.total)}</strong>}<small>支払い合計</small></div></div>
     <div ref={plot} className="history-plot" role="slider" tabIndex={0} aria-label="月別の支払い合計" aria-valuemin={0} aria-valuemax={Math.max(0,data.length-1)} aria-valuenow={index} aria-valuetext={displayPoint?`${monthLabel(displayPoint.month)}、支払い合計 ${yen(displayPoint.total)}`:undefined} onKeyDown={keyDown} onKeyUp={event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key))setActive(null);}} onBlur={release}
       onPointerDown={event=>{if(event.button!==0||!event.isPrimary)return;dragging.current=event.pointerId;event.currentTarget.setPointerCapture(event.pointerId);hit(event);}}
       onPointerMove={event=>{if(dragging.current===event.pointerId)hit(event);}}
@@ -77,15 +77,10 @@ export function SettlementChart({data,month}:{data:HistoryPoint[];month:string})
         })}
       </svg>
     </div>
-    <div className="history-date-readout" aria-hidden="true"><div className="history-tooltip history-date-tooltip" data-visible={!!point} style={labelStyle}>{displayPoint&&<span key={displayPoint.month}>{monthLabel(displayPoint.month)}</span>}</div></div>
+    <div className="history-tooltip" aria-hidden="true" data-visible={!!point} style={labelStyle}>{displayPoint&&<><strong>{yen(displayPoint.total)}</strong><span>{monthLabel(displayPoint.month)}</span></>}</div>
   </div>;
 }
 
-function pieSlice(start:number,end:number) {
-  const point=(turn:number)=>`${100+88*Math.cos(turn*Math.PI*2-Math.PI/2)} ${100+88*Math.sin(turn*Math.PI*2-Math.PI/2)}`;
-  // Two arcs also handle a single category occupying the entire circle.
-  return `M 100 100 L ${point(start)} A 88 88 0 0 1 ${point((start+end)/2)} A 88 88 0 0 1 ${point(end)} Z`;
-}
 export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCategory}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[];animateAmounts?:boolean;onSelectCategory?:(category:Category,source:HTMLElement)=>void}) {
   const reduce=useReducedMotion();
   const [view,setView]=useState<'bar'|'pie'>('bar');
@@ -93,12 +88,6 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
   const maximum=Math.max(1,...items.map(item=>Math.abs(item.amount)));
   const positive=data.reduce((sum,item)=>sum+Math.max(0,item.amount),0);
   const refunds=data.some(item=>item.amount<0);
-  let offset=0;
-  const slices=items.filter(item=>item.amount>0).map(item=>{
-    const start=offset;
-    offset+=item.amount/positive;
-    return {...item,path:pieSlice(start,offset)};
-  });
   return <section className="category-chart" aria-label="カテゴリ別のカード利用額">
     <div className="category-chart-heading"><h2>カテゴリ別</h2>
       <div className="category-chart-switch" role="group" aria-label="グラフの表示形式">
@@ -107,11 +96,7 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
       </div>
     </div>
     <AnimatePresence mode="wait" initial={false}><motion.div key={view} initial={{opacity:0,y:reduce?0:5}} animate={{opacity:1,y:0}} exit={{opacity:0,y:reduce?0:-3}} transition={{duration:reduce?0:.15}}>
-    {view==='pie'&&<div className="category-pie">
-      {positive>0?<svg viewBox="0 0 200 200" role={onSelectCategory?'group':'img'} aria-label="カテゴリ別の支払い割合。内訳は下の一覧に表示しています。">
-        {slices.map(item=><motion.path key={item.category} role={onSelectCategory?'button':undefined} tabIndex={onSelectCategory?0:undefined} aria-label={onSelectCategory?`${item.category}の明細を見る`:undefined} aria-haspopup={onSelectCategory?'dialog':undefined} onClick={onSelectCategory?event=>onSelectCategory(item.category,event.currentTarget.closest('.category-pie') as HTMLElement):undefined} onKeyDown={onSelectCategory?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSelectCategory(item.category,event.currentTarget.closest('.category-pie') as HTMLElement);}}:undefined} fill={displayColor(categoryAppearance(item.category,settings).color)} stroke="var(--canvas)" strokeWidth={1.5} initial={reduce?false:{d:item.path,scale:0,opacity:0}} animate={{d:item.path,scale:1,opacity:1}} transition={{duration:reduce?0:.5,ease}} style={{transformOrigin:'100px 100px'}}><title>{item.category}：{yen(item.amount)}（{Math.round(item.amount/positive*100)}%）</title></motion.path>)}
-      </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
-    </div>}
+    {view==='pie'&&<CategoryPie items={items.filter(item=>item.amount>0)} settings={settings} onSelectCategory={onSelectCategory}/>}
     <ul><AnimatePresence initial={false}>{items.map((item,index)=>{
       const content=<>
       <div className="category-chart-label"><span><CategoryIcon name={categoryAppearance(item.category,settings).icon} color={categoryAppearance(item.category,settings).color} size={17}/>{item.category}</span><span><strong>{animateAmounts?<NumberTicker value={item.amount}/>:yen(item.amount)}</strong><small>{item.amount<0?'返金':positive?`${Math.round(item.amount/positive*100)}%`:''}</small></span></div>

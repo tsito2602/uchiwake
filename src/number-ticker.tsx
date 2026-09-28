@@ -73,7 +73,7 @@ export function NumberTicker({value}:{value:number}) {
   },[text]);
   return <span className="number-ticker" data-settled="true" ref={container}>
     <span className="number-ticker-accessible">¥{text}</span>
-    <span className="number-ticker-static" aria-hidden="true">¥{text}</span>
+    <span className="number-ticker-static" aria-hidden="true"><span>¥</span>{Array.from(text).map((char,index)=><span className="number-ticker-character" key={index} style={{width:/[0-9]/.test(char)?'1ch':'0.5ch'}}>{char}</span>)}</span>
     <span className="number-ticker-glyphs" aria-hidden="true"><span>¥</span>{Array.from(text).map((char,index)=>{
       const place=text.length-1-index;
       const isDigit=/[0-9]/.test(char);

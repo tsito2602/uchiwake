@@ -5,9 +5,11 @@
 .number-ticker-digit { display: flex; align-items: center; justify-content: center; height: 1.1em; flex-shrink: 0; line-height: 1; }
 .number-ticker-separator { display: flex; align-items: center; width: 0.5ch; height: 1.1em; }
 .hero-money .number-ticker, .hero-money .number-ticker span { font-size: inherit; }
+.number-ticker.number-ticker, .number-ticker.number-ticker span { letter-spacing: 0; }
+.number-ticker-character { display: inline-flex; align-items: center; justify-content: center; height: 1.1em; flex-shrink: 0; }
 .number-ticker .number-ticker-accessible { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* Exact text is the default; reels are shown only while an animation is drawn. */
 .number-ticker-static { display: none; }
-.number-ticker[data-settled='true'] > .number-ticker-static { display: inline; }
+.number-ticker[data-settled='true'] > .number-ticker-static { display: inline-flex; align-items: center; }
 .number-ticker[data-settled='true'] > .number-ticker-glyphs { display: none; }
