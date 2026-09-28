@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { LucideIcon } from 'lucide-react';
 import type { DockContext } from './floating-dock';
@@ -24,17 +24,18 @@ function useSpaceDock(context:DockContext,onDockChange:SpaceDockChange) {
  useLayoutEffect(()=>()=>onDockChange(undefined),[onDockChange]);
 }
 
-export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin,closing,onExited}:{
+export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin,closing,onExited,suspended=false}:{
  title:string;icon:LucideIcon;children:ReactNode;context:DockContext;onDockChange:SpaceDockChange;
- origin?:PanelOrigin;closing?:boolean;onExited:()=>void;
+ origin?:PanelOrigin;closing?:boolean;onExited:()=>void;suspended?:boolean;
 }) {
  const panel=useRef<HTMLElement>(null);
- usePanelMorph(panel,origin,closing,onExited,context.onBack);
+ const titleId=useId();
+ usePanelMorph(panel,origin,closing,onExited,context.onBack,suspended);
  useSpaceDock(context,onDockChange);
- return createPortal(<div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)context.onBack();}}>
+ return createPortal(<div className="card-panel-backdrop" hidden={suspended} onClick={event=>{if(event.target===event.currentTarget)context.onBack();}}>
   <div className="card-panel-scrim" aria-hidden="true"/>
-  <section ref={panel} className="card-panel space-floating-panel" role="dialog" aria-modal="true" aria-labelledby="space-panel-title">
-   <header className="card-panel-header"><span className="card-panel-icon"><Icon size={22}/></span><div><h2 id="space-panel-title" tabIndex={-1}>{title}</h2></div></header>
+  <section ref={panel} className="card-panel space-floating-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+   <header className="card-panel-header"><span className="card-panel-icon"><Icon size={22}/></span><div><h2 id={titleId} tabIndex={-1}>{title}</h2></div></header>
    <div className="card-panel-scroll">{children}</div>
    <footer className="card-panel-footer panel-desktop-actions">
     <button type="button" onClick={context.onBack}>戻る</button>

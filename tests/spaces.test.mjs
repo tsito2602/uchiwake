@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { spaceFixture } from './spaces-fixture.mjs';
 const {outputFiles}=await build({entryPoints:[new URL('../src/spaces.ts',import.meta.url).pathname],bundle:true,write:false,format:'esm',platform:'node'});
-const {allocate,settlementAmounts,settlementItems,validateConfig}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {allocate,settlementDetails,settlementAmounts,settlementItems,validateConfig}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 const equal=(...ids)=>({mode:'equal',shares:ids.map(user_id=>({user_id,weight:1}))});
 const percent=(...weights)=>({mode:'percent',shares:weights.map(([user_id,weight])=>({user_id,weight}))});
 const config=(common,items={})=>({uniform:!Object.keys(items).length,common,items});
@@ -212,4 +212,18 @@ test('個人・共有のスペース名は作成者だけが変更でき、再�
    assert.notEqual((await f.call('b',`/spaces/${id}/name`,'PUT',{name:'変更'})).status,200);
   }
  }finally{f.db.close();}
+});
+
+
+test('端数の対象者と調整額を計算結果から取得し、均等・割合・返金を説明できる',()=>{
+ const detail=(amount,split)=>settlementDetails([{key:'rent',amount}],config(split));
+ assert.deepEqual(detail(1001,equal('b','a')),{amounts:{b:500,a:501},adjustments:{a:1}});
+ assert.deepEqual(detail(1000,equal('a','b')).adjustments,{});
+ assert.deepEqual(detail(1001,equal('c','b','a')).adjustments,{a:1,b:1});
+ assert.deepEqual(detail(101,percent(['a',5000],['b',3000],['c',2000])).adjustments,{a:1});
+ assert.deepEqual(detail(-1001,equal('a','b')),{amounts:{a:-501,b:-500},adjustments:{a:-1}});
+ assert.deepEqual(detail(0,equal('a','b')).adjustments,{});
+ const items=[{key:'rent',amount:101},{key:'card:c',amount:101}];
+ assert.deepEqual(settlementDetails(items,{...config(equal('a','b')),uniform:false}),{amounts:{a:102,b:100},adjustments:{a:2}});
+ assert.deepEqual(settlementDetails(items,config(equal('a','b'))),{amounts:{a:101,b:101},adjustments:{}});
 });

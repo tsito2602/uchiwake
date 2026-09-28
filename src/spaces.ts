@@ -20,7 +20,7 @@ export function validateConfig(value:unknown,memberIds:Set<string>):value is Set
  return valid(config.common)&&Object.entries(config.items).every(([key,split])=>/^(card|statement|bill):[^\s]{1,100}$|^rent$/.test(key)&&valid(split));
 }
 // Integer arithmetic using BigInt avoids floating-point rounding and supports refunds.
-export function allocate(amount:number,split:Split):Record<string,number> {
+function allocationDetails(amount:number,split:Split) {
  if(!Number.isSafeInteger(amount)||!split.shares.length)throw new Error('負担の対象者と金額を確認してください');
  const weights=split.shares.map(s=>split.mode==='equal'?1:s.weight);
  const sum=weights.reduce((n,w)=>n+w,0);
@@ -28,9 +28,11 @@ export function allocate(amount:number,split:Split):Record<string,number> {
  const sign=amount<0?-1:1, total=BigInt(Math.abs(amount)), denominator=BigInt(sum);
  const rows=split.shares.map((s,i)=>({id:s.user_id,amount:Number(total*BigInt(weights[i])/denominator),remainder:total*BigInt(weights[i])%denominator}));
  const remainder=Math.abs(amount)-rows.reduce((n,r)=>n+r.amount,0);
- [...rows].sort((a,b)=>a.remainder===b.remainder?a.id.localeCompare(b.id):a.remainder>b.remainder?-1:1).slice(0,remainder).forEach(r=>r.amount++);
- return Object.fromEntries(rows.map(r=>[r.id,sign*r.amount]));
+ const adjustments:Record<string,number>={};
+ [...rows].sort((a,b)=>a.remainder===b.remainder?a.id.localeCompare(b.id):a.remainder>b.remainder?-1:1).slice(0,remainder).forEach(r=>{r.amount++;adjustments[r.id]=sign;});
+ return {amounts:Object.fromEntries(rows.map(r=>[r.id,sign*r.amount])),adjustments};
 }
+export function allocate(amount:number,split:Split):Record<string,number> {return allocationDetails(amount,split).amounts;}
 export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'entries'|'bills'|'rent_rules'|'category_settings'|'space_preferences'>,personal=false) {
  const items=new Map<string,{key:string;label:string;amount:number}>();
  for(const card of state.cards)items.set(`card:${card.id}`,{key:`card:${card.id}`,label:card.name,amount:0});
@@ -43,10 +45,15 @@ export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'e
  for(const b of state.bills.filter(b=>b.kind!=='card'&&b.kind!=='rent'))items.set(`bill:${b.id}`,{key:`bill:${b.id}`,label:b.title,amount:b.amount});
  return [...items.values()];
 }
-export function settlementAmounts(items:{key:string;amount:number}[],config:SettlementConfig) {
- const result:Record<string,number>={};
- const add=(values:Record<string,number>)=>Object.entries(values).forEach(([id,amount])=>{result[id]=(result[id]??0)+amount;});
- if(config.uniform)add(allocate(items.reduce((n,i)=>n+i.amount,0),config.common));
- else for(const item of items)add(allocate(item.amount,config.items[item.key]??config.common));
- return result;
+export function settlementDetails(items:{key:string;amount:number}[],config:SettlementConfig) {
+ const amounts:Record<string,number>={},adjustments:Record<string,number>={};
+ const add=(amount:number,split:Split)=>{
+  const detail=allocationDetails(amount,split);
+  for(const [id,value] of Object.entries(detail.amounts))amounts[id]=(amounts[id]??0)+value;
+  for(const [id,value] of Object.entries(detail.adjustments))adjustments[id]=(adjustments[id]??0)+value;
+ };
+ if(config.uniform)add(items.reduce((n,i)=>n+i.amount,0),config.common);
+ else for(const item of items)add(item.amount,config.items[item.key]??config.common);
+ return {amounts,adjustments};
 }
+export function settlementAmounts(items:{key:string;amount:number}[],config:SettlementConfig) {return settlementDetails(items,config).amounts;}

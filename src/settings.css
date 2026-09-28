@@ -47,7 +47,4 @@
 .space-management-settings .space-member { font-size: 14px; }
 .space-management-settings .space-members { margin-top: -8px; }
 
-.settings-page-back { display: none; }
-@media(min-width:760px) {
-  .settings-page-back { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 18px; padding: 8px 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; }
-}
+.space-settings-content { padding: 0 0 4px; }

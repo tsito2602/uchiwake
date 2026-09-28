@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { animatePanel, animatePanelBackground, panelTiming, reversePanel, type PanelOrigin } from './kondo-panel-motion';
 import { revealPanelField } from './panel-focus';
 import { lockOverlayBackground } from './overlay-lock';
+import { registerPanel } from './panel-stack';
 export type { PanelOrigin } from './kondo-panel-motion';
 
 export const panelOrigin = (element:HTMLElement):PanelOrigin => {
@@ -9,7 +10,7 @@ export const panelOrigin = (element:HTMLElement):PanelOrigin => {
   return {left,top,width,height};
 };
 
-export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrigin|undefined,closing:boolean|undefined,onExited:()=>void,onBack:()=>void) {
+export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrigin|undefined,closing:boolean|undefined,onExited:()=>void,onBack:()=>void,suspended=false) {
   const exited=useRef(onExited);
   const back=useRef(onBack);
   exited.current=onExited;
@@ -18,9 +19,12 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
   const companions=useRef<Animation[]>([]);
   const isClosing=useRef(closing);
   isClosing.current=closing;
+  const isSuspended=useRef(suspended);isSuspended.current=suspended;
+  const layer=useRef<ReturnType<typeof registerPanel>|null>(null);
   useLayoutEffect(()=>{
     const node=panel.current;
     if(!node)return;
+    const currentLayer=registerPanel(node);layer.current=currentLayer;
     const shell=node.parentElement!;
     const viewport=window.visualViewport;
     let revealFrame=0;
@@ -35,15 +39,15 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     viewport?.addEventListener('scroll',updateViewport);
     node.addEventListener('focusin',reveal);
     const main=document.querySelector<HTMLElement>('main.shell');
-    const unlockBackground=lockOverlayBackground(main?[main]:[]);
+    const unlockBackground=lockOverlayBackground([...(main?[main]:[]),...currentLayer.parents]);
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const oldFilter=main?.style.filter;
     if(!reduced){
       motion.current=animatePanel(node,origin);
       const scrim=shell.querySelector<HTMLElement>('.card-panel-scrim');
       companions.current=scrim?[scrim.animate([{opacity:0},{opacity:1}],panelTiming)]:[];
-      if(main)companions.current.push(animatePanelBackground(main));
-    }else if(main)main.style.filter='blur(6px)';
+      if(main&&currentLayer.ownsBackground)companions.current.push(animatePanelBackground(main));
+    }else if(main&&currentLayer.ownsBackground)main.style.filter='blur(6px)';
     return()=>{
       viewport?.removeEventListener('resize',updateViewport);
       viewport?.removeEventListener('scroll',updateViewport);
@@ -51,7 +55,8 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       motion.current?.cancel();
       companions.current.forEach(animation=>animation.cancel());
       unlockBackground();
-      if(main)main.style.filter=oldFilter||'';
+      currentLayer.release();
+      if(main&&currentLayer.ownsBackground)main.style.filter=oldFilter||'';
     };
   },[]);
   useLayoutEffect(()=>{
@@ -72,10 +77,10 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const pointer=()=>{document.documentElement.dataset.inputModality='pointer';};
     const keyboard=(event:KeyboardEvent)=>{if(!event.metaKey&&!event.ctrlKey&&!event.altKey)document.documentElement.dataset.inputModality='keyboard';};
     document.addEventListener('pointerdown',pointer,true);document.addEventListener('keydown',keyboard,true);
-    const visible=(element:HTMLElement)=>element.getClientRects().length>0;
-    const frame=requestAnimationFrame(()=>panel.current?.querySelector<HTMLElement>('h2')?.focus({preventScroll:true}));
+    const visible=(element:HTMLElement)=>element.getClientRects().length>0&&!element.closest('[inert], [hidden]');
+    const frame=requestAnimationFrame(()=>{if(!isSuspended.current&&layer.current?.isTop())panel.current?.querySelector<HTMLElement>('h2')?.focus({preventScroll:true});});
     const onKeyDown=(event:KeyboardEvent)=>{
-      if(isClosing.current)return;
+      if(isClosing.current||isSuspended.current||!layer.current?.isTop())return;
       if(event.key==='Escape'){event.preventDefault();back.current();return;}
       if(event.key!=='Tab')return;
       const controls=[...document.querySelectorAll<HTMLElement>('.card-panel button:not([disabled]), .card-panel input:not([disabled]), .card-panel select:not([disabled]), .context-host button:not([disabled])')].filter(visible);

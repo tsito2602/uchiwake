@@ -1,17 +1,12 @@
 import { useState } from 'react';
-import { ChevronRight, Pencil, Trash2, UserRound, UserRoundPlus, UsersRound } from 'lucide-react';
+import { MemberAvatar } from './member-avatar';
+import { ChevronRight, Pencil, Trash2, UserRoundPlus, UsersRound } from 'lucide-react';
 import type { Member, Space } from './spaces';
 import type { Api } from './space-api';
 import type { DockContext } from './floating-dock';
 import { SpacePanel, type SpaceDockChange } from './space-panel';
 import { panelOrigin, type PanelOrigin } from './use-panel-morph';
 
-function MemberAvatar({member}:{member:Member}){
- const [failedUrl,setFailedUrl]=useState<string>();
- return <span className="space-member-avatar" aria-hidden="true">{member.avatarUrl&&member.avatarUrl!==failedUrl
-  ?<img src={member.avatarUrl} alt="" referrerPolicy="no-referrer" onError={()=>setFailedUrl(member.avatarUrl)}/>
-  :Array.from(member.name.trim())[0]||<UserRound size={19}/>}</span>;
-}
 
 type Props={space:Space;spaces:Space[];userId:string;members:Member[];disabled:boolean;api:Api;onSelect:(id:string)=>void;onRefresh:()=>Promise<void>;onReload:()=>Promise<void>;onDockChange:SpaceDockChange};
 export function SpaceManagementSettings({space,spaces,userId,members,disabled,api,onSelect,onRefresh,onReload,onDockChange}:Props){
