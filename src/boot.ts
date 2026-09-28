@@ -28,12 +28,14 @@ if (screen && root && canvas) {
   let exitTimer = 0;
   const started = performance.now();
   function cleanup() {
+    if (disposed) return;
     disposed = true;
     cancelAnimationFrame(raf);
     clearTimeout(exitTimer);
     clearTimeout(failsafe);
     screen?.remove();
     root?.removeAttribute('inert');
+    document.dispatchEvent(new Event('uchiwake:boot-complete'));
     document.removeEventListener('uchiwake:ready', onReady);
     reduced.removeEventListener('change', onMotion);
   }

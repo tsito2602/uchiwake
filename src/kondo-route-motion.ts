@@ -4,14 +4,16 @@ import { useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 
 type RouteTransition={skipTransition:()=>void;finished:Promise<void>};
-const timing={duration:240,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'none'} as const;
+const duration=240;
 
 export function startRouteTransition(direction:number,update:()=>void):RouteTransition|undefined {
   const page=document.getElementById('main-content');
-  if(!page?.animate||window.matchMedia('(prefers-reduced-motion: reduce)').matches){update();return;}
+  if(!page||!window.requestAnimationFrame||window.matchMedia('(prefers-reduced-motion: reduce)').matches){update();return;}
   const bounds=page.getBoundingClientRect();
   const copy=page.cloneNode(true) as HTMLElement;
   copy.classList.add('route-page-copy');
+  // Snapshot the final text, never a partially animated/clipped digit reel.
+  copy.querySelectorAll<HTMLElement>('.number-ticker').forEach(ticker=>{ticker.dataset.settled='true';});
   const sources=page.querySelectorAll<HTMLElement>('.history-bar-grow');
   copy.querySelectorAll<HTMLElement>('.history-bar-grow').forEach((bar,index)=>{
     bar.style.transform=window.getComputedStyle(sources[index]).transform;
@@ -30,24 +32,30 @@ export function startRouteTransition(direction:number,update:()=>void):RouteTran
   try{flushSync(update);}catch(error){layer.remove();throw error;}
   const next=document.getElementById('main-content');
   if(!next){layer.remove();return;}
-  const animations:Animation[]=[];
+  let frame=0;
   let cleaned=false;
   let resolveFinished!:()=>void;
   const finished=new Promise<void>(resolve=>{resolveFinished=resolve;});
   let timeout:ReturnType<typeof setTimeout>;
   const cleanup=()=>{
     if(cleaned)return;
-    cleaned=true;clearTimeout(timeout);layer.remove();
-    animations.forEach(animation=>animation.cancel());
+    cleaned=true;clearTimeout(timeout);window.cancelAnimationFrame(frame);layer.remove();
     resolveFinished();
   };
-  // Rendering the next page must not depend on Web Animations' finished promise.
-  timeout=setTimeout(cleanup,timing.duration+160);
-  try {
-    animations.push(copy.animate([{opacity:1,transform:'translateX(0)'},{opacity:0,transform:`translateX(${-12*direction}px)`}],timing));
-    animations.push(next.animate([{opacity:0,transform:`translateX(${16*direction}px)`},{opacity:1,transform:'translateX(0)'}],timing));
-    void Promise.allSettled(animations.map(animation=>animation.finished)).then(cleanup);
-  } catch { cleanup(); }
+  // The live page is fully painted at all times. Only the disposable old-page
+  // snapshot moves/fades, without a Web Animations opacity layer on the live DOM.
+  timeout=setTimeout(cleanup,duration+160);
+  const started=performance.now();
+  const tick=(now:number)=>{
+    if(cleaned)return;
+    const t=Math.min(1,Math.max(0,(now-started)/duration));
+    const progress=1-Math.pow(1-t,3);
+    copy.style.opacity=String(1-progress);
+    copy.style.left=`${bounds.left-12*direction*progress}px`;
+    if(t===1)cleanup();
+    else frame=window.requestAnimationFrame(tick);
+  };
+  try { frame=window.requestAnimationFrame(tick); } catch { cleanup(); }
 
   return {skipTransition:cleanup,finished};
 }

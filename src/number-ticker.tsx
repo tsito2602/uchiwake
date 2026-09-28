@@ -1,65 +1,86 @@
-// Adapted from beUI Number Ticker: https://beui.dev/components/motion/number
-// Digit reels are temporary decoration; final values never depend on animation completion.
-import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+// Exact text is always the fallback; first display and value changes use layout-based digit reels.
+import { useLayoutEffect, useRef } from 'react';
 import './number-ticker.css';
 
 const DIGITS=Array.from({length:10},(_,digit)=>digit);
 const HEIGHT=1.1;
-const EASE_OUT=[0.16,1,0.3,1] as const;
-const DURATION=0.9;
-const STAGGER=0.04;
+const DURATION=900;
+const STAGGER=40;
 
 export function NumberTicker({value}:{value:number}) {
-  const container=useRef<HTMLSpanElement>(null);
-  const inView=useInView(container,{once:true,amount:0.6});
-  const reduce=useReducedMotion();
-  const [entered,setEntered]=useState(false);
-  const [settled,setSettled]=useState(false);
   const text=Math.round(value).toLocaleString('ja-JP');
-  const glyphs=Array.from(text);
-  useEffect(()=>{
-    if(!inView||entered)return;
-    const timer=window.setTimeout(()=>setEntered(true),(DURATION+glyphs.length*STAGGER)*1000);
-    return()=>window.clearTimeout(timer);
-  },[inView,entered,glyphs.length]);
-  useEffect(()=>{
-    setSettled(Boolean(reduce));
-    const finish=()=>setSettled(true);
-    const visible=()=>{if(document.visibilityState==='visible')finish();};
-    // Safari can suspend the animation timeline during OAuth/app restoration.
-    // An independent deadline also covers a stalled IntersectionObserver.
-    const timer=window.setTimeout(finish,(DURATION+glyphs.length*STAGGER)*1000+200);
-    window.addEventListener('pageshow',finish);
-    window.addEventListener('focus',finish);
-    document.addEventListener('visibilitychange',visible);
-    return()=>{
-      window.clearTimeout(timer);
-      window.removeEventListener('pageshow',finish);
-      window.removeEventListener('focus',finish);
-      document.removeEventListener('visibilitychange',visible);
+  const previous=useRef<string|null>(null);
+  const container=useRef<HTMLSpanElement>(null);
+  useLayoutEffect(()=>{
+    const before=previous.current;
+    previous.current=text;
+    const node=container.current;
+    if(!node)return;
+    node.dataset.settled='true';
+    const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+    if(before===text||reduced.matches)return;
+    const bounds=node.getBoundingClientRect();
+    if(bounds.bottom<0||bounds.top>window.innerHeight)return;
+    const reels=[...node.querySelectorAll<HTMLElement>('.number-ticker-reel')].map(reel=>{
+      const place=Number(reel.dataset.place);
+      const char=before?.[before.length-1-place];
+      const to=Number(reel.dataset.digit);
+      return {reel,from:before===null?0:char&&/[0-9]/.test(char)?Number(char):to,to};
+    });
+    let frame=0;
+    let timer=0;
+    let started:number|null=null;
+    let finished=false;
+    const finish=()=>{
+      if(finished)return;
+      finished=true;window.cancelAnimationFrame(frame);window.clearTimeout(timer);
+      node.dataset.settled='true';
     };
-  },[value,inView,reduce,glyphs.length]);
-  return <span className="number-ticker" data-settled={settled||reduce||undefined} ref={container}>
+    // No animation frame means no decoration: the exact static value stays visible.
+    const duration=DURATION+Math.max(0,reels.length-1)*STAGGER;
+    const tick=(now:number)=>{
+      if(finished||started===null)return;
+      const elapsed=now-started;
+      if(elapsed>=duration){finish();return;}
+      reels.forEach(({reel,from,to},index)=>{
+        const t=Math.min(1,Math.max(0,(elapsed-index*STAGGER)/DURATION));
+        const progress=1-Math.pow(1-t,4);
+        // Layout positioning avoids WebKit's clipped compositor transform reels.
+        reel.style.top=`${-(from+(to-from)*progress)*HEIGHT}em`;
+      });
+      node.dataset.settled='false';
+      frame=window.requestAnimationFrame(tick);
+    };
+    const start=()=>{
+      if(finished||started!==null)return;
+      started=performance.now();
+      timer=window.setTimeout(finish,duration+100);
+      try { frame=window.requestAnimationFrame(tick); } catch { finish(); }
+    };
+    const onLifecycle=()=>{if(started!==null)finish();};
+    window.addEventListener('pageshow',onLifecycle);
+    window.addEventListener('focus',onLifecycle);
+    document.addEventListener('visibilitychange',onLifecycle);
+    reduced.addEventListener('change',finish);
+    // Run the initial count when the page is revealed, not behind the splash.
+    if(document.getElementById('initial-boot'))document.addEventListener('uchiwake:boot-complete',start,{once:true});
+    else start();
+    return()=>{
+      finish();window.removeEventListener('pageshow',onLifecycle);window.removeEventListener('focus',onLifecycle);
+      document.removeEventListener('visibilitychange',onLifecycle);reduced.removeEventListener('change',finish);
+      document.removeEventListener('uchiwake:boot-complete',start);
+    };
+  },[text]);
+  return <span className="number-ticker" data-settled="true" ref={container}>
     <span className="number-ticker-accessible">¥{text}</span>
     <span className="number-ticker-static" aria-hidden="true">¥{text}</span>
-    <span className="number-ticker-glyphs" aria-hidden="true"><span>¥</span><AnimatePresence initial={false}>{glyphs.map((char,index)=>{
-      // Preserve units/tens/hundreds when switching totals or adding a digit.
-      const key=`place-${glyphs.length-1-index}`;
+    <span className="number-ticker-glyphs" aria-hidden="true"><span>¥</span>{Array.from(text).map((char,index)=>{
+      const place=text.length-1-index;
       const isDigit=/[0-9]/.test(char);
-      const digit=isDigit&&(inView||reduce)?Number(char):0;
-      // Retain exiting slots until their width collapses. The same right-keyed
-      // reels keep rolling while new leading digits and separators make room.
-      return <motion.span className="number-ticker-slot" key={key}
-        initial={reduce?false:{width:0,opacity:0}}
-        animate={{width:isDigit?'1ch':'0.5ch',opacity:1}}
-        exit={{width:0,opacity:0}}
-        transition={reduce?{duration:0}:{duration:DURATION,ease:EASE_OUT}}
-      >{isDigit?
-        <motion.span className="number-ticker-reel" initial={reduce?false:{y:0}} animate={{y:`-${digit*HEIGHT}em`}} transition={reduce?{duration:0}:{duration:DURATION,delay:entered?0:index*STAGGER,ease:EASE_OUT}}>
+      return <span className="number-ticker-slot" key={`place-${place}`} style={{width:isDigit?'1ch':'0.5ch'}}>{isDigit?
+        <span className="number-ticker-reel" data-place={place} data-digit={char} style={{top:`-${Number(char)*HEIGHT}em`}}>
           {DIGITS.map(number=><span className="number-ticker-digit" key={number}>{number}</span>)}
-        </motion.span>
-      :<span className="number-ticker-separator">{char}</span>}</motion.span>;
-    })}</AnimatePresence></span>
+        </span>:<span className="number-ticker-separator">{char}</span>}</span>;
+    })}</span>
   </span>;
 }

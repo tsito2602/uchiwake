@@ -37,7 +37,7 @@ test('アニメーションの1画目はホーム図柄と同じ位置へ収ま�
 });
 function launch({dark=false,reduced=false,alreadyReady=false,canvas=true}={}) {
   let now=0,id=0;
-  const timers=new Map(),frames=new Map(),events=new Map();
+  const timers=new Map(),frames=new Map(),events=new Map(),dispatched=[];
   const context=new Proxy({}, {get:(obj,key)=>obj[key] ?? (()=>{}),set:(obj,key,value)=>(obj[key]=value,true)});
   const element=()=>({dataset:{},style:{},attrs:{},isConnected:true,classList:{add(){}},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},remove(){this.isConnected=false}});
   const ids=Object.fromEntries(['initial-boot','root','boot-canvas','boot-still','app-icon','app-manifest','app-theme-color'].map(k=>[k,element()]));
@@ -45,7 +45,7 @@ function launch({dark=false,reduced=false,alreadyReady=false,canvas=true}={}) {
   if(alreadyReady) ids.root.dataset.bootReady='true';
   const media=matches=>({matches,addEventListener(_,fn){this.listener=fn},removeEventListener(){this.listener=null}});
   const darkMedia=media(dark),reducedMedia=media(reduced);
-  const document={documentElement:element(),getElementById:k=>ids[k],addEventListener:(k,f)=>events.set(k,f),removeEventListener:k=>events.delete(k)};
+  const document={dispatchEvent:e=>{dispatched.push({type:e.type,bootVisible:ids['initial-boot'].isConnected,inert:ids.root.attrs.inert});events.get(e.type)?.(e)},documentElement:element(),getElementById:k=>ids[k],addEventListener:(k,f)=>events.set(k,f),removeEventListener:k=>events.delete(k)};
   const sandbox={document,Event,addEventListener:(k,f)=>events.set(k,f),dispatchEvent:e=>events.get(e.type)?.(e),matchMedia:q=>q.includes('color-scheme')?darkMedia:reducedMedia,performance:{now:()=>now},devicePixelRatio:1,
     setTimeout:(fn,ms)=>{timers.set(++id,{fn,at:now+ms});return id},clearTimeout:k=>timers.delete(k),requestAnimationFrame:fn=>{frames.set(++id,fn);return id},cancelAnimationFrame:k=>frames.delete(k)};
   sandbox.window=sandbox;
@@ -55,16 +55,18 @@ function launch({dark=false,reduced=false,alreadyReady=false,canvas=true}={}) {
     const pending=[...frames.values()];frames.clear();pending.forEach(fn=>fn(now));
     for(const [key,timer] of [...timers]) if(timer.at<=now){timers.delete(key);timer.fn()}
   }
-  return {ids,advance,ready:()=>events.get('uchiwake:ready')?.(),darkMedia,reducedMedia};
+  return {ids,advance,dispatched,ready:()=>events.get('uchiwake:ready')?.(),darkMedia,reducedMedia};
 }
 test('準備済みでも8文字の出現が終わるまで待ってから操作を解放する',()=>{
   const app=launch({alreadyReady:true});
   app.advance(BOOT_HOLD_END-1);
   assert.equal(app.ids['initial-boot'].isConnected,true);
   assert.equal(app.ids.root.attrs.inert,'');
+  assert.deepEqual(app.dispatched,[]);
   app.advance(1);app.advance(240);
   assert.equal(app.ids['initial-boot'].isConnected,false);
   assert.equal(app.ids.root.attrs.inert,undefined);
+  assert.deepEqual(app.dispatched,[{type:'uchiwake:boot-complete',bootVisible:false,inert:undefined}]);
 });
 test('読み込み完了を待ち、失敗や応答停止でも画面をロックし続けない',()=>{
   const app=launch();app.advance(BOOT_HOLD_END+500);
@@ -74,6 +76,7 @@ test('読み込み完了を待ち、失敗や応答停止でも画面をロッ�
   const stalled=launch();stalled.advance(8000);
   assert.equal(stalled.ids.root.attrs.inert,undefined);
   assert.equal(stalled.ids['initial-boot'].isConnected,false);
+  assert.deepEqual(stalled.dispatched,[{type:'uchiwake:boot-complete',bootVisible:false,inert:undefined}]);
 });
 test('動きを減らす設定・Canvas非対応では静止表示から安全に進む',()=>{
   for(const options of [{reduced:true},{canvas:false}]) {
