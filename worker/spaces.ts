@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import type { AuthBindings, AuthUser } from './auth';
+import { googleAvatar } from './profile';
 import { defaultConfig, validateConfig, type Member, type Space, type SettlementConfig, type SettlementSettings } from '../src/spaces';
 export type SpaceEnv = {Bindings:AuthBindings&{DB:D1Database;APP_ENV:string;OPENAI_API_KEY?:string};Variables:{user:AuthUser;space:Space;spaceId:string}};
 export const spacesRoutes=new Hono<SpaceEnv>();
@@ -11,9 +12,9 @@ export async function membership(db:D1Database,id:string,user:string) {
  WHERE s.id=? AND m.user_id=? AND m.active=1 AND s.deleted_at IS NULL`).bind(id,user).first<Space>();
 }
 export async function membersFor(db:D1Database,id:string):Promise<Member[]> {
- const rows=await db.prepare(`SELECT m.user_id,COALESCE(p.display_name,m.name) AS name,m.active FROM space_members m
- LEFT JOIN user_profiles p ON p.user_id=m.user_id WHERE m.space_id=? ORDER BY m.joined_at,m.user_id`).bind(id).all<{user_id:string;name:string;active:number}>();
- return rows.results.map(m=>({...m,active:!!m.active}));
+ const rows=await db.prepare(`SELECT m.user_id,COALESCE(p.display_name,m.name) AS name,m.active,p.avatar_url FROM space_members m
+ LEFT JOIN user_profiles p ON p.user_id=m.user_id WHERE m.space_id=? ORDER BY m.joined_at,m.user_id`).bind(id).all<{user_id:string;name:string;active:number;avatar_url:string|null}>();
+ return rows.results.map(({avatar_url,...m})=>({...m,active:!!m.active,avatarUrl:googleAvatar(avatar_url)}));
 }
 export async function settlementFor(db:D1Database,space:Space,month:string,members:Member[],snapshot=false):Promise<SettlementSettings> {
  const row=await db.prepare(`SELECT config,revision,scope,month FROM settlement_rules WHERE space_id=? AND

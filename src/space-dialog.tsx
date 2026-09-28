@@ -20,7 +20,7 @@ export function SpaceDialog({title,children,onClose,closing,onExited}:{title:str
     const bounds=button.getBoundingClientRect(),distance=(anchor?.top??bounds.top)-bounds.top;
     animations.current.push(button.animate([{opacity:0,transform:`translateY(${distance-12}px) scale(.65)`},{opacity:1,transform:'translateY(0px) scale(1)'}],{...timing,delay:index*25}));
    });
-   const chrome=node.querySelectorAll<HTMLElement>('.space-dialog header,.space-options hr');
+   const chrome=node.querySelectorAll<HTMLElement>('.space-options hr');
    chrome.forEach(element=>animations.current.push(element.animate([{opacity:0},{opacity:1}],timing)));
   }
   buttons[0]?.focus({preventScroll:true});
@@ -46,5 +46,5 @@ export function SpaceDialog({title,children,onClose,closing,onExited}:{title:str
   const timer=window.setTimeout(finish,450);
   return()=>{active=false;clearTimeout(timer);};
  },[closing]);
- return createPortal(<div className="space-overlay" ref={root}><div className="space-veil" onClick={onClose}/><section className="space-dialog space-menu" role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2></header>{children}</section></div>,document.body);
+ return createPortal(<div className="space-overlay" ref={root}><div className="space-veil" onClick={onClose}/><section className="space-dialog space-menu" role="dialog" aria-modal="true" aria-label={title}>{children}</section></div>,document.body);
 }

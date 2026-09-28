@@ -47,6 +47,21 @@ test('招待は確認後に参加でき、3人以上に対応し、再利用・�
  }finally{f.db.close();}
 });
 
+test('メンバーの画像を所属スペース内で返し、不正な画像URLは公開しない',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);await invite(f,space,'b');await invite(f,space,'c');
+  const avatar='https://lh3.googleusercontent.com/owner-avatar';
+  f.db.prepare('INSERT INTO user_profiles(user_id,display_name,avatar_url) VALUES (?,?,?)').run('owner','オーナー',avatar);
+  f.db.prepare('INSERT INTO user_profiles(user_id,avatar_url) VALUES (?,?)').run('b','https://example.test/avatar');
+  for(const [path,spaceId] of [[`/spaces/${space.id}/details?month=2026-09`,undefined],['/state?month=2026-09',space.id]]){
+   const {members}=await json(await f.call('c',path,'GET',undefined,spaceId));
+   assert.deepEqual(members.find(m=>m.user_id==='owner'),{user_id:'owner',name:'オーナー',active:true,avatarUrl:avatar});
+   for(const id of ['b','c'])assert.deepEqual(members.find(m=>m.user_id===id),{user_id:id,name:id,active:true});
+   assert.equal((await f.call('outsider',path,'GET',undefined,spaceId)).status,404);
+  }
+ }finally{f.db.close();}
+});
+
 test('招待コードの期限と試行回数を検証する',async()=>{
  const f=spaceFixture();try{
   const space=await create(f),{code}=await json(await f.call('owner',`/spaces/${space.id}/invites`,'POST',{}),201);

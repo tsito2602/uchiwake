@@ -1,6 +1,6 @@
 import { rentForMonth, statementSettlementAmount, type State } from './domain';
 export type Space = {id:string;name:string;kind:'personal'|'shared';owner_id:string};
-export type Member = {user_id:string;name:string;active:boolean};
+export type Member = {user_id:string;name:string;active:boolean;avatarUrl?:string};
 export type Split = {mode:'equal'|'percent';shares:{user_id:string;weight:number}[]};
 export type SettlementConfig = {uniform:boolean;common:Split;items:Record<string,Split>};
 export type SettlementSettings = {config:SettlementConfig;revision:number;scope:'default'|'month';month:string};
