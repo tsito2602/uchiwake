@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
   --on-brand: #fff;
+  --appearance-track: #e5e5e5;
   --dock-glass: #ffffff52;
   --panel-tint: #ffffffa3;
   --panel-header-tint: #ffffffe0;
@@ -20,6 +21,7 @@
   --content-card: #1c1c1c;
   --brand: #fff;
   --on-brand: #171717;
+  --appearance-track: #262626;
   --dock-glass: #18181859;
   --dock-border-top: #ffffff26;
   --dock-border-bottom: #ffffff10;

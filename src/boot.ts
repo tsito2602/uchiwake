@@ -61,8 +61,8 @@ if (screen && root && canvas) {
   document.addEventListener('uchiwake:ready', onReady);
   reduced.addEventListener('change', onMotion);
   const scale = Math.min(devicePixelRatio || 1, 3);
-  canvas.width = Math.round(256 * scale);
-  canvas.height = Math.round(256 * 1385 / 1750 * scale);
+  canvas.width = Math.round(340 * scale);
+  canvas.height = Math.round(340 * 1385 / 1750 * scale);
   screen.classList.add('boot-running');
   function tick(now: number) {
     if (disposed) return;
