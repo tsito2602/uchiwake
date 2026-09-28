@@ -24,7 +24,7 @@ test('ホーム画面だけ白い細縁を付け、明暗で同じ図柄と14%�
   let commonForeground;
   for(const theme of ['light','dark']) {
     const svg=await readFile(`public/icon-${theme}.svg`,'utf8');
-    assert.match(svg,/data-appearance="edge" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="12"/);
+    assert.match(svg,/data-appearance="edge" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="18"/);
     assert.equal((svg.match(/<rect\b/g)||[]).length,1);
     const foreground=svg.replace(/<rect\b[^>]*\/>/,'');
     if(commonForeground) assert.equal(foreground,commonForeground);
@@ -48,17 +48,44 @@ test('ホーム画面だけ白い細縁を付け、明暗で同じ図柄と14%�
     assert.match(logo,new RegExp(theme==='light'?'#30302f':'#f5f1e9'));
   }
 });
-test('PNG用の追加指定を外して元のSVG・manifest参照へ戻す',async()=>{
+test('iPhoneに白縁入り透過PNGを明示し、明暗で共通のPNG候補を使う',async()=>{
   const html=await readFile('index.html','utf8');
   assert.match(html,/rel="icon" href="\/icon\.svg" type="image\/svg\+xml"/);
   assert.match(html,/rel="manifest" href="\/manifest\.webmanifest"/);
-  assert.doesNotMatch(html,/apple-touch-icon|brand-icons/);
+  assert.match(html,/rel="apple-touch-icon" sizes="180x180" href="\/apple-touch-icon-v5\.png"/);
+  assert.equal((html.match(/rel="apple-touch-icon"/g)||[]).length,1);
   for(const theme of ['light','dark']) {
     const manifest=JSON.parse(await readFile(`public/manifest-${theme}.webmanifest`,'utf8'));
     assert.equal(manifest.id,'/');
-    assert.deepEqual(manifest.icons,[{src:`/icon-${theme}.svg`,sizes:'any',type:'image/svg+xml',purpose:'any maskable'}]);
+    assert.deepEqual(manifest.icons,[
+      ...[192,512].map(size=>({src:`/icon-v5-${size}.png`,sizes:`${size}x${size}`,type:'image/png',purpose:'any'})),
+      {src:`/icon-${theme}.svg`,sizes:'any',type:'image/svg+xml',purpose:'maskable'},
+    ]);
   }
   assert.equal(await readFile('public/manifest-v4.webmanifest','utf8'),await readFile('public/manifest.webmanifest','utf8'));
+});
+test('実際に登録するPNGはKondoと同じ書き出し条件で、180pxでも白縁が残る',async()=>{
+  const source=(await readFile('public/icon-light.svg','utf8')).replace(/<rect\b[^>]*\/>/,'');
+  for(const size of [180,192,512]) {
+    const name=size===180?'apple-touch-icon-v5.png':`icon-v5-${size}.png`;
+    const file=await readFile(`public/${name}`);
+    const expected=await sharp(Buffer.from(source),{density:384}).resize(size,size).png({compressionLevel:9,palette:false}).toBuffer();
+    assert.deepEqual(file,expected);
+    const {data,info}=await sharp(file).raw().toBuffer({resolveWithObject:true});
+    assert.equal(info.width,size);assert.equal(info.height,size);assert.equal(info.channels,4);
+    assert.equal(data[3],0,'no opaque tile');
+    assert.equal(data[(Math.round(size*671.46/1254)*size+Math.floor(size/2))*4+3],0,'hole stays transparent');
+    let white=0;
+    for(let i=0;i<data.length;i+=4)if(data[i]>245&&data[i+1]>245&&data[i+2]>245&&data[i+3]>245)white++;
+    assert.ok(white>size&&white<size*size*.1,`${name}: solid white edge, not a white plate`);
+    const response=await app.fetch(new Request(`https://example.test/${name}`),{});
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('content-type'),'image/png');
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()),file);
+  }
+  assert.deepEqual(await readFile('public/apple-touch-icon.png'),await readFile('public/apple-touch-icon-v5.png'));
+  const response=await app.fetch(new Request('https://example.test/'),{});
+  assert.match(await response.text(),/rel="apple-touch-icon"[^>]*href="\/apple-touch-icon-v5\.png"/);
 });
 test('SVGはWorker経由でも生成画像と同じバイト列で配信する',async()=>{
   for(const name of ['icon.svg','icon-light.svg','icon-dark.svg',...Object.keys(originals)]) {
