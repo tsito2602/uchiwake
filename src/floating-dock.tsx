@@ -19,7 +19,7 @@ export const dockTabs = [
 ] as const;
 
 export type DockAction = {label:string;onAction:()=>void;disabled?:boolean;commit?:boolean};
-export type DockContext = { entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
+export type DockContext = { detailAction?:DockAction; entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
 type DockAdd = {label:string;options:AddOption[];disabled?:boolean};
 type Props = {tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext;panelActive?:boolean;month:string;onMonthChange:(month:string)=>void;onPrevMonth:()=>void;onNextMonth:()=>void};
 
@@ -83,6 +83,7 @@ export function FloatingDock({tab,onSelect,add,context,panelActive,month,onMonth
       <DockContent identity={context?'context':'browse'} mode={context?'context':'browse'}>
         {context?<nav className={`context-dock${context.entryControls?' context-entries':''}${context.rentActions?' context-rent':''}`} aria-label={context.label}>
           <div className="context-island context-back"><PanelBackButton onBack={context.onBack}/></div>
+          {context.detailAction&&<div className="context-island context-detail"><button aria-label={context.detailAction.label} onClick={context.detailAction.onAction} disabled={context.detailAction.disabled}><ReceiptText size={22} aria-hidden="true"/></button></div>}
           {context.entryControls?.onGroupByCard&&<div className="context-island context-entry-groups"><EntryGroupTabs groupByCard={!!context.entryControls.groupByCard} onChange={context.entryControls.onGroupByCard}/></div>}
           {context.entryControls&&<div className="context-island context-entry-sorts"><EntrySortControls value={context.entryControls.sort} onChange={context.entryControls.onSort}/></div>}
           {context.auxiliaryAction&&<div className="context-island context-auxiliary"><button aria-label={context.auxiliaryAction.label} onClick={context.auxiliaryAction.onAction} disabled={context.auxiliaryAction.disabled}>{context.rentActions?<><Pencil size={18} aria-hidden="true"/><span>基本家賃</span></>:<Settings size={22} aria-hidden="true"/>}</button></div>}

@@ -67,7 +67,7 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
           </div>)}
         </>:<div className="card-panel-empty"><p>この月の明細はまだありません。</p></div>}
       </div>
-      <footer className="card-panel-footer panel-desktop-actions"><button disabled={actionDisabled} onClick={onAction}>{actionLabel} <ArrowRight size={17}/></button>{view!=='summary'&&statements.length===1&&<button className="delete-action" disabled={demo||busy} onClick={()=>onDeleteStatement(statements[0].id)}><Trash2 size={16}/> 削除</button>}</footer>
+      <footer className="card-panel-footer panel-desktop-actions"><button disabled={actionDisabled} onClick={onAction}>{actionLabel} <ArrowRight size={17}/></button>{view==='edit'&&statements.length===1&&<button className="delete-action" disabled={demo||busy} onClick={()=>onDeleteStatement(statements[0].id)}><Trash2 size={16}/> 削除</button>}</footer>
     </section>
   </div>;
 }

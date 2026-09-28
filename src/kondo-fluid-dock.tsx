@@ -471,7 +471,10 @@ export function FluidDockSurface({
       const m = morph.current;
       const t = Math.min(1, Math.max(0, (now - m.start) / 600));
       shape.current = morphDock(m.from, m.to, m.tension, t, m.plan);
-      if (t >= 1) morph.current = null;
+      if (t >= 1) {
+        morph.current = null;
+        if(root.current)root.current.dataset.morphing='false';
+      }
     }
     let pressing = false;
     for (const [element, track] of presses.current) {
@@ -540,6 +543,7 @@ export function FluidDockSurface({
     svg.current!.setAttribute("viewBox", `0 0 ${w + 24} ${h + 24}`);
     if (!from || resized || reduceMotion()) {
       morph.current = null;
+      node.dataset.morphing='false';
       cancelAnimationFrame(frame.current);
       frame.current = 0;
       shape.current = { islands, tension: 0 };
@@ -548,6 +552,7 @@ export function FluidDockSurface({
     }
     // Interrupted transitions start at the exact rendered geometry, not a layout
     // endpoint. Both the glass mask and its border use that same contour.
+    node.dataset.morphing='true';
     morph.current = {
       from: from.islands,
       to: islands,

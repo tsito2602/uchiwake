@@ -3,9 +3,10 @@ import type { EntrySort } from './entry-sort';
 export function EntrySortControls({value,onChange}:{value:EntrySort;onChange:(value:EntrySort)=>void}) {
   return <div className="entry-sort-controls" role="group" aria-label="明細の並べ替え">{([{key:'date',label:'日付',name:'利用日'},{key:'amount',label:'金額',name:'金額'}] as const).map(option=>{
     const active=value.key===option.key;
-    const ascending=active&&value.ascending;
-    const nextAscending=active?!value.ascending:false;
-    return <button key={option.key} type="button" className="entry-sort-button" aria-pressed={active} aria-label={`${option.name}の${nextAscending?'昇順':'降順'}に並べ替え`} title={`${option.label}${active?`：${ascending?'昇順':'降順'}`:''}（タップで${nextAscending?'昇順':'降順'}）`} onClick={()=>onChange({key:option.key,ascending:nextAscending})}>
+    const direction=option.key==='date'?'dateAscending':'amountAscending';
+    const ascending=value[direction];
+    const nextAscending=active?!ascending:ascending;
+    return <button key={option.key} type="button" className="entry-sort-button" aria-pressed={active} aria-label={`${option.name}の${nextAscending?'昇順':'降順'}に並べ替え`} title={`${option.label}：${ascending?'昇順':'降順'}・${active?'優先':'同じ値のときに適用'}（タップで${active?(nextAscending?'昇順':'降順'):'優先'}）`} onClick={()=>onChange({...value,key:option.key,[direction]:nextAscending})}>
       <span>{option.label}</span>
       <svg className="entry-sort-icon" data-ascending={ascending} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <g className="entry-sort-arrow"><path d="M3 16l3 3 3-3M6 5v14"/></g>
