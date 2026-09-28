@@ -37,7 +37,7 @@ test('旧ページはスクロール位置のまま固定し、本文だけをko
     ['outgoing',[{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(12px)'}]],
     ['incoming',[{opacity:0,transform:'translateX(-16px)'},{opacity:1,transform:'translateX(0)'}]]
   ]);
-  for(const animation of animations)assert.deepEqual(animation.timing,{duration:240,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'});
+  for(const animation of animations)assert.deepEqual(animation.timing,{duration:240,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'none'});
   transition.skipTransition();transition.skipTransition();
   assert.equal(layer.removes,1);
   assert.ok(animations.every(a=>a.cancels===1));
@@ -60,4 +60,23 @@ test('動きを減らす設定や非対応ブラウザーでは待たずにペ�
     assert.equal(startRouteTransition(1,()=>updates++),undefined);
     assert.equal(updates,1);
   }
+});
+
+
+test('アニメーションの完了通知が止まっても本文を透明なまま残さない',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const {layer,animations,update}=fixture();
+  const transition=startRouteTransition(1,update);
+  t.mock.timers.tick(401);
+  await transition.finished;
+  assert.equal(layer.removes,1);
+  assert.ok(animations.every(animation=>animation.cancels===1));
+});
+
+test('ブラウザーがアニメーションを開始できなくても更新した本文を表示する',async()=>{
+  const {copy,layer,update}=fixture();
+  copy.animate=()=>{throw new Error('Animation timeline unavailable');};
+  const transition=startRouteTransition(1,update);
+  await transition.finished;
+  assert.equal(layer.removes,1);
 });

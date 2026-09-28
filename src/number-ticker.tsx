@@ -1,5 +1,5 @@
 // Adapted from beUI Number Ticker: https://beui.dev/components/motion/number
-// Same digit reels, easing, entrance stagger, and place-value identity.
+// Digit reels are temporary decoration; final values never depend on animation completion.
 import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import './number-ticker.css';
@@ -15,6 +15,7 @@ export function NumberTicker({value}:{value:number}) {
   const inView=useInView(container,{once:true,amount:0.6});
   const reduce=useReducedMotion();
   const [entered,setEntered]=useState(false);
+  const [settled,setSettled]=useState(false);
   const text=Math.round(value).toLocaleString('ja-JP');
   const glyphs=Array.from(text);
   useEffect(()=>{
@@ -22,8 +23,26 @@ export function NumberTicker({value}:{value:number}) {
     const timer=window.setTimeout(()=>setEntered(true),(DURATION+glyphs.length*STAGGER)*1000);
     return()=>window.clearTimeout(timer);
   },[inView,entered,glyphs.length]);
-  return <span className="number-ticker" ref={container}>
+  useEffect(()=>{
+    setSettled(Boolean(reduce));
+    const finish=()=>setSettled(true);
+    const visible=()=>{if(document.visibilityState==='visible')finish();};
+    // Safari can suspend the animation timeline during OAuth/app restoration.
+    // An independent deadline also covers a stalled IntersectionObserver.
+    const timer=window.setTimeout(finish,(DURATION+glyphs.length*STAGGER)*1000+200);
+    window.addEventListener('pageshow',finish);
+    window.addEventListener('focus',finish);
+    document.addEventListener('visibilitychange',visible);
+    return()=>{
+      window.clearTimeout(timer);
+      window.removeEventListener('pageshow',finish);
+      window.removeEventListener('focus',finish);
+      document.removeEventListener('visibilitychange',visible);
+    };
+  },[value,inView,reduce,glyphs.length]);
+  return <span className="number-ticker" data-settled={settled||reduce||undefined} ref={container}>
     <span className="number-ticker-accessible">¥{text}</span>
+    <span className="number-ticker-static" aria-hidden="true">¥{text}</span>
     <span className="number-ticker-glyphs" aria-hidden="true"><span>¥</span><AnimatePresence initial={false}>{glyphs.map((char,index)=>{
       // Preserve units/tens/hundreds when switching totals or adding a digit.
       const key=`place-${glyphs.length-1-index}`;

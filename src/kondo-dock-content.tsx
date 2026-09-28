@@ -10,6 +10,7 @@ export class DockContent extends Component<Props> {
   outgoing?: HTMLElement;
   entrance?: Animation;
   exit?: Animation;
+  recovery?: ReturnType<typeof setTimeout>;
 
   getSnapshotBeforeUpdate(previous: Props) {
     if (previous.identity === this.props.identity || reduceMotion())
@@ -58,6 +59,7 @@ export class DockContent extends Component<Props> {
       easing: "cubic-bezier(0.22, 1, 0.36, 1)",
       fill: "backwards",
     });
+    this.recovery = setTimeout(() => this.clear(), 580);
     const entrance = this.entrance;
     void entrance.finished.then(
       () => {
@@ -68,6 +70,7 @@ export class DockContent extends Component<Props> {
   }
 
   clear() {
+    clearTimeout(this.recovery);
     if (this.node.current) this.node.current.inert = false;
     this.entrance?.cancel();
     this.exit?.cancel();
