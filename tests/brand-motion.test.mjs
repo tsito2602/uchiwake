@@ -79,12 +79,15 @@ test('動きを減らす設定・Canvas非対応では静止表示から安全�
   const changed=launch();changed.reducedMedia.matches=true;changed.reducedMedia.listener();changed.ready();
   assert.equal(changed.ids['initial-boot'].isConnected,false);
 });
-test('OSテーマ変更でアイコンとPWA設定を更新し、起動画面終了後も追従する',()=>{
+test('OSテーマ変更はアプリ内だけに適用し、ホーム用アイコンとmanifestを差し替えない',()=>{
   const app=launch({dark:true,alreadyReady:true});
-  assert.equal(app.ids['app-icon'].attrs.href,'/icon-dark.svg');
-  assert.equal(app.ids['app-manifest'].attrs.href,'/manifest-dark.webmanifest');
+  assert.equal(app.ids['app-icon'].attrs.href,undefined);
+  assert.equal(app.ids['app-manifest'].attrs.href,undefined);
+  assert.equal(app.ids['boot-still'].src,'/logo-dark.svg');
   app.advance(BOOT_HOLD_END);app.advance(240);
   app.darkMedia.matches=false;app.darkMedia.listener();
-  assert.equal(app.ids['app-icon'].attrs.href,'/icon-light.svg');
+  assert.equal(app.ids['app-icon'].attrs.href,undefined);
+  assert.equal(app.ids['app-manifest'].attrs.href,undefined);
+  assert.equal(app.ids['boot-still'].src,'/logo-light.svg');
   assert.equal(app.ids['app-theme-color'].attrs.content,'#fbf8f2');
 });
