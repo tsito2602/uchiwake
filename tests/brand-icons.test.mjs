@@ -15,35 +15,37 @@ test('アプリ内ロゴはバイト単位で維持する',async()=>{
     assert.equal(createHash('sha256').update(await readFile(`public/${name}`)).digest('hex'),hash,name);
   }
 });
-test('背景は成功版と同一に保ち、白い下地のない図柄だけ14%拡大する',async()=>{
-  const hashes={
-    light:'91f15cc5fccb26018703411ffad309995ace578b51c3286c747fe48303ca5cc1',
-    dark:'c949755a8e2d41322f3ddd71d21e9b3607ac0fc92e3c4a93db2c77ae38e4c990',
-  };
-  const palettes={light:[[48,48,47],[156,151,143],[203,197,187]],dark:[[245,241,233],[182,176,166],[129,123,114]]};
+test('ホーム画面だけ白い細縁を付け、明暗で同じ図柄と14%の大きさを維持する',async()=>{
   const render=svg=>sharp(Buffer.from(svg)).resize(512,512).ensureAlpha().raw().toBuffer();
   const height=data=>{
     const rows=[];for(let i=3;i<data.length;i+=4)if(data[i]>127)rows.push(Math.floor((i/4)/512));
     return rows.at(-1)-rows[0]+1;
   };
+  let commonForeground;
   for(const theme of ['light','dark']) {
     const svg=await readFile(`public/icon-${theme}.svg`,'utf8');
-    // Removing ONLY the scale group must exactly recover the original asset.
-    const unscaled=svg.replace('<g transform="translate(627 627) scale(1.14) translate(-627 -627)">','').replace('</g>','');
-    assert.equal(createHash('sha256').update(unscaled).digest('hex'),hashes[theme]);
+    assert.match(svg,/data-appearance="edge" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="12"/);
     assert.equal((svg.match(/<rect\b/g)||[]).length,1);
-    assert.doesNotMatch(svg,/stroke=/);
     const foreground=svg.replace(/<rect\b[^>]*\/>/,'');
-    const data=await render(foreground),before=await render(foreground.replace('scale(1.14)','scale(1)'));
-    assert.ok(Math.abs(height(data)/height(before)-1.14)<.015);
+    if(commonForeground) assert.equal(foreground,commonForeground);
+    commonForeground=foreground;
+    const withoutEdge=foreground.replace(/<g data-appearance="edge"[^>]*>[\s\S]*?<\/g>/,'');
+    const data=await render(foreground),ink=await render(withoutEdge);
+    const before=await render(withoutEdge.replace('scale(1.14)','scale(1)'));
+    assert.ok(Math.abs(height(ink)/height(before)-1.14)<.015);
     assert.equal(data[3],0);
-    assert.equal(data[(Math.round(512*671.46/1254)*512+256)*4+3],0);
-    const composed=await render(svg),hole=(Math.round(512*671.46/1254)*512+256)*4;
+    const hole=(Math.round(512*671.46/1254)*512+256)*4;
+    assert.equal(data[hole+3],0);
+    let white=0;
+    for(let i=0;i<data.length;i+=4)if(data[i]===255&&data[i+1]===255&&data[i+2]===255&&data[i+3]===255)white++;
+    assert.ok(white>100&&white<20000,'The edge must exist without filling the entire tile');
+    const composed=await render(svg);
     assert.deepEqual([...composed.subarray(hole,hole+4)],theme==='light'?[251,248,242,255]:[25,25,25,255]);
-    for(let i=0;i<data.length;i+=4)if(data[i+3]>=32){
-      const delta=Math.min(...palettes[theme].map(color=>Math.max(...color.map((v,c)=>Math.abs(v-data[i+c])))));
-      assert.ok(delta<=9,'No white matte or extra outline at partially transparent edges');
-    }
+  }
+  for(const theme of ['light','dark']) {
+    const logo=await readFile(`public/logo-${theme}.svg`,'utf8');
+    assert.doesNotMatch(logo,/data-appearance="edge"|stroke=/);
+    assert.match(logo,new RegExp(theme==='light'?'#30302f':'#f5f1e9'));
   }
 });
 test('PNG用の追加指定を外して元のSVG・manifest参照へ戻す',async()=>{

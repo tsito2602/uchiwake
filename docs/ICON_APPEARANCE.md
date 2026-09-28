@@ -2,83 +2,46 @@
 
 ## 現在のSVGアイコンの作り方
 
-2026-09-28の実機報告を受けて修正した方式（修正後の実機結果は未確認）。
-背景が切り替わっていた基準コミットは `ff254711030539af11f111fa540f61dbe63e60dd`。
-**基準版の背景面・登録方法を保持し、図柄だけ14%拡大する。**
-背景矩形を削除した `01b94f97ff3c8d627bbb22c80b78ac34d2a848ac` は、ライトで黒くなると報告されたため再採用しない。
-以下が現在の再現手順。後半のPNG方式・固定画像方式は過去の検証記録であり、現在の設定ではない。
+2026-09-28、ユーザーが「Kondoのようにアイコンのみ白い縁取り」「アプリ内はライト／ダークを使い分け」と指定。
+白いフチをなくす方針を置き換え、ホーム画面用だけに意図的な白い細縁を付ける。
+輪郭補間を比較する未公開の試作は取り下げ、通常アプリには追加しない。
 
-### 元データと生成場所
+### ホーム画面用
 
-- `src/brand-motion.ts`: 5本のSVGパス `pathData` と配色 `BRAND_THEMES` の原本。
-- `scripts/build-brand.mjs`: 原本からアイコン・アプリ内ロゴ・manifestを生成する。
-- `public/icon.svg`: 初期favicon。SVG内のメディアクエリで配色を切り替える。
-- `public/icon-light.svg` / `public/icon-dark.svg`: 各テーマのホーム画面用アイコン。
-- `public/logo-light.svg` / `public/logo-dark.svg`: アプリ内ロゴ。今回の14%拡大は適用しない。
+1. `src/brand-motion.ts` の `pathData` 5本を原本に使う。形は変更しない。
+2. `scripts/build-brand.mjs` で `viewBox="0 0 1254 1254"` のSVGを生成する。
+3. 既存の背景矩形（1254×1254、角丸250）は維持する。ライト `#fbf8f2`、ダーク `#191919`。
+4. 図柄全体を `translate(627 627) scale(1.14) translate(-627 -627)` で14%拡大する。
+5. Kondoのように図柄の背面へ白縁専用のグループを置く。
+   `data-appearance="edge"`、`fill="#FFFFFF"`、`stroke="#FFFFFF"`、`stroke-width="12"`、
+   `stroke-linejoin="round"` として、同じ5本のパスを描く。
+6. その上に通常の5本のパスを描く。白線の内側半分は図柄で覆われ、外側だけ細い縁として見える。
+   180px表示で片側約 `6 × 1.14 × 180 / 1254 = 0.98px`。
+7. ホーム画面の図柄は明暗ともライト配色を使う。`ink=#30302f`、`mid=#9c978f`、`pale=#cbc5bb`。
+   背景だけをテーマに合わせる。暗い背景でも白縁で輪郭を保つ。
 
-### 画像の作成手順
+白縁は意図した図柄の一部であり、除去対象のにじみではない。
+中央の穴や区画間の隙間は白く塗りつぶさない。背景面と図柄の白縁を区別する。
+SVG登録は変更せず、`/icon.svg` とテーマ別 `/icon-light.svg`・`/icon-dark.svg` を使用する。
+PNG化やApple Touch Iconの追加はしない。manifest ID `/` と家計データも維持する。
 
-1. アイコンの `viewBox` は `0 0 1254 1254` のままにする。
-2. 基準版にあるテーマ別の背景矩形（1254×1254、角丸250）をそのまま保持する。
-   ライトは `#fbf8f2`、ダークは `#191919`。この矩形は拡大グループの外に置く。
-   図柄自体は原本の5本のパスだけで、専用の白い下地・縁取り・影を加えない。
-   図柄の隙間は図柄レイヤーでは透明で、その下にテーマ別の背景面が見える。
-   完成SVG全体が完全透過であるとは説明しない。
-3. 図柄全体を次のグループに入れ、中心 `(627, 627)` を基準に縦横とも1.14倍にする。
-   SVGの枠の大きさは変えない。
+### アプリ内
 
-   ```svg
-   <g transform="translate(627 627) scale(1.14) translate(-627 -627)">
-     <!-- 原本の5本のパスを、形状を変えずにここへ置く -->
-   </g>
-   ```
+- `public/logo-light.svg` / `public/logo-dark.svg` は従来の縁なしデータを保持する。
+- ライトは暗い図柄、ダークは明るい図柄。配色は `BRAND_THEMES` に従う。
+- 起動画面は `src/boot.ts` / `drawBrand`、ログイン画面は `src/auth.tsx` / `src/login.css` で切り替える。
+- 白縁レイヤーとホーム画面用の14%拡大をアプリ内へ流用しない。
 
-4. 各パスの塗り色を維持する。添字2（3本目）は `mid`、
-   添字3（4本目）は `pale`、残りは `ink` を使う。
-
-   | 用途 | ライト | ダーク |
-   | --- | --- | --- |
-   | ink | `#30302f` | `#f5f1e9` |
-   | mid | `#9c978f` | `#b6b0a6` |
-   | pale | `#cbc5bb` | `#817b72` |
-
-   薄いグレーの円グラフ部分は図柄であり、除去する背景ではない。
-   ダーク版の明るい `ink` も図柄の色で、白い下地とは区別する。
-5. SVGとして書き出す。画像から白を色抜きしたり、PNGへ変換して登録し直したりしない。
-   アプリ内ロゴのパス・余白・大きさと、起動アニメーションはこの変更に含めない。
-
-### 維持する登録方法
-
-`index.html` の初期指定は次のとおり。`apple-touch-icon` のPNG指定は追加しない。
-
-```html
-<link id="app-icon" rel="icon" href="/icon.svg" type="image/svg+xml"/>
-<link id="app-manifest" rel="manifest" href="/manifest.webmanifest"/>
-```
-
-`src/boot.ts` は `prefers-color-scheme` に応じ、faviconを `/icon-light.svg` または
-`/icon-dark.svg`、manifestを `/manifest-light.webmanifest` または
-`/manifest-dark.webmanifest` へ切り替える。この登録方式も含めて現在の構成を維持する。
-
-各manifestのアイコンは対応するSVGで、`sizes: "any"`、`type: "image/svg+xml"`、
-`purpose: "any maskable"`。`id`・`start_url`・`scope` はすべて `/` のまま。
-manifestの背景色指定も基準版のまま維持する。SVG側の背景面の代用になると仮定しない。
-互換用の `/manifest-v4.webmanifest` も現在のライト用SVGを参照する。
-
-### 再生成と確認
+### 再生成と検証
 
 ```sh
 node scripts/build-brand.mjs
 npm run check
 ```
 
-`npm run dev` / `npm run build` でも生成スクリプトが実行される。
-生成物を直接手直しせず、原本または生成スクリプトを編集する。
-`tests/brand-icons.test.mjs` で背景の色、図柄レイヤーの穴の透明度、輪郭の色、14%の拡大率、
-アプリ内ロゴの維持、SVGの登録方法と配信内容を確認する。
-`tests/brand-motion.test.mjs` はテーマ切替・起動処理を確認する。
-この版はビルド・型チェック・107件のテストを通過した。
-自動テストではiOSの背景合成までは再現しないため、実機結果を新たに確認したらここへ追記する。
+`npm run dev` / `npm run build` でも生成される。生成SVGを直接手直ししない。
+テストでは白縁の存在・中央の穴・背景色・ホーム画面の明暗共通の図柄・14%の大きさを確認する。
+アプリ内ロゴはハッシュで従来版との完全一致を確認する。iOS固有の追加ハイライトは別途実機で確認する。
 
 ## 参考資料と過去の検証記録
 
