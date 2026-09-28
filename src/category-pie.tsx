@@ -43,14 +43,15 @@ export function CategoryPie({items,settings,onSelectCategory}:{items:Item[];sett
     const finish=()=>{if(finished)return;finished=true;window.cancelAnimationFrame(frame);window.clearTimeout(deadline);target.removeAttribute('clip-path');};
     stopReveal.current=finish;
     const started=performance.now();
-    const duration=850;
+    const duration=900;
     const deadline=window.setTimeout(finish,duration+150);
     const tick=(now:number)=>{
       if(finished)return;
       const t=Math.min(1,Math.max(0,(now-started)/duration));
       if(t===1){finish();return;}
       // A single sweeping clip reveals contiguous sectors clockwise from noon.
-      clip.setAttribute('d',pieSlice(0,1-Math.pow(1-t,2),104));
+      const progress=t<.5?8*Math.pow(t,4):1-8*Math.pow(1-t,4);
+      clip.setAttribute('d',pieSlice(0,progress,104));
       target.setAttribute('clip-path',`url(#${id})`);
       frame=window.requestAnimationFrame(tick);
     };
@@ -92,7 +93,6 @@ export function CategoryPie({items,settings,onSelectCategory}:{items:Item[];sett
     if(tapped)open(current.index);
   };
   const selected=active===null?null:slices[active];
-  const selectedAngle=selected?(selected.start+selected.end)*Math.PI-Math.PI/2:0;
   return <div className="category-pie" ref={source}>
     {total>0?<svg ref={svg} viewBox="0 0 200 200" role="group" aria-label="カテゴリ別の支払い割合。長押ししてスライドすると金額を確認できます。" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={reset} onLostPointerCapture={event=>{if(press.current?.id===event.pointerId)reset();}} onContextMenu={event=>event.preventDefault()}>
       <defs><clipPath id={id}><path ref={mask} d={pieSlice(0,1,104)}/></clipPath></defs>
@@ -107,10 +107,10 @@ export function CategoryPie({items,settings,onSelectCategory}:{items:Item[];sett
             if(event.detail===0&&performance.now()-lastPointer.current>700)open(index);
           }}
           onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open(index);}if(event.key==='Escape')setActive(null);}}
-          fill={displayColor(categoryAppearance(item.category,settings).color)} stroke="var(--canvas)" strokeWidth={1.5}
+          fill={displayColor(categoryAppearance(item.category,settings).color)} stroke="var(--canvas)" strokeWidth={1.5} strokeLinejoin="round" strokeMiterlimit={1}
           style={{transform:highlighted?`translate(${Math.cos(angle)*3}px,${Math.sin(angle)*3}px) scale(1.045)`:'translate(0px,0px) scale(1)'}}/>;
       })}</g>
     </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
-    {selected&&<div className="category-pie-readout" role="status" aria-live="polite" data-position={Math.sin(selectedAngle)<0?'bottom':'top'}><strong>{yen(selected.amount)}</strong><span>{selected.category}</span></div>}
+    {selected&&<div className="category-pie-readout" role="status" aria-live="polite"><strong>{yen(selected.amount)}</strong><span>{selected.category}</span></div>}
   </div>;
 }
