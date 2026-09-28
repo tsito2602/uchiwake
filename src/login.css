@@ -3,8 +3,8 @@
 .login-panel { display: flex; flex-direction: column; align-items: center; gap: 24px; width: min(100%, 360px); text-align: center; }
 .login-brand { display: flex; width: 100%; min-height: 52px; justify-content: center; align-items: center; gap: 8px; font-size: 28px; font-weight: 700; letter-spacing: -.035em; }
 /* Fit the visible mark, excluding the launch SVG’s transparent padding. */
-.login-brand-icon { display: block; flex: none; width: auto; height: 25px; aspect-ratio: 661 / 813; }
-.login-brand-icon .ink { fill: #30302f; }
+.login-brand-icon { display: block; flex: none; width: auto; height: 25px; aspect-ratio: 661 / 849; }
+.login-brand-icon .ink { fill: #000000; }
 .login-brand-icon .mid { fill: #9c978f; }
 .login-brand-icon .pale { fill: #cbc5bb; }
 .login-panel h1 { margin: 0; font-size: clamp(24px, 6.5vw, 30px); font-weight: 600; letter-spacing: -.04em; line-height: 1.6; }

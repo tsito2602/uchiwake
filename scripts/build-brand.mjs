@@ -3,16 +3,16 @@ import { writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
 const module = await build({entryPoints:['src/brand-motion.ts'], bundle:true, platform:'node', format:'esm', write:false});
-const { pathData, BRAND_THEMES } = await import(`data:text/javascript;base64,${Buffer.from(module.outputFiles[0].text).toString('base64')}`);
+const { pathData, BRAND_THEMES, FIRST_STROKE_OFFSET_Y } = await import(`data:text/javascript;base64,${Buffer.from(module.outputFiles[0].text).toString('base64')}`);
 // Follow the four chart pieces' outer/inner curves and bridge their three gaps.
 // One backing shape makes a continuous rim with solid white dividers.
 const chartOutline = 'M 320 517 Q 531 293 796 415 L 817 430 C 944 504 997 657 929 808 L 922 835 Q 849 980 654 1024 L 628 1027 Q 457 1032 363 904 C 326 854 367 777 417 802 Q 489 836 581 827 L 605 821 Q 689 792 732 727 L 742 702 Q 764 635 712 584 L 693 567 Q 541 488 381 611 C 324 644 273 580 312 530 Z';
 function svg(theme, logo = false) {
   // Home-screen artwork stays dark with a deliberate white edge in both themes.
   // In-app logos keep their own light/dark palettes, with no edge.
-  const colors = logo ? BRAND_THEMES[theme] : { ...BRAND_THEMES.light, ink: '#000000' };
+  const colors = BRAND_THEMES[logo ? theme : 'light'];
   // Preserve the gap between strokes after thickening both white rims.
-  const headOffset = logo ? '' : ' transform="translate(0 -28)"';
+  const headOffset = ` transform="translate(0 ${FIRST_STROKE_OFFSET_Y})"`;
   const paths = pathData.map((d, i) => { const part = i === 2 ? 'mid' : i === 3 ? 'pale' : 'ink'; return `<path class="${part}" fill="${colors[part]}" d="${d}"${i === 0 ? headOffset : ''}/>`; }).join('');
   // Visible half-stroke = 25 source units, matching the chart's ~25-unit dividers.
   // ~4.09px at 180px; applies equally to the outer/inner rim and first stroke.

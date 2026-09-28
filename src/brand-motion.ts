@@ -1,6 +1,8 @@
 // Approved uchiwake launch: clockwise donut fill and continuous single-roll motion.
 export type Point=number[];
-export const BRAND_THEMES={light:{background:"#fbf8f2",ink:"#30302f",mid:"#9c978f",pale:"#cbc5bb"},dark:{background:"#191919",ink:"#f5f1e9",mid:"#b6b0a6",pale:"#817b72"}} as const;
+export const BRAND_THEMES={light:{background:"#fbf8f2",ink:"#000000",mid:"#9c978f",pale:"#cbc5bb"},dark:{background:"#191919",ink:"#f5f1e9",mid:"#b6b0a6",pale:"#817b72"}} as const;
+// Share the installed icon's first-stroke placement across every brand surface.
+export const FIRST_STROKE_OFFSET_Y=-28;
 export type BrandTheme=keyof typeof BRAND_THEMES;
 // Compress the entire approved sequence uniformly, preserving its easing and path.
 export const BOOT_TIME_SCALE=0.8;
@@ -54,7 +56,7 @@ export const BOOT_EXIT_DURATION=192;
   ['M922 835 Q849 980 654 1024','M654 1024 L605 821','M605 821 Q689 792 732 727','M732 727 L922 835'],
   ['M628 1027 Q457 1032 363 904','M363 904 C326 854 367 777 417 802','M417 802 Q489 836 581 827','M581 827 L628 1027']
  ];
- const targets=edges.map(sides=>sides.flatMap(d=>resample(flatten(d))));
+ const targets=edges.map((sides,i)=>sides.flatMap(d=>resample(flatten(d))).map(([x,y])=>[x,y+(i===0?FIRST_STROKE_OFFSET_Y:0)]));
  const spans=[[145,215],[215,302],[302,385],[385,445],[445,505]];
  const gapWidth=26;
  const rings=spans.map(([a,b])=>{

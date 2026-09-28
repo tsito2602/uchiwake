@@ -30,6 +30,11 @@ test('一画目は一続きの軌道で移動し、二画目と重ならず表�
     assert.ok(head.every(([x,y])=>Number.isFinite(x)&&Number.isFinite(y)&&x>=-248&&x<=1502&&y>=-240&&y<=1145),`clipped at ${t}ms`);
   }
 });
+test('アニメーションの1画目はホーム図柄と同じ位置へ収まる',()=>{
+  const {head}=geometry(2250);
+  assert.ok(Math.abs(head[0][0]-451)<1e-8);
+  assert.ok(Math.abs(head[0][1]-222)<1e-8);
+});
 function launch({dark=false,reduced=false,alreadyReady=false,canvas=true}={}) {
   let now=0,id=0;
   const timers=new Map(),frames=new Map(),events=new Map();

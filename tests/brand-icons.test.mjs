@@ -1,23 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import app from '../dist/worker.mjs';
 
-// Only the requested first-stroke thickness may differ from the in-app baseline.
+// Retain the approved C comparison, with the later first-stroke adjustment.
 const previousHead='M 451 254 Q 647 164 838 286 Q 856 298 848 315 L 819 365 Q 811 381 796 373 Q 642 289 482 350 Q 469 355 462 340 L 441 291 Q 434 266 451 254 Z';
-const originals = {
-  'logo-light.svg':'67ca2bcb04ca3b40d08c7fbeb674ddfa310a3d217bfae8a1e6ba9e8c2ccc2966',
-  'logo-dark.svg':'e9bfae5e7be5ff27a78f6dffc5f856e50e25f9551a264802ec046cd6213266ef',
-};
-test('アプリ内ロゴは1画目だけ少し太くし、残りの図柄・配色は維持する',async()=>{
-  for(const [name,hash] of Object.entries(originals)) {
-    const svg=await readFile(`public/${name}`,'utf8');
-    const head=svg.match(/<path[^>]* d="([^"]+)"/)[1];
-    assert.match(head,/^M 451 250 Q 647 160/);
-    assert.equal(createHash('sha256').update(svg.replace(head,previousHead)).digest('hex'),hash,name);
-  }
+const logos = ['logo-light.svg','logo-dark.svg'];
+test('アプリ内ライトはホーム図柄の白縁なし、ダークは同じ形と配置の色違い',async()=>{
+  const shapes=svg=>svg.match(/<path class="[^"]+"[^>]*\/>/g);
+  const home=shapes(await readFile('public/icon.svg','utf8'));
+  const light=shapes(await readFile('public/logo-light.svg','utf8'));
+  const dark=shapes(await readFile('public/logo-dark.svg','utf8'));
+  assert.equal(home.length,5);
+  assert.deepEqual(light,home,'same paths, first-stroke placement, and light palette');
+  assert.match(light[0],/transform="translate\(0 -28\)"/);
+  const geometry=paths=>paths.map(path=>path.replace(/fill="[^"]+"/,''));
+  assert.deepEqual(geometry(dark),geometry(light),'dark changes colors only');
 });
 test('ホーム画面だけ白い細縁を付け、明暗で同じ図柄と14%の大きさを維持する',async()=>{
   const render=svg=>sharp(Buffer.from(svg)).resize(512,512).ensureAlpha().raw().toBuffer();
@@ -54,7 +53,7 @@ test('ホーム画面だけ白い細縁を付け、明暗で同じ図柄と14%�
   for(const theme of ['light','dark']) {
     const logo=await readFile(`public/logo-${theme}.svg`,'utf8');
     assert.doesNotMatch(logo,/data-appearance="edge"|stroke=/);
-    assert.match(logo,new RegExp(theme==='light'?'#30302f':'#f5f1e9'));
+    assert.match(logo,new RegExp(theme==='light'?'#000000':'#f5f1e9'));
   }
 });
 test('iPhoneに白縁入り透過PNGを明示し、明暗で共通のPNG候補を使う',async()=>{
@@ -104,7 +103,7 @@ test('実際に登録するPNGはKondoと同じ書き出し条件で、180pxで�
   assert.match(await response.text(),/rel="apple-touch-icon"[^>]*href="\/apple-touch-icon-v8\.png"/);
 });
 test('SVGはWorker経由でも生成画像と同じバイト列で配信する',async()=>{
-  for(const name of ['icon.svg','icon-light.svg','icon-dark.svg',...Object.keys(originals)]) {
+  for(const name of ['icon.svg','icon-light.svg','icon-dark.svg',...logos]) {
     const response=await app.fetch(new Request(`https://example.test/${name}`),{});
     assert.equal(response.status,200);
     assert.equal(response.headers.get('content-type'),'image/svg+xml');
