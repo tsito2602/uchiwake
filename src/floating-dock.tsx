@@ -39,7 +39,7 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
   const morph=useRef<FluidDockHandle>(null);
   const pointer=useRef<{id:number;startX:number;startY:number}|null>(null);
   const swallowClick=useRef(false);
-  const separateSecondary=!!context?.secondaryAction&&(context.commit||context.rentActions);
+  const separateSecondary=!!context?.secondaryAction&&(context.commit||context.rentActions||context.backOnly);
   const showMonth=tab!=='settings';
   const selected=Math.max(0,dockTabs.findIndex(item=>item.key===tab));
   useLayoutEffect(()=>{morph.current?.measure();},[context,showMonth]);

@@ -20,7 +20,7 @@ const {outputFiles}=await build({stdin:{contents:`
   export const processing=props=>renderToStaticMarkup(createElement(ImportPhaseStatus,{progress:props.progress}))+renderToStaticMarkup(createElement(ImportProcessing,props));
   const context=appearance=>({onBack:()=>{},onAction:()=>{},actionLabel:appearance==='breathing'?'Thinking...':'デモで仕分ける',actionAppearance:appearance,disabled:appearance==='breathing',commit:true});
   export const panel=(active,appearance)=>renderToStaticMarkup(createElement(StatementImportPanel,{processing:active,progress:active?{phase:'sorting',entries:[],count:3,demo:true}:null,reviewing:false,onExited:()=>{},context:context(appearance)},'明細'));
-  export const dock=appearance=>renderToStaticMarkup(createElement(FloatingDock,{tab:'home',onSelect:()=>{},panelActive:true,month:'2026-09',onMonthChange:()=>{},onPrevMonth:()=>{},onNextMonth:()=>{},context:context(appearance)}));
+  export const dock=(appearance,overrides={})=>renderToStaticMarkup(createElement(FloatingDock,{tab:'home',onSelect:()=>{},panelActive:true,month:'2026-09',onMonthChange:()=>{},onPrevMonth:()=>{},onNextMonth:()=>{},context:{...context(appearance),...overrides}}));
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
 // Resolve external React imports from the project, not from a data URL.
 const bundle=outputFiles[0].text.replace(/from "(react(?:-dom(?:\/server)?|\/jsx-runtime)?|lucide-react|border-beam|thinking-orbs|motion\/react)"/g,(_match,name)=>`from ${JSON.stringify(import.meta.resolve(name))}`);
@@ -28,6 +28,19 @@ const {setup,review,processing,panel,dock,defaultOrb}=await import('data:text/ja
 const sample=demoImportResult('2026-09');
 const draft={...sample,card_id:'one',due_month:'2026-09',title:'カード明細',demo:true};
 const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],settings:[],busy:false,checked:false,onChange:()=>{},onChecked:()=>{}};
+
+test('保存操作のないパネルでも削除を独立した島に表示し、操作禁止を反映する',()=>{
+  for(const disabled of [false,true]){
+    const html=dock(undefined,{backOnly:true,commit:false,secondaryAction:{label:'このスペースを削除',disabled,onAction:()=>{}}});
+    assert.ok(html.includes('context-island context-delete'));
+    assert.ok(!html.includes('context-primary'));
+    const button=html.match(/<button[^>]*aria-label="このスペースを削除"[^>]*>/)?.[0];
+    assert.ok(button);
+    assert.equal(button.includes('disabled'),disabled);
+    assert.equal((html.match(/aria-label="このスペースを削除"/g)||[]).length,1);
+  }
+  assert.ok(!dock(undefined,{backOnly:true,commit:false}).includes('context-delete'));
+});
 
 test('読取中はゲージを1行の要約に置き換え、未着時・デモを区別してHTMLを実行しない',()=>{
   const render=extra=>processing({progress:{phase:'reading',entries:[],count:null,demo:false,...extra},settings:[]});
