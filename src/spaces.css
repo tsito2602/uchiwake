@@ -17,11 +17,10 @@
 .space-floating-panel .panel-desktop-actions{gap:8px;flex-wrap:wrap}
 @media(min-width:760px){.space-floating-panel .panel-desktop-actions{display:flex}.space-floating-panel .panel-desktop-actions>button{flex:1 1 auto;width:auto}}
 
-/* Keep the glass material separate from the live scrolling content. Applying
-   backdrop-filter to the scroll ancestor couples its tiles to panel motion. */
-.card-panel.space-floating-panel { position: relative; isolation: isolate; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
-.space-floating-panel::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--panel-tint); -webkit-backdrop-filter: blur(32px) saturate(1.05); backdrop-filter: blur(32px) saturate(1.05); pointer-events: none; }
-.space-floating-panel > .card-panel-scroll { isolation: isolate; }
+/* The page/parent is already blurred by usePanelMorph. Keep the active panel
+   to a tint over that background: neither its scroll ancestor nor an overlapping
+   pseudo-element should apply another backdrop-filter to the scrolling tiles. */
+.card-panel.space-floating-panel { background: var(--panel-tint); -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 .allocation-breakdown-trigger { display: flex; align-items: center; gap: 7px; width: max-content; max-width: 100%; margin: 12px 0 8px; padding: 8px 0; border: 0; background: none; color: var(--ink); font-size: 12px; }
 .allocation-breakdown-trigger small { color: var(--muted); font-size: 11px; margin-left: 3px; }
