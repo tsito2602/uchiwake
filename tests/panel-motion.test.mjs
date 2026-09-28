@@ -17,7 +17,7 @@ test('カード位置から全面パネルをクリップで開く（文字や�
   assert.equal(frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
   assert.deepEqual(timing,{duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'backwards'});
 });
-test('初回の設定入口・小ボタン・領域外からはスクロール内容を切り抜かず48pxの動きで開く',()=>{
+test('小ボタン・領域外からはスクロール内容を切り抜かず48pxの動きで開く',()=>{
   for(const origin of [undefined,{left:310,top:18,width:44,height:44},{left:20,top:180,width:350,height:62},{left:310,top:800,width:56,height:56},{left:20,top:900,width:350,height:115}]){
     const {frames}=opening(origin);
     assert.equal(frames[0].transform,'translateY(48px)');
@@ -26,6 +26,14 @@ test('初回の設定入口・小ボタン・領域外からはスクロール�
     assert.equal(frames[1].opacity,1);
     assert.ok(frames.every(frame=>!('clipPath' in frame)));
   }
+});
+test('スペース設定の入口カード全体を起点にすると明細カードと同じ展開になる',()=>{
+  // The 62px label row sits inside 24px padding and a 1px border on each side.
+  const {frames,timing}=opening({left:20,top:136,width:350,height:112});
+  assert.equal(frames[0].clipPath,'inset(124px 8px 492px 8px round 16px)');
+  assert.equal(frames[0].transform,'translateY(0px)');
+  assert.equal(frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
+  assert.deepEqual(timing,opening({left:20,top:400,width:350,height:115}).timing);
 });
 test('画面端のカードでもクリップの余白が負にならない',()=>{
   const {frames}=opening({left:0,top:0,width:390,height:800});

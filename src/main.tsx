@@ -448,7 +448,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
 
       </>:demoView?<div className="empty">この月のデモ明細はありません。</div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
       {tab==='settings'&&<div className="settings-page">
-        <section className="section settings-section"><button type="button" className="settings-card-button" onClick={event=>openSpaceSettings(event.currentTarget)}>{personal?<UserRound size={21}/>:<UsersRound size={21}/>}<span><strong>スペース設定</strong><small>{space.name}</small></span><ChevronRight size={18}/></button></section>
+        <section className="section settings-section"><button type="button" className="settings-card-button" onClick={event=>openSpaceSettings(event.currentTarget.closest<HTMLElement>('.settings-section')??event.currentTarget)}>{personal?<UserRound size={21}/>:<UsersRound size={21}/>}<span><strong>スペース設定</strong><small>{space.name}</small></span><ChevronRight size={18}/></button></section>
         <div className="settings-group-heading settings-common-heading"><small>アプリ共通</small><h2>アカウント・表示</h2></div>
         <AccountSettings user={user} signingOut={signingOut} updateProfile={saveProfile}/>
         <AppearanceSettings/>
