@@ -376,7 +376,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .card-panel-frame { position: relative; display: flex; flex-direction: column; width: min(100%, 600px); max-height: min(88dvh, 850px); min-height: 0; border: 0; border-radius: 28px; }
 .card-panel-glass { position: absolute; inset: 0; z-index: 0; border-radius: inherit; box-shadow: inset 0 1px 0 #ffffffbd, 0 12px 40px #0003; background: var(--panel-tint); -webkit-backdrop-filter: blur(32px) saturate(1.05); backdrop-filter: blur(32px) saturate(1.05); pointer-events: none; }
 .card-panel { position: relative; z-index: 1; display: block; width: 100%; max-height: inherit; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 88px; scroll-padding-bottom: 24px; border: 0; border-radius: inherit; background: transparent; }
-.card-panel > .card-panel-header { position: sticky; top: 0; z-index: 2; background: var(--panel-header-tint); }
+.card-panel > .card-panel-header { position: sticky; top: 0; z-index: 2; background: var(--panel-header-tint); -webkit-backdrop-filter: blur(24px) saturate(1.05); backdrop-filter: blur(24px) saturate(1.05); }
 .card-panel-header { flex-shrink: 0; }
 .card-panel-header h2:focus { outline: none; }
 .card-panel-header { display: flex; align-items: center; gap: 12px; padding: 20px 22px 16px; }
