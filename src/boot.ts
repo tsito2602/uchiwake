@@ -12,9 +12,7 @@ const ctx = canvas?.getContext('2d');
 function syncTheme() {
   theme = dark.matches ? 'dark' : 'light';
   document.documentElement.dataset.brandTheme = theme;
-  document.getElementById('app-icon')?.setAttribute('href', `/icon-${theme}.svg`);
-  document.getElementById('app-touch-icon')?.setAttribute('href', `/brand-icons/apple-touch-v3-${theme}.png`);
-  document.getElementById('app-manifest')?.setAttribute('href', `/manifest-${theme}.webmanifest`);
+  // Installation references stay fixed across themes (Kondo's device-tested setup).
   document.getElementById('app-theme-color')?.setAttribute('content', BRAND_THEMES[theme].background);
   if (still) still.src = `/logo-${theme}.svg`;
   if (ctx && canvas && screen?.isConnected) drawBrand(ctx, canvas.width, canvas.height, elapsed, theme);

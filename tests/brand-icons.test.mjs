@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
 import app from '../dist/worker.mjs';
 
-const palettes = {light:[[48,48,47],[156,151,143],[203,197,187]], dark:[[245,241,233],[182,176,166],[129,123,114]]};
+const palette = [[48,48,47],[156,151,143],[203,197,187]];
 const pixels = source => sharp(source).ensureAlpha().raw().toBuffer({resolveWithObject:true});
 function bounds({data,info}) {
   let top=info.height,bottom=0,left=info.width,right=0;
@@ -14,8 +14,8 @@ function bounds({data,info}) {
   return {height:bottom-top+1,width:right-left+1};
 }
 test('透過PNGは背景・中央の穴が透明で、半透明の輪郭にも白い下地を含まない',async()=>{
-  for(const theme of ['light','dark']) for(const size of [180,192,512]) {
-    const path=size===180?`public/brand-icons/apple-touch-v3-${theme}.png`:`public/brand-icons/uchiwake-v3-${theme}-${size}.png`;
+  for(const size of [180,192,512]) {
+    const path=size===180?'public/brand-icons/apple-touch-v4.png':`public/brand-icons/uchiwake-v4-${size}.png`;
     const {data,info}=await pixels(path);
     assert.equal(info.width,size);assert.equal(info.height,size);
     assert.equal(data[3],0);
@@ -26,7 +26,7 @@ test('透過PNGは背景・中央の穴が透明で、半透明の輪郭にも�
       const a=data[i+3];
       if(a<32) continue;
       if(a<255) edgePixels++;
-      const distance=Math.min(...palettes[theme].map(color=>Math.max(...color.map((v,c)=>Math.abs(v-data[i+c])))));
+      const distance=Math.min(...palette.map(color=>Math.max(...color.map((v,c)=>Math.abs(v-data[i+c])))));
       assert.ok(distance<=9,`${path}: unexpected matte at pixel ${i/4}: ${[...data.subarray(i,i+4)]}`);
     }
     assert.ok(edgePixels>30,'Antialiasing must remain smooth, not hard-thresholded');
@@ -36,10 +36,10 @@ test('ホーム画面のマークを約14%拡大し、maskableも背景と中央
   const svg=await readFile('public/icon-light.svg','utf8');
   const original=await sharp(Buffer.from(svg.replace('scale(1.14)','scale(1)'))).resize(512,512).png().toBuffer();
   const before=bounds(await pixels(original));
-  const after=bounds(await pixels('public/brand-icons/uchiwake-v3-light-512.png'));
+  const after=bounds(await pixels('public/brand-icons/uchiwake-v4-512.png'));
   for(const axis of ['width','height']) assert.ok(Math.abs(after[axis]/before[axis]-1.14)<.015);
-  for(const theme of ['light','dark']) {
-    const {data}=await pixels(`public/brand-icons/uchiwake-v3-${theme}-maskable-512.png`);
+  {
+    const {data}=await pixels('public/brand-icons/uchiwake-v4-maskable-512.png');
     assert.equal(data[3],0);
     assert.equal(data[((511*512)+511)*4+3],0);
     assert.equal(data[(Math.round(512*666/1254)*512+256)*4+3],0);
@@ -48,12 +48,19 @@ test('ホーム画面のマークを約14%拡大し、maskableも背景と中央
 });
 test('ホーム画面用PNGは認証なしで取得でき、Worker経由でもバイト列が壊れない',async()=>{
   const html=await readFile('index.html','utf8');
-  assert.match(html,/rel="apple-touch-icon"[^>]*href="\/brand-icons\/apple-touch-v3-light\.png"/);
-  for(const theme of ['light','dark']) {
-    const manifest=JSON.parse(await readFile(`public/manifest-${theme}.webmanifest`,'utf8'));
+  assert.match(html,/rel="apple-touch-icon"[^>]*href="\/brand-icons\/apple-touch-v4\.png"/);
+  assert.match(html,/rel="icon"[^>]*href="\/brand-icons\/apple-touch-v4\.png"/);
+  assert.match(html,/rel="manifest"[^>]*href="\/manifest-v4\.webmanifest"/);
+  const canonical=await readFile('public/manifest-v4.webmanifest','utf8');
+  for(const name of ['manifest','manifest-light','manifest-dark']) {
+    const source=await readFile(`public/${name}.webmanifest`,'utf8');
+    assert.equal(source,canonical,'Legacy manifests must not select different home icons');
+    const manifest=JSON.parse(source);
+    assert.equal(manifest.id,'/');
+    assert.equal(manifest.background_color,'#FFFFFF');
     assert.equal(manifest.icons.filter(icon=>icon.purpose==='any').length,2);
     assert.equal(manifest.icons.filter(icon=>icon.purpose==='maskable').length,1);
-    for(const path of [...manifest.icons.map(icon=>icon.src),`/brand-icons/apple-touch-v3-${theme}.png`]) {
+    for(const path of [...manifest.icons.map(icon=>icon.src),'/brand-icons/apple-touch-v4.png']) {
       const response=await app.fetch(new Request(`https://example.test${path}`),{});
       assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');
       assert.deepEqual(Buffer.from(await response.arrayBuffer()),await readFile(`public${path}`));

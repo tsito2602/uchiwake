@@ -21,19 +21,23 @@ const png = (source, size, path) => sharp(Buffer.from(source), {density:384})
 for (const theme of ['light', 'dark']) {
   await writeFile(`public/icon-${theme}.svg`, svg(theme));
   await writeFile(`public/logo-${theme}.svg`, svg(theme, false, true));
-  const icons = [];
-  for (const size of [192, 512]) {
-    const src = `/brand-icons/uchiwake-v3-${theme}-${size}.png`;
-    await png(svg(theme), size, `public${src}`);
-    icons.push({src, sizes:`${size}x${size}`, type:'image/png', purpose:'any'});
-  }
-  await png(svg(theme), 180, `public/brand-icons/apple-touch-v3-${theme}.png`);
-  const maskSrc = `/brand-icons/uchiwake-v3-${theme}-maskable-512.png`;
-  await png(svg(theme, false, false, true), 512, `public${maskSrc}`);
-  icons.push({src:maskSrc, sizes:'512x512', type:'image/png', purpose:'maskable'});
-  const manifest = {id:'/', name:'uchiwake', short_name:'uchiwake', start_url:'/', scope:'/', display:'standalone', background_color:BRAND_THEMES[theme].background, theme_color:BRAND_THEMES[theme].background, icons};
-  await writeFile(`public/manifest-${theme}.webmanifest`, JSON.stringify(manifest, null, 2)+'\n');
-  if (theme === 'light') await writeFile('public/manifest.webmanifest', JSON.stringify(manifest, null, 2)+'\n');
+}
+// Kondo assets/brand/README.md: one unchanged transparent image in both
+// appearances. Only the in-app logo changes color; iOS handles the home tile.
+const icons = [];
+for (const size of [192, 512]) {
+  const src = `/brand-icons/uchiwake-v4-${size}.png`;
+  await png(svg('light'), size, `public${src}`);
+  icons.push({src, sizes:`${size}x${size}`, type:'image/png', purpose:'any'});
+}
+await png(svg('light'), 180, 'public/brand-icons/apple-touch-v4.png');
+const maskSrc = '/brand-icons/uchiwake-v4-maskable-512.png';
+await png(svg('light', false, false, true), 512, `public${maskSrc}`);
+icons.push({src:maskSrc, sizes:'512x512', type:'image/png', purpose:'maskable'});
+const manifest = {id:'/', name:'uchiwake', short_name:'uchiwake', lang:'ja', start_url:'/', scope:'/', display:'standalone', background_color:'#FFFFFF', theme_color:'#FFFFFF', icons};
+// Keep old manifest URLs coherent for existing installations, too.
+for (const name of ['manifest-v4', 'manifest', 'manifest-light', 'manifest-dark']) {
+  await writeFile(`public/${name}.webmanifest`, JSON.stringify(manifest, null, 2)+'\n');
 }
 await writeFile('public/icon.svg', svg('light', true));
 await build({entryPoints:['src/boot.ts'], outfile:'public/boot.js', bundle:true, minify:true, format:'iife', target:'es2022'});

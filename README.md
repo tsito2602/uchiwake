@@ -97,8 +97,8 @@ Cloudflare Workers Builds で `tsito2602/uchiwake` の `staging` ブランチを
 
 形状と配色の原本は `src/brand-motion.ts`、起動処理は `src/boot.ts` です。
 `npm run dev` / `npm run build` は `scripts/build-brand.mjs` で起動スクリプトと
-ライト・ダークのSVGおよびmanifestを生成します。OSテーマに合わせて起動画面・
-favicon・manifestを切り替えます。インストール済みPWAのホーム画面アイコン更新はOS側の挙動に依存します。
+ライト・ダークのアプリ内SVGとホーム画面用の固定PNG・manifestを生成します。
+OSテーマに合わせて起動画面の配色を切り替えます。ホーム画面用の参照画像は交換しません。
 動きを減らす設定では静止ロゴを表示し、データ取得後すぐに進みます。
 初期データの取得失敗も起動画面を閉じ、応答停止時には8秒で操作を解放します。
 
@@ -160,7 +160,9 @@ Google側にも登録してください。HTTPではSecure Cookieを使ったロ
 ホーム画面用マークは従来より14%拡大しています（ログイン画面・起動アニメーションは変更なし）。
 180pxのApple Touch Icon・192/512pxの通常アイコン・maskableをすべて透過に揃えます。
 Kondoと同じdensity 384・true-colour RGBAのPNG生成処理を使用します。
-maskableは安全領域を保った別サイズで、背景は描画しません。ライト／ダークをそれぞれ生成します。
+maskableは安全領域を保った別サイズで、背景は描画しません。
+ホーム画面用は明暗とも同じ画像です。白い図形への切り替えはアプリ内だけで行います。
 PNGはビルド時に `public/brand-icons` に生成され、Workerにはbase64で埋め込み、配信時に復元します。
-`v3` の新しいURLを使用します。既存のホーム画面アイコンが更新されない場合は、
-Safariでサイトを開き直してホーム画面へ再追加してください。iOS独自のガラス効果は端末側の表示設定です。
+`v4` の画像・manifestを固定で指定します。manifestの背景指定はKondoと同じ `#FFFFFF`、
+PNGそのものは透明です。過去のテーマ別manifest URLも同じ画像・設定へ揃えています。
+実機での経緯と未確認点は `docs/ICON_APPEARANCE.md` を参照してください。
