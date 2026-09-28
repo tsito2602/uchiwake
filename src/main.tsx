@@ -426,7 +426,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
             <span className="hero-money">{hasSettlementData?<NumberTicker value={personal||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span>
             <span className="hero-secondary" hidden={personal}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
           </button>
-          {!personal&&!demoView&&<><button className="space-allocation-button" onClick={()=>setAllocationOpen('month')}><UsersRound size={17}/>負担の設定<ChevronRight size={14}/></button><div className="space-allocations">{(state.members??[]).filter(m=>allocations[m.user_id]!==undefined).map(m=><div key={m.user_id}><span>{m.name}{m.user_id===user.id?'（あなた）':''}</span><strong>{yen(allocations[m.user_id])}</strong></div>)}</div></>}
+          {!personal&&!demoView&&<div className="space-allocations">{(state.members??[]).filter(m=>allocations[m.user_id]!==undefined).map(m=><div key={m.user_id}><span>{m.name}{m.user_id===user.id?'（あなた）':''}</span><strong>{yen(allocations[m.user_id])}</strong></div>)}</div>}
           <SettlementChart data={chart} month={displayedMonth}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
         </section>
