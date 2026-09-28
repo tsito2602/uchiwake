@@ -1,3 +1,4 @@
+import { authRoutes, authConfigured, sessionUser, type AuthBindings } from './auth';
 import { ImportError, upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
 import { abortable, idleWatch } from '../src/streaming/idle';
 import { readCategorySettings, categorySchemaReady } from './category-settings';
@@ -9,7 +10,7 @@ import { embeddedAssets } from './generated-assets';
 import { defaultCardColor, validCardColor } from '../src/card-colors';
 import { demoHistory, demoState } from './demo-data';
 
-type Bindings = { DB: D1Database; APP_ENV: string; APP_PASSWORD?: string; OPENAI_API_KEY?: string };
+type Bindings = AuthBindings & { DB: D1Database; APP_ENV: string; OPENAI_API_KEY?: string };
 const AI_MODEL='gpt-6-luna';
 const app = new Hono<{ Bindings: Bindings }>();
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -21,35 +22,26 @@ async function categoryNames(db:D1Database):Promise<string[]> {
   return allCategoryAppearances(await readCategorySettings(db)).map(item=>item.category);
 }
 
-// Protect the SPA and API alike, including any unknown asset path.
+// Public app shell; every household API requires a verified Google session.
 app.use('*', async (c, next) => {
-  const password = c.env.APP_PASSWORD;
-  if (!password) return error('認証設定がありません', 503);
-  const auth = c.req.header('Authorization') || '';
-  let supplied = '';
-  if (auth.startsWith('Basic ')) {
-    try { supplied = atob(auth.slice(6)).split(':').slice(1).join(':'); } catch { /* invalid header */ }
-  }
-  const expectedBytes = new TextEncoder().encode(password);
-  const actualBytes = new TextEncoder().encode(supplied);
-  const [expectedHash, actualHash] = await Promise.all([crypto.subtle.digest('SHA-256',expectedBytes),crypto.subtle.digest('SHA-256',actualBytes)]);
-  let mismatch = 0;
-  const a=new Uint8Array(expectedHash),b=new Uint8Array(actualHash);
-  for (let i=0;i<a.length;i++) mismatch |= a[i]^b[i];
-  if (mismatch !== 0) {
-    return new Response('uchiwake のパスワードを入力してください', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="uchiwake staging", charset="UTF-8"', 'Cache-Control': 'no-store' } });
-  }
-  if (!['GET','HEAD','OPTIONS'].includes(c.req.method)) {
-    const origin = c.req.header('Origin');
-    if (origin && origin !== new URL(c.req.url).origin) return error('この画面から操作してください',401);
-    if (['POST','PUT','PATCH'].includes(c.req.method) && !c.req.header('Content-Type')?.startsWith('application/json')) return error('JSONで送信してください');
+  c.header('Cache-Control', 'no-store');
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('Referrer-Policy', 'no-referrer');
+  c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  if (c.req.path.startsWith('/api/')) {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
+      if (c.req.header('Origin') !== new URL(c.req.url).origin) return error('この画面から操作してください', 401);
+      if (['POST', 'PUT', 'PATCH'].includes(c.req.method) && !c.req.header('Content-Type')?.startsWith('application/json')) return error('JSONで送信してください');
+    }
+    if (!c.req.path.startsWith('/api/auth/')) {
+      if (!authConfigured(c.env)) return error('Googleログインの設定がまだありません', 503);
+      if (!await sessionUser(c)) return error('ログインし直してください', 401);
+    }
   }
   await next();
-  c.header('Cache-Control', 'no-store');
-  c.header('X-Content-Type-Options','nosniff');
-  c.header('Referrer-Policy','no-referrer');
-  c.header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
 });
+app.route('/api/auth', authRoutes);
+app.all('/api/auth/*', () => error('見つかりません', 404));
 
 app.get('/api/state', async c => {
   const month = c.req.query('month') || '';
@@ -380,6 +372,7 @@ async function openai(key:string,model:string,content:unknown[],extra:Record<str
   return data.output?.flatMap(item=>item.content||[]).filter(item=>item.type==='output_text').map(item=>item.text||'').join('') || null;
 }
 
+app.all('/api/*', () => error('見つかりません',404));
 app.get('*', c => {
   const path = new URL(c.req.url).pathname;
   const asset = embeddedAssets[path] || (path.includes('.') ? undefined : embeddedAssets['/index.html']);

@@ -1,3 +1,4 @@
+import { auth, authEnv } from './auth-fixture.mjs';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { DatabaseSync } from 'node:sqlite';
@@ -22,7 +23,7 @@ function fixture() {
     try{const results=[];for(const statement of statements)results.push(await statement.run());db.exec('COMMIT');return results;}
     catch(error){db.exec('ROLLBACK');throw error;}
   }};
-  const call=(path,method='GET',body)=>app.fetch(new Request(`https://example.test/api${path}`,{method,headers:{Authorization:'Basic '+btoa('guest:test'),Origin:'https://example.test','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),{APP_PASSWORD:'test',APP_ENV:'staging',DB});
+  const call=(path,method='GET',body)=>app.fetch(new Request(`https://example.test/api${path}`,{method,headers:{Cookie:auth,Origin:'https://example.test','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),{...authEnv,APP_ENV:'staging',DB});
   return {db,call};
 }
 

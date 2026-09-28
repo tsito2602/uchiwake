@@ -1,11 +1,11 @@
+import { auth, authEnv } from './auth-fixture.mjs';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import app from '../dist/worker.mjs';
 
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII=';
-const auth='Basic '+btoa('guest:test-password');
-const env={APP_PASSWORD:'test-password',APP_ENV:'staging',OPENAI_MODEL:'gpt-6-luna'};
-const request=(path,body)=>new Request(`https://example.test${path}`,{method:'POST',headers:{Authorization:auth,Origin:'https://example.test','Content-Type':'application/json'},body:JSON.stringify(body)});
+const env={...authEnv,APP_ENV:'staging',OPENAI_MODEL:'gpt-6-luna'};
+const request=(path,body)=>new Request(`https://example.test${path}`,{method:'POST',headers:{Cookie:auth,Origin:'https://example.test','Content-Type':'application/json'},body:JSON.stringify(body)});
 
 test('カード明細デモはキーがあっても画像をAIへ送らず複数行を返す',async()=>{
   const original=globalThis.fetch;let calls=0;
@@ -59,7 +59,7 @@ test('登録していないカード、同じ月に登録済みのカードは�
 
 test('設定済みのカードと基本家賃を画面に返し、カードの使用状態は真偽値にする',async()=>{
   const DB={prepare(sql){const all=async()=>({results:sql.includes('FROM shared_cards')?[{id:'one',name:'生活費',active:1}]:sql.includes('FROM rent_rules')?[{effective_month:'2026-09',amount:100000}]:[]});return{all,bind(){return{all};}}}};
-  const response=await app.fetch(new Request('https://example.test/api/state?month=2026-10',{headers:{Authorization:auth}}),{...env,DB});
+  const response=await app.fetch(new Request('https://example.test/api/state?month=2026-10',{headers:{Cookie:auth}}),{...env,DB});
   assert.equal(response.status,200);
   const state=await response.json();
   assert.deepEqual(state.cards,[{id:'one',name:'生活費',active:true}]);
@@ -71,7 +71,7 @@ test('精算の棒グラフは固定家賃と月ごとの上書きを二重計�
     const results=sql.includes('kind NOT IN')?[]:sql.includes('FROM card_statements')?[{month:'2026-09',amount:50001}]:sql.includes('FROM rent_rules')?[{effective_month:'2026-08',amount:100000}]:[{month:'2026-09',amount:110000}];
     return {results};
   }};}};}};
-  const response=await app.fetch(new Request('https://example.test/api/settlement-history?month=2026-09',{headers:{Authorization:auth}}),{...env,DB});
+  const response=await app.fetch(new Request('https://example.test/api/settlement-history?month=2026-09',{headers:{Cookie:auth}}),{...env,DB});
   assert.equal(response.status,200);
   const {months}=await response.json();
   assert.equal(months.length,60);

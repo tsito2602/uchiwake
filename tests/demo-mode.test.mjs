@@ -1,12 +1,12 @@
+import { auth, authEnv } from './auth-fixture.mjs';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import app from '../dist/worker.mjs';
 import { demoHistory, demoState } from '../worker/demo-data.ts';
 
-const auth = 'Basic ' + btoa('guest:test-password');
-const base = { APP_PASSWORD: 'test-password', APP_ENV: 'staging', OPENAI_MODEL: 'gpt-6-luna' };
-const request = (path, body) => new Request(`https://example.test${path}`, { method: 'POST', headers: { Authorization:auth, Origin:'https://example.test', 'Content-Type':'application/json' }, body: JSON.stringify(body) });
-const read = path => new Request(`https://example.test${path}`, { headers: { Authorization:auth } });
+const base = { ...authEnv, APP_ENV: 'staging', OPENAI_MODEL: 'gpt-6-luna' };
+const request = (path, body) => new Request(`https://example.test${path}`, { method: 'POST', headers: { Cookie:auth, Origin:'https://example.test', 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+const read = path => new Request(`https://example.test${path}`, { headers: { Cookie:auth } });
 
 test('デモ表示は半年分のカード2枚と家賃を使い、各月の明細と棒グラフが一致する', () => {
   const anchor='2026-09';

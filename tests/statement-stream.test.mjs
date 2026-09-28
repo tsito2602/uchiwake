@@ -1,3 +1,4 @@
+import { auth, authEnv } from './auth-fixture.mjs';
 import {test} from 'node:test';
 import {strict as assert} from 'node:assert';
 import {build} from 'esbuild';
@@ -12,8 +13,8 @@ const encoder=new TextEncoder();
 const frame=event=>`event: ${event.type}\r\ndata: ${JSON.stringify(event)}\r\n\r\n`;
 const delta=text=>frame({type:'response.output_text.delta',delta:text});
 const done=frame({type:'response.completed',response:{status:'completed'}});
-const env={APP_PASSWORD:'pw',APP_ENV:'staging',OPENAI_MODEL:'test-model',OPENAI_API_KEY:'test-key',DB:{prepare(){return{async all(){return {results:[]};}};}}};
-const request=(extra={})=>new Request('https://example.test/api/statement/analyze',{method:'POST',headers:{Authorization:'Basic '+btoa('guest:pw'),'Content-Type':'application/json'},body:JSON.stringify({mode:'live',stream:true,images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII='],...extra})});
+const env={...authEnv,APP_ENV:'staging',OPENAI_MODEL:'test-model',OPENAI_API_KEY:'test-key',DB:{prepare(){return{async all(){return {results:[]};}};}}};
+const request=(extra={})=>new Request('https://example.test/api/statement/analyze',{method:'POST',headers:{Cookie:auth,Origin:'https://example.test','Content-Type':'application/json'},body:JSON.stringify({mode:'live',stream:true,images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII='],...extra})});
 
 test('完了通知の後は通信のcancelが戻らなくても結果を表示する',{timeout:1000},async()=>{
   let cancelled=false;

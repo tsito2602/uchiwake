@@ -32,6 +32,7 @@ export async function streamStatement(images:string[],signal:AbortSignal,onEntry
   try {
     const response=await abortable(fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal:controller.signal,body:JSON.stringify({images,mode:'live',stream:true})}),controller.signal);
     watch.clear();
+    if(response.status===401)window.dispatchEvent(new Event('uchiwake:session-expired'));
     return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning);
   } finally {
     watch.clear();signal.removeEventListener('abort',abort);controller.abort();

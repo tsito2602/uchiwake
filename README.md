@@ -6,7 +6,7 @@
 
 https://uchiwake-staging.tsito-apps.workers.dev/
 
-専用 D1 `uchiwake-staging` を使います。画面とAPIは共有パスワードで保護しています。個人別認証とバックアップ方針が整うまでは実際の家計情報を登録しないでください。
+専用 D1 `uchiwake-staging` を使います。Googleログインとメールアドレスの許可リストで家計APIを保護します。ログイン画面と静的アセットのみ未ログインで表示できます。許可したメンバーは同じ1世帯分のデータを共有します。
 
 ## 使い方
 
@@ -16,7 +16,7 @@ https://uchiwake-staging.tsito-apps.workers.dev/
 4. 設定で**基本家賃**を登録し、必要な月だけ精算画面から上書きします。カード請求額と家賃などの合計を2人で折半した金額が入金目安です。奇数円は一方が1円多く負担します。
 5. 明細画面では引落月に属するカード明細を費目別に集計します。旧レシート記録の機能と保存表は削除しました。
 
-対象は個人用カードの利用が混ざらない共有カードです。銀行明細の自動読み取り、カード会社との照合、PDF・CSV、画像原本の保存、個人別ログインは未対応です。
+対象は個人用カードの利用が混ざらない共有カードです。銀行明細の自動読み取り、カード会社との照合、PDF・CSV、画像原本の保存は未対応です。
 
 ## AIの費用をかけないデモ
 
@@ -101,3 +101,50 @@ Cloudflare Workers Builds で `tsito2602/uchiwake` の `staging` ブランチを
 favicon・manifestを切り替えます。インストール済みPWAのホーム画面アイコン更新はOS側の挙動に依存します。
 動きを減らす設定では静止ロゴを表示し、データ取得後すぐに進みます。
 初期データの取得失敗も起動画面を閉じ、応答停止時には8秒で操作を解放します。
+
+## Googleログインの設定
+
+ログイン画面はkondoの中央配置、52pxロゴ、28pxのアプリ名、余白、丸いGoogleボタンを参考にしています。
+ライト／ダークのuchiwakeロゴを切り替えます。Google認証後に精算画面へ進み、設定からログアウトできます。
+
+Google Cloud Consoleで **ウェブアプリケーション** のOAuthクライアントを作成し、
+Google Auth Platformのブランディング・対象（Audience）を設定してください。
+公開ステータスがテストの場合は、利用するメンバーをテストユーザーにも追加します。
+**承認済みのリダイレクトURI** に次を完全一致で登録します。
+
+```
+https://uchiwake-staging.tsito-apps.workers.dev/api/auth/google/callback
+```
+
+サーバー経由のリダイレクト認証のため、JavaScript生成元の登録は使いません。
+別ドメインで動かす場合は、そのドメインの `/api/auth/google/callback` も登録してください。
+環境ごとにOAuthクライアント・シークレット・許可リストを分離します。
+
+Cloudflareの **uchiwake-staging → Settings → Variables and Secrets** に次を設定します。
+値はビルド変数ではなくWorker実行時の設定です。VITE_変数に秘密鍵を入れないでください。
+
+| 名前 | 種類 | 値 |
+| --- | --- | --- |
+| `GOOGLE_CLIENT_ID` | Text | 作成したクライアントID（末尾 `.apps.googleusercontent.com`） |
+| `GOOGLE_CLIENT_SECRET` | Secret | 同じOAuthクライアントのシークレット |
+| `SESSION_SECRET` | Secret | `openssl rand -hex 32` などで生成したランダム値 |
+| `ALLOWED_EMAILS` | Secret | 利用するGoogleアカウントのメールアドレスをカンマ区切り（空白可） |
+
+全4項目が必要です。未設定や短いセッション鍵の場合、画面は「準備中」、家計APIは503になります。
+旧 `APP_PASSWORD` は参照しません。設定後、ログイン→再読み込み→設定からログアウトまで確認してください。
+D1の追加マイグレーションは不要です。
+
+認証はAuthorization Code + PKCE（S256）で、10分のstate/nonceをHttpOnly Cookieに保持します。
+Google IDトークンの署名、issuer、audience、期限、nonce、確認済みメールをサーバーで検証し、
+許可リストと照合します。Googleのアクセストークン・更新トークンは保存しません。
+アプリのセッションは24時間の署名済みCookie（Secure/HttpOnly/SameSite=Lax、`__Host-`）です。
+メール許可リストは各APIリクエストで再確認するため、アドレスを外すと既存セッションも拒否されます。
+変更APIは同一Originを必須とします。セッション期限切れでは家計画面をアンマウントします。
+ログアウトはこのブラウザのCookieを削除します。サーバーにセッション一覧は持たないため、
+コピーされたCookieを個別失効する方式ではありません。全セッションの即時失効には
+`SESSION_SECRET` を更新します。認証CookieはlocalStorageへ保存しません。
+
+ローカルで認証まで確認する場合はHTTPSでWorkerを起動し、使用するHTTPSコールバックURIを
+Google側にも登録してください。HTTPではSecure Cookieを使ったログインを開始しません。
+
+公式仕様: https://developers.google.com/identity/openid-connect/openid-connect
