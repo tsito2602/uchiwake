@@ -44,6 +44,7 @@ import './entry-sort-controls.css';
 import './entry-dock.css';
 
 type Tab = DockTab;
+type SettingsView = 'root'|'space';
 type Editing = { type:'bill'; data:Partial<Bill>; view:'summary'|'edit'|'fixed'; initialView:'summary'|'fixed'; rentRuleMonth?:string; origin?:PanelOrigin; closing?:boolean };
 type OpenCard = {type:'card'|'statement';id:string;view:'summary'|'details'|'edit';returnView?:'summary'|'details';origin?:PanelOrigin;closing?:boolean};
 type OpenSettings = {card?:SharedCard;view:'summary'|'edit';name:string;active:boolean;color:string;origin?:PanelOrigin;closing?:boolean};
@@ -52,18 +53,18 @@ const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
 const monthText = (month:string) => `${Number(month.slice(0,4))}年${Number(month.slice(5))}月`;
 const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const bump = (month:string,diff:number) => { const [year,m]=month.split('-').map(Number); const date=new Date(Date.UTC(year,m-1+diff,1)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}`; };
-type SpaceAppProps=AccountProps&{space:Space;spaces:Space[];onSelectSpace:(id:string)=>void;refreshSpaces:()=>Promise<void>;month:string;setMonth:(month:string)=>void;tab:Tab;setTab:(tab:Tab)=>void};
+type SpaceAppProps=AccountProps&{space:Space;spaces:Space[];onSelectSpace:(id:string)=>void;refreshSpaces:()=>Promise<void>;month:string;setMonth:(month:string)=>void;tab:Tab;setTab:(tab:Tab)=>void;settingsView:SettingsView;setSettingsView:(view:SettingsView)=>void};
 function SpaceApp(account:AccountProps) {
  const [spaces,setSpaces]=useState<Space[]>([]),[selected,setSelected]=useState(()=>localStorage.getItem(`uchiwake-space:${account.user.id}`)||''),[error,setError]=useState('');
- const [month,setMonth]=useState(today().slice(0,7)),[tab,setTab]=useState<Tab>('home');
+ const [month,setMonth]=useState(today().slice(0,7)),[tab,setTab]=useState<Tab>('home'),[settingsView,setSettingsView]=useState<SettingsView>('root');
  const api=useMemo(()=>spaceApi(),[]);
  async function refreshSpaces(){const result=await api<{spaces:Space[]}>('/spaces');setSpaces(result.spaces);setError('');}
  useEffect(()=>{void refreshSpaces().catch(e=>{setError(e.message);document.dispatchEvent(new Event('uchiwake:ready'));});},[]);
  const space=spaces.find(s=>s.id===selected)??(!selected?spaces.find(s=>s.id==='legacy'):undefined)??spaces.find(s=>s.kind==='personal')??spaces[0];
  const select=(id:string)=>{localStorage.setItem(`uchiwake-space:${account.user.id}`,id);setSelected(id);};
- return space?<App key={space.id} {...account} space={space} spaces={spaces} onSelectSpace={select} refreshSpaces={refreshSpaces} month={month} setMonth={setMonth} tab={tab} setTab={setTab}/>:<main className="shell"><div className="empty">{error||'スペースを読み込んでいます…'}{error&&<button className="secondary" onClick={()=>void refreshSpaces().catch(e=>setError(e.message))}>再読み込み</button>}</div></main>;
+ return space?<App key={space.id} {...account} space={space} spaces={spaces} onSelectSpace={select} refreshSpaces={refreshSpaces} month={month} setMonth={setMonth} tab={tab} setTab={setTab} settingsView={settingsView} setSettingsView={setSettingsView}/>:<main className="shell"><div className="empty">{error||'スペースを読み込んでいます…'}{error&&<button className="secondary" onClick={()=>void refreshSpaces().catch(e=>setError(e.message))}>再読み込み</button>}</div></main>;
 }
-function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,refreshSpaces,month,setMonth,tab,setTab}:SpaceAppProps) {
+function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,refreshSpaces,month,setMonth,tab,setTab,settingsView,setSettingsView}:SpaceAppProps) {
   const api:Api=useMemo(()=>spaceApi(space.id),[space.id]);
   const personal=space.kind==='personal';
   const [allocationOpen,setAllocationOpen]=useState<'month'|'default'|null>(null);
@@ -76,7 +77,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
   }
   const transitionPage=useRouteTransition();
   // Reset after the new page is committed, before the browser paints it.
-  useLayoutEffect(()=>{window.scrollTo({top:0,left:0,behavior:'instant'});},[tab]);
+  useLayoutEffect(()=>{window.scrollTo({top:0,left:0,behavior:'instant'});},[tab,settingsView]);
   const [showTotalFirst,setShowTotalFirst]=useState(false);
   const [demoView,setDemoView]=useState(()=>window.sessionStorage.getItem('uchiwake-demo-view')==='1');
   const requestId=useRef(0);
@@ -313,10 +314,18 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
     }
     if(importPanel){if(importRequest.current)cancelImport();else if(busy)return;importDestination.current=value;setImportPanel({...importPanel,closing:true});return;}
 
-    const update=()=>{cardDestination.current=null;setOpenCard(null);setTab(value);setNotice('');};
-    if(value===tab){update();return;}
+    const update=()=>{cardDestination.current=null;setOpenCard(null);setSettingsView('root');setTab(value);setNotice('');};
+    if(value===tab){if(value==='settings'&&settingsView==='space')transitionPage(-1,update);else update();return;}
     const order:Tab[]=['home','ledger','settings','import'];
     transitionPage(order.indexOf(value)<order.indexOf(tab)?-1:1,update);
+  };
+  const openSpaceSettings=()=>{
+    if(tab==='settings'&&settingsView==='space'){window.scrollTo({top:0,left:0,behavior:'instant'});return;}
+    transitionPage(1,()=>{setSettingsView('space');setTab('settings');setNotice('');});
+  };
+  const backToSettings=()=>{
+    if(busy||spaceDock||allocationOpen||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)return;
+    transitionPage(-1,()=>{setSettingsView('root');setNotice('');});
   };
   const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setScreenshots([]);setEditing(null);setDemoView(enabled);};
   const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&!!draft.card_id&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount&&!isReviewCategory(e.category,state?.category_settings));
@@ -394,15 +403,18 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
     onAction:()=>{if(busy)return;void saveCategorySettings();},
     disabled:busy||demoView||!validCategoryName(categorySettings.draft.category)||categoryNameDuplicate||(!categorySettings.isNew&&categorySettings.saved.icon===categorySettings.draft.icon&&categorySettings.saved.color===categorySettings.draft.color&&categorySettings.saved.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.saved.include_in_settlement!==false)===(categorySettings.draft.include_in_settlement!==false))
   }:undefined;
-  const PageIcon=({home:Calculator,ledger:ReceiptText,settings:Settings,import:Camera} as const)[tab];
+  const spaceSettingsPage=tab==='settings'&&settingsView==='space';
+  const PageIcon=spaceSettingsPage?(personal?UserRound:UsersRound):({home:Calculator,ledger:ReceiptText,settings:Settings,import:Camera} as const)[tab];
+  const spacePageContext:DockContext|undefined=spaceSettingsPage?{label:'スペース設定',backOnly:true,onBack:backToSettings,actionLabel:'設定に戻る',onAction:backToSettings}:undefined;
   const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,entryControls:{sort:categorySort,onSort:setCategorySort,groupByCard,onGroupByCard:setGroupByCard},backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
-  const dockContext=spaceDock||allocationDock||(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||undefined;
+  const dockContext=spaceDock||allocationDock||(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||spacePageContext||undefined;
   return <>
-    <SpaceControls space={space} spaces={spaces} disabled={busy||!!(spaceDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onSettings={()=>{selectTab('settings');window.scrollTo({top:0,left:0,behavior:'instant'});}} onRefresh={refreshSpaces} onDockChange={setSpaceDock}/>
+    <SpaceControls space={space} spaces={spaces} disabled={busy||!!(spaceDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onSettings={openSpaceSettings} onRefresh={refreshSpaces} onDockChange={setSpaceDock}/>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button></nav>
       <div id="main-content">
-      <div className={`page-top ${tab==='import'?'':'screen-page-top'}`}><h1 className="page-heading"><PageIcon aria-hidden="true"/>{draft&&tab==='import'?'明細を確認':({home:personal?'支出':'精算',ledger:'明細',import:'明細を取り込む',settings:'設定'} as const)[tab]}</h1>{!draft&&tab!=='ledger'&&tab!=='settings'&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
+      {spaceSettingsPage&&<button className="settings-page-back" type="button" disabled={busy} onClick={backToSettings}><ChevronLeft size={18}/>設定に戻る</button>}
+      <div className={`page-top ${tab==='import'?'':'screen-page-top'}`}><h1 className="page-heading"><PageIcon aria-hidden="true"/>{draft&&tab==='import'?'明細を確認':({home:personal?'支出':'精算',ledger:'明細',import:'明細を取り込む',settings:spaceSettingsPage?'スペース設定':'設定'} as const)[tab]}</h1>{!draft&&tab!=='ledger'&&tab!=='settings'&&<div className="month-switch"><button aria-label="前月" onClick={()=>setMonth(bump(month,-1))}><ChevronLeft size={18}/></button><span>{monthText(month)}</span><button aria-label="翌月" onClick={()=>setMonth(bump(month,1))}><ChevronRight size={18}/></button></div>}</div>
       {notice&&!importPanel&&<div className="notice" role="alert"><span>{notice}</span><button aria-label="閉じる" onClick={()=>setNotice('')}><X size={16}/></button></div>}
       {demoView&&<div className="demo-view-banner" role="status">デモ表示中 · サンプルデータ</div>}
       {!state?<div className="empty loading">{notice?'データを表示できませんでした。':'読み込んでいます…'}{notice&&<div><button className="secondary" onClick={()=>void load()}>再読み込み</button></div>}</div>:<>
@@ -435,12 +447,15 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
 
       </>:demoView?<div className="empty">この月のデモ明細はありません。</div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
       {tab==='settings'&&<div className="settings-page">
-        <div className="settings-group-heading"><small>スペースの設定</small><h2>{personal?<UserRound size={22}/>:<UsersRound size={22}/>}<span>{space.name}</span></h2></div>
+        {settingsView==='space'?<>
+        <div className="settings-group-heading"><small>{personal?'個人スペース':'共有スペース'}</small><h2>{personal?<UserRound size={22}/>:<UsersRound size={22}/>}<span>{space.name}</span></h2></div>
         <SpaceManagementSettings space={space} spaces={spaces} userId={user.id} members={state.members??[]} disabled={demoView||busy} api={api} onSelect={onSelectSpace} onRefresh={refreshSpaces} onReload={load} onDockChange={setSpaceDock}/>
         <section className="section settings-section"><h2 className="section-heading"><CreditCard size={20} aria-hidden="true"/>{personal?'カード':'共有カード'}</h2><p className="subtle">カードを登録すると、明細を取り込む際に選べます。</p><div className="card-settings-list">{state.cards.map(card=><button type="button" className="settings-card-button panel-source" data-panel-source={cardSettings?.card?.id===card.id?'true':undefined} key={card.id} onClick={event=>openSettings(card,event.currentTarget)}><CreditCard size={21} color={displayColor(card.color)}/><span><strong>{card.name}</strong><small>{card.active?'使用中':'使用停止中'}</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>openSettings(undefined,event.currentTarget)}><Plus size={17}/> カードを追加</button></section>
         <section className="section settings-section"><h2 className="section-heading"><Tags size={20} aria-hidden="true"/>費目</h2><p className="subtle">費目名・アイコン・色と、精算に含めるかを設定できます。</p><div className="card-settings-list category-settings-list">{categoryOptions.map(value=><button type="button" className="settings-card-button panel-source" data-panel-source={categorySettings?.saved.category===value.category?'true':undefined} key={value.category} onClick={event=>{setNotice('');setCategorySettings({saved:value,draft:value,view:'edit',origin:panelOrigin(event.currentTarget)});}}><CategoryIcon name={value.icon} color={value.color} size={21}/><span><strong>{value.category}</strong>{value.include_in_settlement===false&&<small>精算対象外</small>}</span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{const value={category:'',icon:'tag',color:defaultCardColor};setNotice('');setCategorySettings({saved:value,draft:value,isNew:true,view:'edit',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 費目を追加</button></section>
         {!personal&&<section className="section settings-section"><h2 className="section-heading"><UsersRound size={20} aria-hidden="true"/>負担</h2><button className="settings-card-button" type="button" disabled={demoView||busy} onClick={()=>setAllocationOpen('default')}><UsersRound size={21}/><span><strong>負担の設定</strong><small>対象者・均等割り・割合指定</small></span><ChevronRight size={18}/></button></section>}
         <section className="section settings-section"><h2 className="section-heading"><Home size={20} aria-hidden="true"/>家賃</h2><SettingsToggle label="家賃を使用する" checked={rentEnabled} disabled={demoView||busy} onChange={enabled=>void saveRentEnabled(enabled)}/><p className="subtle">オフにすると家賃の表示と全期間の集計を無効にします。登録済みの金額は保持されます。</p>{rentEnabled&&<><p className="subtle">指定した月から毎月の精算に使います。金額が変わったら、新しい開始月を指定してください。</p><div className="rule-list">{state.rent_rules.map(rule=><button type="button" className="settings-rent-button" key={rule.effective_month} onClick={event=>{setRentStartMonth(rule.effective_month);setRentAmount(String(rule.amount));setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rule.amount},view:'fixed',initialView:'fixed',rentRuleMonth:rule.effective_month,origin:panelOrigin(event.currentTarget)});}}><Home size={21}/><span><strong>{yen(rule.amount)}</strong><small>{monthText(rule.effective_month)}から</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{setRentStartMonth(month);setRentAmount('');setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rent.amount},view:'fixed',initialView:'fixed',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 基本家賃を設定</button><p className="subtle">一時的な変更は精算画面の家賃から入力できます。</p></>}</section>
+        </>:<>
+        <section className="section settings-section"><button type="button" className="settings-card-button" onClick={openSpaceSettings}>{personal?<UserRound size={21}/>:<UsersRound size={21}/>}<span><strong>スペース設定</strong><small>{space.name}</small></span><ChevronRight size={18}/></button></section>
         <div className="settings-group-heading settings-common-heading"><small>アプリ共通</small><h2>アカウント・表示</h2></div>
         <AccountSettings user={user} signingOut={signingOut} updateProfile={saveProfile}/>
         <AppearanceSettings/>
@@ -448,6 +463,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
         <AppUpdateSettings/>
         <button type="button" className="settings-add-card settings-logout" disabled={signingOut || savingProfile} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
         <AppInfo/>
+        </>}
       </div>}
       </>}
       </div>
@@ -457,7 +473,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,re
     {categoryDetails&&state&&<CategoryEntriesPanel sort={categorySort} groupByCard={groupByCard} category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
     {openCard&&state&&panelTitle&&<CardStatementPanel sort={cardSort} key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
-    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
+    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setSettingsView('root');setTab(destination);}}}>
       <p className="space-import-target">登録先：{space.name}</p>
       {notice&&<div className="notice" role="alert">{notice}</div>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
