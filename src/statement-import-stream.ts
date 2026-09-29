@@ -19,7 +19,7 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
     if(event.type==='entry')onEntry(event.entry);
     else if(event.type==='reasoning'&&typeof event.text==='string'&&event.text.trim())onReasoning?.(event.text);
     else if(event.type==='entry_update'||event.type==='replace'||event.type==='status'||event.type==='activity')onEvent?.(event);
-    else if(event.type==='error')throw new Error(event.error||'明細の受信に失敗しました');
+    else if(event.type==='error')throw Object.assign(new Error(event.error||'明細の受信に失敗しました'),event.diagnostics?{diagnostics:event.diagnostics}:{});
     else if(event.type==='complete')return event.result as ImportResult;
   }
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');

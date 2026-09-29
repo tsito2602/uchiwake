@@ -1,4 +1,5 @@
 import { cloudflareReport, importAIEnabled, usesCloudflare } from './ai-bindings';
+import { testJevConnection } from './jev';
 import { lunaJevStream, runLunaJev } from './luna-jev-import';
 import { classificationRoutes, importMemoryWrites } from './classification-memory';
 import { spacesRoutes, membership, membersFor, settlementFor, type SpaceEnv } from './spaces';
@@ -307,6 +308,15 @@ app.put('/api/statements/:id/entries', async c => {
   ]);
   if(!results.at(-1)?.meta.changes)return c.json({error:'ほかのメンバーが変更しました。明細を開き直してください'},409);
   return c.json({ok:true,confirmed_total:total,deleted:!rows.length});
+});
+
+app.post('/api/statement/test-jev',async c=>{
+  if(c.env.APP_ENV!=='staging')return error('見つかりません',404);
+  if(!usesCloudflare(c.env)||!importAIEnabled(c.env))return error('Cloudflare AIの接続設定を確認してください',503);
+  const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
+  const allowed=allCategoryAppearances(settings).map(item=>item.category).filter(name=>name!==fallbackCategory(settings));
+  try{return c.json(await testJevConnection(c.env,allowed,c.req.raw.signal));}
+  catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');return c.json({ok:false,code:err.code,message:err.message});}
 });
 
 app.post('/api/statement/analyze', async c => {
