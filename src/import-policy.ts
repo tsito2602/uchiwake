@@ -16,6 +16,13 @@ export const AUTO_CLASSIFY_EVIDENCE=0.9;
 export const reviewCauseLabel=(cause:JevReviewCause)=>({low_confidence:'候補が複数',low_evidence:'根拠不足',missing_merchant:'店名不明',missing_purchase_context:'購入内容不明'})[cause];
 export const merchantKey=(title:string)=>title.trim().toLowerCase();
 export const broadMerchant=(title:string)=>/amazon|アマゾン|楽天|rakuten|yahoo|ヤフー|paypal|ペイパル|メルカリ|mercari|コンビニ|セブン.?イレブン|ファミリーマート|ローソン/i.test(title);
+// Explicit product policy, separate from learned history or broad-store rules.
+export function foodDefaultMerchant(title:string):boolean {
+  const name=title.normalize('NFKC').toLowerCase().replace(/[\s・･.\-‐‑–—]/g,'');
+  if(/amazon|アマゾン|楽天|rakuten|yahoo|ヤフー|paypal|ペイパル|メルカリ|mercari/.test(name))return false;
+  if(/銀行|bank|atm|チケット|ticket|トラベル|カード|券売機|乗車券|切符/.test(name))return false;
+  return /コンビニ|セブンイレブン|7eleven|seveneleven|ファミリーマート|ファミマ|familymart|ローソン|lawson|ミニストップ|ministop|デイリーヤマザキ|ニューデイズ|newdays|セイコーマート|自販機|自動販売機|ジハンキ|飲料ベンダー/.test(name);
+}
 export const rowTotal=(entries:EntryDraft[])=>entries.reduce((sum,row)=>sum+row.amount,0);
 export function applicableRules(entry:EntryDraft,rules:ClassificationRule[]) {
   const key=merchantKey(entry.title),context=merchantKey(entry.import_meta?.context||'');

@@ -14,7 +14,7 @@ import { statementStream } from './statement-stream';
 import { readStatementFiles, statementFileParts } from './statement-files';
 import { Hono } from 'hono';
 import { billKinds, categories, type BillKind, type Bill, type CardStatement, type CardEntry, type RentRule } from '../src/domain';
-import { allCategoryAppearances, fallbackCategory, otherCategory, isReviewCategory, normalizeCategoryName, validCategoryName, validCategoryColor, validCategoryIcon } from '../src/category-appearance';
+import { allCategoryAppearances, fallbackCategory, otherCategory, foodCategory, isReviewCategory, normalizeCategoryName, validCategoryName, validCategoryColor, validCategoryIcon } from '../src/category-appearance';
 import { embeddedAssets } from './generated-assets';
 import { defaultCardColor, validCardColor } from '../src/card-colors';
 import { demoHistory, demoState } from './demo-data';
@@ -357,7 +357,7 @@ app.post('/api/statement/analyze', async c => {
     const review=fallbackCategory(settings);
     if(body.pipeline==='luna'){
       if(body.stream!==true||(body.recheck!==undefined&&typeof body.recheck!=='string'))return error('読み取りの形式を確認してください');
-      return lunaImportStream(c.env,c.get('spaceId'),files,names,review,body.recheck as string|undefined,c.req.raw.signal);
+      return lunaImportStream(c.env,c.get('spaceId'),files,names,review,body.recheck as string|undefined,c.req.raw.signal,foodCategory(settings));
     }
     if(body.pipeline==='split'){
       if(body.stream!==true||(body.recheck!==undefined&&typeof body.recheck!=='string'))return error('読み取りの形式を確認してください');

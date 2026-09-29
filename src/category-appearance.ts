@@ -45,3 +45,4 @@ export const allCategoryAppearances=(settings:CategoryAppearance[]=[]):CategoryA
 export const fallbackCategory=(settings:CategoryAppearance[]=[])=>allCategoryAppearances(settings).find(item=>item.original_category==='要確認'||item.category==='要確認')?.category??'要確認';
 export const isReviewCategory=(category:string,settings:CategoryAppearance[]=[])=>category==='その他・要確認'||category===fallbackCategory(settings);
 export const otherCategory=(settings:CategoryAppearance[]=[])=>allCategoryAppearances(settings).find(item=>item.original_category==='その他'||item.category==='その他')?.category??'その他';
+export const foodCategory=(settings:CategoryAppearance[]=[])=>allCategoryAppearances(settings).find(item=>item.original_category==='食費'||item.category==='食費')?.category??'食費';
