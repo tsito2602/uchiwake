@@ -18,7 +18,7 @@ const messages={
 } as const;
 export type ImportErrorCode=keyof typeof messages;
 export class ImportError extends Error {
-  constructor(public code:ImportErrorCode){super(messages[code]);}
+  constructor(public code:ImportErrorCode,public diagnostics?:ReturnType<typeof import('./jev').jevDiagnostics>){super(messages[code]);}
 }
 export function upstreamImportError(code:unknown,status?:number):ImportError {
   if(code==='insufficient_quota')return new ImportError('quota');
@@ -31,5 +31,5 @@ export function incompleteImportError(reason:unknown):ImportError {
   return new ImportError(reason==='max_output_tokens'?'output_limit':reason==='content_filter'?'content_filter':'incomplete');
 }
 export function logImportFailure(error:ImportError,received:number,status?:number):void {
-  console.error(JSON.stringify({event:'statement_import_failed',code:error.code,received_entries:received,...(status?{status}:{})}));
+  console.error(JSON.stringify({event:'statement_import_failed',code:error.code,received_entries:received,...(status?{status}:{}),...(error.diagnostics?{diagnostics:error.diagnostics}:{})}));
 }

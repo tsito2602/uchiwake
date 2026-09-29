@@ -1,4 +1,5 @@
 import { ClassificationSettings } from './classification-settings';
+import { JevConnectionTest } from './jev-connection-test';
 import { spaceApi, type Api } from './space-api';
 import { SpaceControls } from './space-controls';
 import { SpaceSwitchScreen } from './space-switch-screen';
@@ -111,6 +112,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [editing,setEditing]=useState<Editing|null>(null);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
+  const [jevDiagnostic,setJevDiagnostic]=useState('');
   useEffect(()=>{
     if (!state && !notice) return;
     onReady(space.id);
@@ -239,7 +241,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     if(!canStartImport||importRequest.current)return;
     const controller=new AbortController();
     importRequest.current=controller;
-    setBusy(true);setNotice('');
+    setBusy(true);setNotice('');setJevDiagnostic('');
     try {
       const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:setImportProgress,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         analyze:(onEntry,onReasoning,onEvent)=>isDemo?Promise.resolve(demoImportResult(importMonth)):streamStatement(importFiles,controller.signal,onEntry,onReasoning,space.id,onEvent)});
@@ -247,12 +249,22 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       const card=state?.cards.find(item=>item.id===selectedCardId);
       setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,source_total:result.source_total,total_alternative:result.total_alternative,demo:!!result.demo});setTotalChecked(false);
       if(!result.entries.length)setNotice('利用行を読み取れませんでした。明細行を手入力してください。');
-    }catch(e){if(!controller.signal.aborted)setNotice(String(e instanceof Error?e.message:e));}
+    }catch(e){if(!controller.signal.aborted){setNotice(String(e instanceof Error?e.message:e));const diagnostics=(e as {diagnostics?:unknown})?.diagnostics;if(diagnostics)setJevDiagnostic(JSON.stringify({ok:false,diagnostics},null,2));}}
     finally{if(importRequest.current===controller){importRequest.current=null;setImportProgress(null);setBusy(false);}}
   }
   function cancelImport() {
     importRequest.current?.abort();importRequest.current=null;
     setImportProgress(null);setBusy(false);
+  }
+  async function testJev() {
+    if(busy||readingFiles||importRequest.current)return;
+    const controller=new AbortController();importRequest.current=controller;
+    setBusy(true);setJevDiagnostic('');
+    try{
+      const result=await api('/statement/test-jev',{method:'POST',body:'{}',signal:controller.signal});
+      if(!controller.signal.aborted)setJevDiagnostic(JSON.stringify(result,null,2));
+    }catch(error){if(!controller.signal.aborted)setJevDiagnostic(error instanceof Error?error.message:'接続テストを完了できませんでした。');}
+    finally{if(importRequest.current===controller){importRequest.current=null;setBusy(false);}}
   }
   async function saveStatement() {
     if(demoView||busy||!draft||draft.demo || !totalChecked || draft.confirmed_total!==rowsTotal||draft.entries.some(entry=>isReviewCategory(entry.category,state?.category_settings)))return;
@@ -538,6 +550,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} suspended={!!importConfirmation} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setImportConfirmation(null);setDraft(null);setImportFiles([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
       <p className="space-import-target">登録先：{space.name}</p>
       {notice&&<div className="notice" role="alert">{notice}</div>}
+      {!importProgress&&!draft&&state.demo_enabled&&aiMode==='live'&&<JevConnectionTest busy={busy||readingFiles} result={jevDiagnostic} onRun={()=>{void testJev();}}/>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
         {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={importMonth} onMonth={setImportMonth} files={importFiles} loading={readingFiles} disabled={busy||readingFiles} mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setImportFiles([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseImportFiles(files);}} onRemove={index=>setImportFiles(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
       </>:<ImportReview files={importFiles} draft={draft} cards={state.cards} settings={state.category_settings} busy={busy} checked={totalChecked} onChange={value=>{setDraft(value);setTotalChecked(false);}} onChecked={setTotalChecked}/>)}
