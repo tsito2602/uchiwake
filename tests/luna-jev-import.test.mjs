@@ -215,6 +215,38 @@ test('result形式でもconfidenceとnoulの閾値を独立に維持し、Amazon
  }finally{f.db.close();}
 });
 
+test('13候補の確率合計0.99・1.01は両形式で有効とし、自動分類の閾値は維持する',async()=>{
+ const f=fixture();try{
+  const allowed=['食費',...Array.from({length:12},(_,i)=>`架空費目${i+1}`)];
+  const scores=[.39,.14,.12,.1,.06,.04,.04,.03,.02,.02,.01,.01,.01];
+  for(const sum of [.99,1.01])for(const wrapped of [false,true])for(const [confidence,noul,status] of [[.53,.08,'review'],[.85,.9,'classified']]){
+   const raw=decision(confidence,noul);
+   raw.answers.category.probabilities=Object.fromEntries(allowed.map((name,i)=>[name,i===0?(sum===.99?.39:.41):scores[i]]));
+   const env=envFor(f,async model=>model==='typesafe/jev'?(wrapped?{result:raw}:raw):stream(extraction()));
+   const report=await testJevConnection(env,allowed,signal());
+   assert.equal(report.ok,true);assert.equal(report.diagnostics.probability_sum,sum);assert.equal(report.diagnostics.probability_sum_valid,true);
+   const result=await runLunaJev(env,'a',[file],[...allowed,'要確認'],'要確認',signal(),()=>{});
+   const row=result.entries[0];
+   assert.equal(row.import_meta.status,status);assert.equal(row.category,status==='review'?'要確認':'食費');
+   assert.equal(row.import_meta.confidence,confidence);assert.equal(row.import_meta.noul,noul);
+   assert.deepEqual(row.import_meta.review_causes,status==='review'?['low_confidence','low_evidence']:[]);
+   assert.ok(!JSON.stringify(report.diagnostics).includes('架空費目'));
+  }
+ }finally{f.db.close();}
+});
+
+test('確率合計の許容差を実際に超えた応答は、診断表示が0.99・1.01に丸まっても拒否する',async()=>{
+ const f=fixture();try{
+  for(const wrapped of [false,true])for(const sum of [.98,.9899999999,1.0100000001,1.02]){
+   const raw=decision();raw.answers.category.probabilities={食費:.7,日用品費:sum-.7};
+   const env=envFor(f,async model=>model==='typesafe/jev'?(wrapped?{result:raw}:raw):stream(extraction()));
+   const report=await testJevConnection(env,cats.slice(0,2),signal());
+   assert.equal(report.ok,false);assert.equal(report.diagnostics.probability_sum_valid,false);
+   await assert.rejects(runLunaJev(env,'a',[file],cats,'要確認',signal(),()=>{}),error=>error.code==='classification_result'&&error.diagnostics.probability_sum_valid===false);
+  }
+ }finally{f.db.close();}
+});
+
 test('両形式で欠けた項目・不正な分布・明示的な失敗を拒否し、別形式や混在を推測で救済しない',async t=>{
  const f=fixture();try{
   const changed=mutate=>{const raw=decision();mutate(raw);return raw;};

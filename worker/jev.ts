@@ -1,6 +1,6 @@
 import { cloudflareRun, type AIBindings } from './ai-bindings';
 import type { EntryDraft } from '../src/domain';
-import { jevDecision } from '../src/import-policy';
+import { jevDecision, jevProbabilityTotal } from '../src/import-policy';
 import { ImportError, describeAIFailure } from './import-errors';
 
 const categoryDescriptions:Record<string,string>={
@@ -89,14 +89,14 @@ export function jevDiagnostics(raw:unknown,allowed:string[]) {
   const valid=!!probabilities&&values.every(v=>finite(v)!==null&&Number(v)>=0&&Number(v)<=1);
   const choiceMatches=typeof category?.choice==='string'&&allowed.includes(category.choice);
   const choiceValue=probabilities&&choiceMatches?finite(probabilities[category!.choice as string]):null;
-  const sum=probabilities&&valid?Number(values.reduce<number>((n,v)=>n+Number(v),0).toFixed(6)):null;
+  const total=probabilities&&valid?jevProbabilityTotal(values.map(Number).sort((a,b)=>b-a)):null;
   return {root:kind(raw),answers:location,answers_type:kind(root?.answers),result_type:kind(root?.result),response_type:kind(root?.response),data_type:kind(root?.data),choices_type:kind(root?.choices),error_type:kind(root?.error),errors_type:kind(root?.errors),success:typeof root?.success==='boolean'?root.success:null,
     category_type:category?.type==='choice'?'choice':kind(category?.type),choice_matches:choiceMatches,
     confidence_type:kind(category?.confidence),confidence:finite(category?.confidence),
     probabilities_type:kind(category?.probabilities),expected_options:allowed.length,returned_options:probabilities?Object.keys(probabilities).length:0,
     missing_options:allowed.filter(k=>!probabilities||!Object.hasOwn(probabilities,k)).length,
     unknown_options:probabilities?Object.keys(probabilities).filter(k=>!allowed.includes(k)).length:0,
-    values_valid:valid,probability_sum:sum,choice_is_max:choiceValue!==null&&valid&&values.length>0?choiceValue+0.000001>=Math.max(...values.map(Number)):null,
+    values_valid:valid,probability_sum:total?Number(total.sum.toFixed(6)):null,probability_sum_valid:total?.valid??null,choice_is_max:choiceValue!==null&&valid&&values.length>0?choiceValue+0.000001>=Math.max(...values.map(Number)):null,
     sufficient_type:sufficient?.type==='noul'?'noul':kind(sufficient?.type),noul_type:kind(sufficient?.noul),noul:finite(sufficient?.noul)};
 }
 

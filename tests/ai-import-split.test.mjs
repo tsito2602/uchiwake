@@ -192,3 +192,24 @@ test('split非対応の従来応答は追加のJev要求をせず処理する',a
  t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(JSON.stringify({type:'complete',result})+'\n',{headers:{'Content-Type':'application/x-ndjson'}});});
  assert.deepEqual(await start(),result);assert.equal(calls,1);
 });
+
+test('68件目の合計0.99・confidence 0.53・noul 0.08でもリアルタイム取り込みを要確認で完了する',async t=>{
+ let jev=0;
+ const f=await setup(t,async(model,input)=>{
+  if(model==='openai/gpt-6-luna')return stream(extraction(Array.from({length:68},(_,i)=>source(i+1))));
+  jev++;
+  if(input.state.merchant!=='架空の店68')return decision(input);
+  const result=decision(input,.53,.08),answer=result.result.answers.category;
+  const other=Object.keys(answer.probabilities).filter(name=>name!=='食費');
+  assert.equal(other.length,12);
+  answer.probabilities={食費:.39,...Object.fromEntries(other.map((name,i)=>[name,[.14,.12,.1,.06,.04,.04,.03,.02,.02,.01,.01,.01][i]]))};
+  return result;
+ });
+ for(let i=1;i<=3;i++)f.db.prepare('INSERT INTO category_settings(space_id,category,icon,color) VALUES(?,?,?,?)').run('a',`架空費目${i}`,'tag','#777777');
+ const events=[];const result=await start(undefined,()=>{},e=>events.push(e));
+ assert.equal(jev,68);assert.equal(result.entries.length,68);
+ assert.equal(result.entries[67].import_meta.status,'review');
+ assert.deepEqual(result.entries[67].import_meta.review_causes,['low_confidence','low_evidence']);
+ assert.equal(result.entries.filter(row=>row.import_meta.status==='classified').length,67);
+ assert.ok(events.some(e=>e.type==='entry_update'&&e.entry.import_meta.id==='1:1:68'&&e.entry.import_meta.status==='review'));
+});
