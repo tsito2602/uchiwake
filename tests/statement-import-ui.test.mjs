@@ -107,6 +107,9 @@ test('フェーズはスクロール領域の外に固定し、仕分け済み�
   const viewport=markup.indexOf('class="card-panel-scroll"');
   assert.ok(phase>0&&phase<viewport);
   assert.ok(markup.slice(phase,viewport).includes('</section>'));
+  assert.ok(markup.includes('data-import-list-viewport=""'));
+  assert.ok(markup.includes('data-processing="true"'));
+  assert.ok(!panel(false).includes('data-import-list-viewport'));
   assert.ok(markup.includes('aria-label="読み取りと仕分けの並行処理"'));
   const entries=Array.from({length:12},(_,i)=>({...sample.entries[0],title:`店舗${i+1}`}));
   const list=processing({progress:{phase:'sorting',entries,count:12,demo:true},settings:[]});

@@ -1,4 +1,8 @@
 .statement-import-frame { min-height: min(640px,88dvh); }
+/* During processing only the rows scroll; gauges and current work stay visible. */
+.statement-import-panel[data-processing="true"] { display: flex; flex-direction: column; overflow: hidden; }
+.statement-import-panel[data-processing="true"] > .card-panel-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.statement-import-panel[data-processing="true"] > .card-panel-footer { flex: none; }
 
 .soft-orbit-glow { position: absolute; inset: 0; z-index: 3; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
 .soft-orbit-glow canvas { position: absolute; left: -30px; top: -30px; width: calc(100% + 60px); height: calc(100% + 60px); pointer-events: none; }
