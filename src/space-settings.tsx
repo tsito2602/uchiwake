@@ -42,12 +42,12 @@ export function SpaceManagementSettings({space,userId,members,disabled,api,onRef
   <h2 className="section-heading"><Pencil size={20} aria-hidden="true"/>スペース名</h2>
   <button className="settings-card-button" type="button" disabled={blocked||!owner} onClick={event=>{setName(space.name);setOrigin(panelOrigin(event.currentTarget));setError('');setClosing(false);setView('name');}}><Pencil size={21}/><span><strong>{space.name}</strong>{!owner&&<small>変更は作成者のみ</small>}</span>{owner&&<ChevronRight size={18}/>}</button>
  </section>
- <section className="section settings-section space-management-settings">
+ {shared&&<section className="section settings-section space-management-settings">
   <h2 className="section-heading"><UsersRound size={20} aria-hidden="true"/>メンバー管理</h2>
   {error&&!view&&<p className="notice" role="alert">{error}</p>}
   <div className="space-members" aria-label="メンバー">{members.filter(m=>m.active).map(m=><div className="space-member" key={m.user_id}><MemberAvatar member={m}/><span>{m.name}{m.user_id===userId?'（あなた）':''}<small>{m.user_id===space.owner_id?'作成者':'メンバー'}</small></span>{shared&&owner&&m.user_id!==userId&&<button aria-label={`${m.name}をメンバーから外す`} disabled={blocked} onClick={()=>{if(confirm(`${m.name}さんを外しますか？ 過去の負担額は保持されます。未使用の招待コードは無効になります。`))void run(async()=>{await api(`/spaces/${space.id}/members/${encodeURIComponent(m.user_id)}`,{method:'DELETE'});await onReload();});}}><Trash2 size={18}/></button>}</div>)}</div>
   {shared&&owner&&<button className="settings-add-card" disabled={blocked} onClick={event=>{setOrigin(panelOrigin(event.currentTarget));issueInvite();}}><UserRoundPlus size={17}/>メンバーを招待</button>}
- </section>
+ </section>}
  {view&&<SpacePanel title={view==='name'?'スペース名':'メンバーを招待'} icon={view==='name'?Pencil:UsersRound} context={context} origin={origin} closing={closing} onExited={()=>{setView(null);setClosing(false);setError('');}} onDockChange={onDockChange}>
   {error&&<p className="notice" role="alert">{error}</p>}
   {view==='name'?<form onSubmit={e=>{e.preventDefault();if(!context.disabled)saveName();}}><label className="field"><span>スペース名</span><input value={name} maxLength={40} disabled={blocked} onChange={e=>setName(e.target.value)}/></label></form>:invite&&<div className="space-invite"><strong>{invite.code}</strong><small>1人用 · {new Date(invite.expires_at).toLocaleString('ja-JP')}まで</small><p className="subtle">招待文をLINEなどで相手に送ってください。</p>{copied&&<p role="status" className="subtle">招待文をコピーしました。</p>}</div>}
