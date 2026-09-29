@@ -10,6 +10,7 @@ import { PanelBackButton } from './panel-back-button';
 import { dockKeyboardInset } from './panel-focus';
 import { StudioActionLabel } from './studio-action-label';
 import { ImportProcessingLabel } from './import-processing-label';
+import { dockTabAt } from './dock-tab-hit';
 
 export type DockTab = 'home' | 'ledger' | 'import' | 'settings';
 export const dockTabs = [
@@ -37,7 +38,7 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
   const exitMenu=()=>{setMenuPhase('closed');const action=pendingAdd.current;pendingAdd.current=null;action?.();};
   const root=useRef<HTMLDivElement>(null);
   const morph=useRef<FluidDockHandle>(null);
-  const pointer=useRef<{id:number;startX:number;startY:number}|null>(null);
+  const pointer=useRef<{id:number;target:HTMLElement}|null>(null);
   const swallowClick=useRef(false);
   const separateSecondary=!!context?.secondaryAction&&(context.commit||context.rentActions||context.backOnly);
   const showMonth=tab!=='settings';
@@ -55,29 +56,39 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
     window.addEventListener('focusin',schedule);window.addEventListener('focusout',schedule);
     return()=>{viewport?.removeEventListener('resize',update);viewport?.removeEventListener('scroll',update);window.removeEventListener('focusin',schedule);window.removeEventListener('focusout',schedule);document.documentElement.style.removeProperty('--dock-keyboard-inset');};
   },[]);
-  function hit(x:number,y:number) {
-    const buttons=root.current?.querySelectorAll<HTMLButtonElement>('[data-dock-index]');
-    return Array.from(buttons||[]).findIndex(button=>{const rect=button.getBoundingClientRect();return x>=rect.left&&x<rect.right&&y>=rect.top&&y<=rect.bottom;});
+  function hit(event:PointerEvent<HTMLElement>) {
+    // Scope to the captured nav, excluding calendar controls and outgoing copies.
+    const buttons=event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-dock-index]');
+    return dockTabAt(event.clientX,event.clientY,Array.from(buttons,button=>button.getBoundingClientRect()));
   }
   function release() {
+    const held=pointer.current;
     pointer.current=null;setPreview(null);
+    if(held?.target.hasPointerCapture(held.id))held.target.releasePointerCapture(held.id);
   }
+  useEffect(()=>{release();},[tab,!!context]);
+  useEffect(()=>{
+    const end=(event:globalThis.PointerEvent)=>{if(pointer.current?.id===event.pointerId)release();};
+    window.addEventListener('blur',release);window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
+    return()=>{release();window.removeEventListener('blur',release);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);};
+  },[]);
   function down(event:PointerEvent<HTMLElement>) {
-    if(event.button!==0||!event.isPrimary)return;
-    pointer.current={id:event.pointerId,startX:event.clientX,startY:event.clientY};
+    if(event.button!==0||!event.isPrimary||pointer.current)return;
+    swallowClick.current=false;
+    pointer.current={id:event.pointerId,target:event.currentTarget};
     event.currentTarget.setPointerCapture(event.pointerId);
-    setPreview(hit(event.clientX,event.clientY));
+    setPreview(hit(event));
   }
   function move(event:PointerEvent<HTMLElement>) {
-    if(pointer.current?.id===event.pointerId)setPreview(hit(event.clientX,event.clientY));
+    if(pointer.current?.id===event.pointerId)setPreview(hit(event));
   }
   function up(event:PointerEvent<HTMLElement>) {
     if(pointer.current?.id!==event.pointerId)return;
-    const index=hit(event.clientX,event.clientY);
+    const index=hit(event);
     swallowClick.current=true;
     window.setTimeout(()=>{swallowClick.current=false;},0);
     release();
-    if(index>=0)onSelect(dockTabs[index].key);
+    if(index!==null)onSelect(dockTabs[index].key);
   }
   return <>
     {!context&&add&&menuPhase!=='closed'&&<FuseAddMenu options={add.options} closing={menuPhase==='closing'} onClose={closeMenu} onSelect={option=>{pendingAdd.current=option.onClick;closeMenu();}} onExited={exitMenu}/>}
@@ -99,7 +110,7 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
           {context.secondaryAction&&separateSecondary&&<div className="context-island context-delete"><button aria-label={context.secondaryAction.label} onClick={context.secondaryAction.onAction} disabled={context.secondaryAction.disabled}><Trash2 size={22} aria-hidden="true"/></button></div>}
           {context.trailingEdit&&<div className="context-island context-edit"><button aria-label={context.trailingEdit.label} onClick={context.trailingEdit.onAction} disabled={context.trailingEdit.disabled}><Pencil size={22} aria-hidden="true"/></button></div>}
         </nav>
-          :<div className={`browse-dock${add?' has-add':''}${showMonth?'':' no-month'}`}><nav className="safari-dock" data-wide="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={release} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
+          :<div className={`browse-dock${add?' has-add':''}${showMonth?'':' no-month'}`}><nav className="safari-dock" data-wide="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={event=>{if(pointer.current?.id===event.pointerId)release();}} onLostPointerCapture={event=>{if(pointer.current?.id===event.pointerId)release();}} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
             <span className="dock-selection" aria-hidden="true"/>
             {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={personal&&item.key==='home'?'支出':item.label} onClick={()=>onSelect(item.key)}><item.icon size={22} strokeWidth={1.8}/></button>)}
           </nav>{showMonth&&<div className="dock-month" aria-label="表示月"><button aria-label="前月" onClick={onPrevMonth}><ChevronLeft size={18}/></button><NativeMonthPicker value={month} onChange={onMonthChange}/><button aria-label="翌月" onClick={onNextMonth}><ChevronRight size={18}/></button></div>}{add&&<button className="dock-add" disabled={add.disabled} aria-label={add.label} aria-haspopup="menu" aria-expanded={menuOpen} onClick={()=>setMenuPhase('open')} style={{opacity:menuOpen?0:1,transform:menuOpen?'scale(.5)':undefined}}><Plus size={23}/></button>}</div>}

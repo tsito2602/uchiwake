@@ -80,7 +80,7 @@ function SpaceApp(account:AccountProps) {
  return <>{space?<App key={space.id} {...account} space={space} spaces={spaces} onSelectSpace={select} onReady={ready} initialSettingsOrigin={settingsTarget?.spaceId===space.id?settingsTarget.origin:undefined} refreshSpaces={refreshSpaces} month={month} setMonth={setMonth} tab={tab} setTab={setTab}/>:<main className="shell"><div className="empty">{error||'スペースを読み込んでいます…'}{error&&<button className="secondary" onClick={()=>void refreshSpaces().catch(e=>setError(e.message))}>再読み込み</button>}</div></main>}
  {switching&&<SpaceSwitchScreen key={switching.sequence} space={switching.space} ready={switching.ready} onExited={()=>setSwitching(current=>current?.sequence===switching.sequence?null:current)}/>}</>;
 }
-function App({user,logout,signingOut,space,spaces,onSelectSpace,onReady,initialSettingsOrigin,refreshSpaces,month,setMonth,tab,setTab}:SpaceAppProps) {
+function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,onReady,initialSettingsOrigin,refreshSpaces,month,setMonth,tab,setTab}:SpaceAppProps) {
   const api:Api=useMemo(()=>spaceApi(space.id),[space.id]);
   const personal=space.kind==='personal';
   const [allocationOpen,setAllocationOpen]=useState<'month'|'default'|null>(null);
@@ -90,6 +90,11 @@ function App({user,logout,signingOut,space,spaces,onSelectSpace,onReady,initialS
   const [allocationBreakdown,setAllocationBreakdown]=useState<{origin:PanelOrigin}|null>(null);
   const [breakdownDock,setBreakdownDock]=useState<DockContext>();
   const [allocationDock,setAllocationDock]=useState<DockContext>();
+  const [savingProfile,setSavingProfile]=useState(false);
+  async function saveProfile(name:string) {
+    setSavingProfile(true);
+    try { await updateProfile(name); } finally { setSavingProfile(false); }
+  }
   const transitionPage=useRouteTransition();
   // Reset after the new page is committed, before the browser paints it.
   useLayoutEffect(()=>{window.scrollTo({top:0,left:0,behavior:'instant'});},[tab]);
@@ -163,7 +168,7 @@ function App({user,logout,signingOut,space,spaces,onSelectSpace,onReady,initialS
     requestId.current++;
     if(loadedMode.current!==demoView){loadedMode.current=demoView;setState(null);setHistory([]);}
     void load();
-  },[month,demoView]);
+  },[month,demoView,user.name]);
   useEffect(()=>{cardDestination.current=null;setCategoryDetails(null);setOpenCard(null);setCategoryDraft({});setAmountDraft({});setDeletedEntryIds([]);},[month,demoView]);
   useEffect(()=>{setRentStartMonth(month);},[month]);
   useEffect(()=>{const active=state?.cards.filter(card=>card.active)||[];if(active.length&&!active.some(card=>card.id===selectedCardId))setSelectedCardId(active[0].id);},[state?.cards,selectedCardId]);
@@ -177,7 +182,7 @@ function App({user,logout,signingOut,space,spaces,onSelectSpace,onReady,initialS
   const rentEnabled=state?.space_preferences?.rent_enabled===true;
   const rent=useMemo(()=>rentForMonth(displayedMonth,state?.bills||[],state?.rent_rules||[]),[displayedMonth,state]);
   const splitItems=useMemo(()=>state?settlementItems(state,personal):[],[state,personal]);
-  const allocationConfig=state?.settlement?.config??defaultConfig([{user_id:user.id,name:'あなた',active:true}]);
+  const allocationConfig=state?.settlement?.config??defaultConfig([{user_id:user.id,name:user.name||'あなた',active:true}]);
   const {amounts:allocations,adjustments:roundingAdjustments}=useMemo(()=>settlementDetails(splitItems,allocationConfig),[splitItems,allocationConfig]);
   const totals={total:splitItems.reduce((n,i)=>n+i.amount,0),perPerson:allocations[user.id]??0};
 
@@ -500,11 +505,11 @@ function App({user,logout,signingOut,space,spaces,onSelectSpace,onReady,initialS
       {tab==='settings'&&<div className="settings-page">
         <SpaceSettingsLinks spaces={spaces} disabled={busy} onOpen={(target,source)=>{if(target.id===space.id)openSpaceSettings(source);else onSelectSpace(target.id,panelOrigin(source));}}/>
         <div className="settings-group-heading settings-common-heading"><small>アプリ共通</small><h2>アカウント・表示</h2></div>
-        <AccountSettings user={user}/>
+        <AccountSettings user={user} signingOut={signingOut} updateProfile={saveProfile}/>
         <AppearanceSettings/>
         {state.demo_enabled&&<section className="section settings-section demo-settings"><h2>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
         <AppUpdateSettings/>
-        <button type="button" className="settings-add-card settings-logout" disabled={signingOut} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
+        <button type="button" className="settings-add-card settings-logout" disabled={signingOut || savingProfile} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
         <AppInfo/>
       </div>}
       </>}
@@ -540,4 +545,4 @@ function App({user,logout,signingOut,space,spaces,onSelectSpace,onReady,initialS
 function Field({label,children}:{label:string;children:React.ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
 function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
 function BillRow({bill,onEdit}:{bill:Bill;onEdit:()=>void}) {return <div className="row"><div className="row-symbol">{bill.kind==='card'?<CreditCard size={19}/>:bill.kind==='rent'?<Home size={19}/>:<ArrowDownLeft size={19}/>}</div><div className="row-content"><strong>{bill.title}</strong><small>{billKinds[bill.kind]}{bill.note?` · ${bill.note}`:''}</small></div><strong className="row-money">{yen(bill.amount)}</strong><button className="row-edit" onClick={onEdit} aria-label={`${bill.title}を編集`}>編集</button></div>}
-createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut)=><SpaceApp key={user.id} user={user} logout={logout} signingOut={signingOut}/>}</AuthGate>);
+createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut,updateProfile)=><SpaceApp key={user.id} user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>}</AuthGate>);

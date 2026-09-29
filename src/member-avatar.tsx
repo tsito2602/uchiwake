@@ -6,5 +6,5 @@ export function MemberAvatar({member}:{member:Member}){
  const [failedUrl,setFailedUrl]=useState<string>();
  return <span className="space-member-avatar" aria-hidden="true">{member.avatarUrl&&member.avatarUrl!==failedUrl
   ?<img src={member.avatarUrl} alt="" referrerPolicy="no-referrer" onError={()=>setFailedUrl(member.avatarUrl)}/>
-  :<UserRound size={19}/>}</span>;
+  :Array.from(member.name.trim())[0]||<UserRound size={19}/>}</span>;
 }

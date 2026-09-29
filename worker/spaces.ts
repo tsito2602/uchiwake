@@ -13,10 +13,9 @@ export async function membership(db:D1Database,id:string,user:string) {
  WHERE s.id=? AND m.user_id=? AND m.active=1 AND s.deleted_at IS NULL`).bind(id,user).first<Space>();
 }
 export async function membersFor(db:D1Database,id:string):Promise<Member[]> {
- const rows=await db.prepare(`SELECT m.user_id,m.active,p.avatar_url FROM space_members m
- LEFT JOIN user_profiles p ON p.user_id=m.user_id WHERE m.space_id=? ORDER BY m.joined_at,m.rowid`).bind(id).all<{user_id:string;active:number;avatar_url:string|null}>();
- // Include former members so numbering remains stable when someone leaves.
- return rows.results.map((m,index)=>({user_id:m.user_id,name:`メンバー${index+1}`,active:!!m.active,avatarUrl:googleAvatar(m.avatar_url)}));
+ const rows=await db.prepare(`SELECT m.user_id,COALESCE(NULLIF(p.display_name,''),NULLIF(m.name,'')) AS name,m.active,p.avatar_url FROM space_members m
+ LEFT JOIN user_profiles p ON p.user_id=m.user_id WHERE m.space_id=? ORDER BY m.joined_at,m.rowid`).bind(id).all<{user_id:string;name:string|null;active:number;avatar_url:string|null}>();
+ return rows.results.map((m,index)=>({user_id:m.user_id,name:m.name||`メンバー${index+1}`,active:!!m.active,avatarUrl:googleAvatar(m.avatar_url)}));
 }
 export async function settlementFor(db:D1Database,space:Space,month:string,members:Member[],snapshot=false):Promise<SettlementSettings> {
  const row=await db.prepare(`SELECT config,revision,scope,month FROM settlement_rules WHERE space_id=? AND
@@ -29,20 +28,20 @@ export async function settlementFor(db:D1Database,space:Space,month:string,membe
  }
  return {config,revision:row?.revision??0,scope:row?.scope??'default',month:row?.month??month};
 }
-const initialConfig=(user:AuthUser)=>JSON.stringify(defaultConfig([{user_id:user.id,name:'',active:true}]));
+const initialConfig=(user:AuthUser)=>JSON.stringify(defaultConfig([{user_id:user.id,name:user.name,active:true}]));
 async function bootstrap(db:D1Database,user:AuthUser,env:AuthBindings) {
  const personal=`personal:${user.id}`;
  await db.batch([
-  db.prepare("UPDATE space_members SET name='' WHERE name<>''"),
+  db.prepare("UPDATE space_members SET name=? WHERE user_id=? AND ?<>'' AND name<>?").bind(user.name,user.id,user.name,user.name),
   db.prepare(`INSERT INTO spaces(id,name,kind,owner_id) VALUES (?,'個人','personal',?) ON CONFLICT DO NOTHING`).bind(personal,user.id),
-  db.prepare(`INSERT INTO space_members(space_id,user_id,name) VALUES (?,?,'') ON CONFLICT DO NOTHING`).bind(personal,user.id),
+  db.prepare(`INSERT INTO space_members(space_id,user_id,name) VALUES (?,?,?) ON CONFLICT DO NOTHING`).bind(personal,user.id,user.name),
   db.prepare("INSERT INTO settlement_rules(space_id,month,scope,config) VALUES (?,'0000-01','default',?) ON CONFLICT DO NOTHING").bind(personal,initialConfig(user))
  ]);
  // Only the pre-existing primary allowlisted account can claim the legacy data.
  if(user.email.toLowerCase()===(env.ALLOWED_EMAILS||'').split(',')[0].trim().toLowerCase()){
   await db.batch([
    db.prepare(`UPDATE spaces SET owner_id=? WHERE id='legacy' AND owner_id IS NULL`).bind(user.id),
-   db.prepare(`INSERT INTO space_members(space_id,user_id,name) SELECT id,?,'' FROM spaces WHERE id='legacy' AND owner_id=? ON CONFLICT DO NOTHING`).bind(user.id,user.id),
+   db.prepare(`INSERT INTO space_members(space_id,user_id,name) SELECT id,?,? FROM spaces WHERE id='legacy' AND owner_id=? ON CONFLICT DO NOTHING`).bind(user.id,user.name,user.id),
    db.prepare("INSERT INTO settlement_rules(space_id,month,scope,config) SELECT id,'0000-01','default',? FROM spaces WHERE id='legacy' AND owner_id=? ON CONFLICT DO NOTHING").bind(initialConfig(user),user.id)
   ]);
  }
@@ -58,7 +57,7 @@ spacesRoutes.post('/',async c=>{
  const user=c.get('user'),id=crypto.randomUUID(),space:Space={id,name,kind:'shared',owner_id:user.id};
  await c.env.DB.batch([
   c.env.DB.prepare(`INSERT INTO spaces(id,name,kind,owner_id) VALUES (?,?,'shared',?)`).bind(id,name,user.id),
-  c.env.DB.prepare("INSERT INTO space_members(space_id,user_id,name) VALUES (?,?,'')").bind(id,user.id),
+  c.env.DB.prepare('INSERT INTO space_members(space_id,user_id,name) VALUES (?,?,?)').bind(id,user.id,user.name),
   c.env.DB.prepare("INSERT INTO settlement_rules(space_id,month,scope,config) VALUES (?,'0000-01','default',?)").bind(id,initialConfig(user))
  ]);return c.json({space},201);
 });
@@ -73,9 +72,10 @@ async function checkInvite(c:Context<SpaceEnv>,raw:unknown) {
  if((attempt?.attempts??0)>20)return {error:fail('試行回数が多いため、10分後にもう一度お試しください',429)};
  const code=normalizeCode(raw);if(!/^[A-HJ-NP-Z2-9]{12}$/.test(code))return {error:fail('招待コードを確認してください')};
  const hash=await hashCode(code);
- const invite=await c.env.DB.prepare(`SELECT i.space_id,s.name FROM space_invites i JOIN spaces s ON s.id=i.space_id
+ const invite=await c.env.DB.prepare(`SELECT i.space_id,s.name,COALESCE(NULLIF(p.display_name,''),NULLIF(m.name,'')) AS inviter FROM space_invites i JOIN spaces s ON s.id=i.space_id
  JOIN space_members m ON m.space_id=s.id AND m.user_id=i.created_by
- WHERE i.code_hash=? AND i.expires_at>? AND i.revoked=0 AND (i.consumed_by IS NULL OR i.consumed_by=?) AND s.deleted_at IS NULL AND m.active=1`).bind(hash,Date.now(),user.id).first<{space_id:string;name:string}>();
+ LEFT JOIN user_profiles p ON p.user_id=i.created_by
+ WHERE i.code_hash=? AND i.expires_at>? AND i.revoked=0 AND (i.consumed_by IS NULL OR i.consumed_by=?) AND s.deleted_at IS NULL AND m.active=1`).bind(hash,Date.now(),user.id).first<{space_id:string;name:string;inviter:string|null}>();
  return invite?{invite,hash}:{error:fail('招待コードが無効か、有効期限が切れています',404)};
 }
 spacesRoutes.post('/invite-preview',async c=>{
@@ -88,9 +88,9 @@ spacesRoutes.post('/join',async c=>{
  if(body?.space_id!==invite.space_id)return fail('参加先を確認してください');
  await c.env.DB.batch([
   c.env.DB.prepare(`UPDATE space_invites SET consumed_by=? WHERE code_hash=? AND consumed_by IS NULL AND revoked=0 AND expires_at>?`).bind(user.id,result.hash!,Date.now()),
-  c.env.DB.prepare(`INSERT INTO space_members(space_id,user_id,name) SELECT space_id,?,'' FROM space_invites
+  c.env.DB.prepare(`INSERT INTO space_members(space_id,user_id,name) SELECT space_id,?,? FROM space_invites
    WHERE code_hash=? AND consumed_by=? AND revoked=0 AND expires_at>?
-   ON CONFLICT(space_id,user_id) DO UPDATE SET active=1,name=''`).bind(user.id,result.hash!,user.id,Date.now())
+   ON CONFLICT(space_id,user_id) DO UPDATE SET active=1,name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE space_members.name END`).bind(user.id,user.name,result.hash!,user.id,Date.now())
  ]);
  const space=await membership(c.env.DB,invite.space_id,user.id);if(!space)return fail('招待コードは使用済みです',409);
  return c.json({space});

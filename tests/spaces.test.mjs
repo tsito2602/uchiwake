@@ -120,32 +120,34 @@ test('メンバーの画像を所属スペース内で返し、不正な画像UR
   f.db.prepare('INSERT INTO user_profiles(user_id,avatar_url) VALUES (?,?)').run('b','https://example.test/avatar');
   for(const [path,spaceId] of [[`/spaces/${space.id}/details?month=2026-09`,undefined],['/state?month=2026-09',space.id]]){
    const {members}=await json(await f.call('c',path,'GET',undefined,spaceId));
-   assert.deepEqual(members.find(m=>m.user_id==='owner'),{user_id:'owner',name:'メンバー1',active:true,avatarUrl:avatar});
-   for(const [id,n] of [['b',2],['c',3]])assert.deepEqual(members.find(m=>m.user_id===id),{user_id:id,name:`メンバー${n}`,active:true});
+   assert.deepEqual(members.find(m=>m.user_id==='owner'),{user_id:'owner',name:'オーナー',active:true,avatarUrl:avatar});
+   for(const id of ['b','c'])assert.deepEqual(members.find(m=>m.user_id===id),{user_id:id,name:id,active:true});
    assert.equal((await f.call('outsider',path,'GET',undefined,spaceId)).status,404);
   }
  }finally{f.db.close();}
 });
 
-test('保存済みのアカウント名を破棄し、招待・所属・負担設定は名前なしで維持する',async()=>{
+test('表示名の変更をメンバーと招待へ反映し、再読込でも名前と負担設定を保持する',async()=>{
  const f=spaceFixture();try{
   const space=await create(f);await invite(f,space,'b');
-  f.db.prepare("UPDATE space_members SET name='Googleの名前'").run();
-  f.db.prepare('INSERT INTO user_profiles(user_id,display_name,avatar_url) VALUES (?,?,?)').run('owner','変更した表示名','https://lh3.googleusercontent.com/a');
+  f.db.prepare("UPDATE space_members SET name=''").run();
+  await json(await f.call('owner','/auth/profile','PUT',{name:'変更した表示名'}));
+  await json(await f.call('b','/auth/session'));
   const rules=f.db.prepare('SELECT * FROM settlement_rules ORDER BY space_id,month,scope').all();
   const {code}=await json(await f.call('owner',`/spaces/${space.id}/invites`,'POST',{}),201);
   const preview=await json(await f.call('c','/spaces/invite-preview','POST',{code}));
-  assert.deepEqual(preview,{space_id:space.id,name:space.name});
-  const {user}=await json(await f.call('owner','/auth/session'));assert.equal('name' in user,false);
+  assert.deepEqual(preview,{space_id:space.id,name:space.name,inviter:'変更した表示名'});
+  const {user}=await json(await f.call('owner','/auth/session'));assert.equal(user.name,'変更した表示名');
   await json(await f.call('owner','/spaces'));
-  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM space_members WHERE name<>''").get().n,0);
-  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM user_profiles WHERE display_name IS NOT NULL').get().n,0);
+  assert.equal(f.db.prepare('SELECT display_name FROM user_profiles WHERE user_id=?').get('owner').display_name,'変更した表示名');
   assert.deepEqual(f.db.prepare('SELECT * FROM settlement_rules ORDER BY space_id,month,scope').all(),rules);
   await json(await f.call('c','/spaces/join','POST',{code,space_id:space.id}));
   await json(await f.call('owner',`/spaces/${space.id}/members/b`,'DELETE'));
   const {members}=await json(await f.call('owner',`/spaces/${space.id}/details?month=2026-09`));
-  assert.deepEqual(members.map(m=>[m.user_id,m.name,m.active]),[['owner','メンバー1',true],['b','メンバー2',false],['c','メンバー3',true]]);
-  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM space_members WHERE name<>''").get().n,0);
+  assert.deepEqual(members.map(m=>[m.user_id,m.name,m.active]),[['owner','変更した表示名',true],['b','b',false],['c','c',true]]);
+  await json(await f.call('owner','/auth/profile','PUT',{name:'もう一度変更'}));
+  const state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space.id));
+  assert.equal(state.members.find(m=>m.user_id==='owner').name,'もう一度変更');
  }finally{f.db.close();}
 });
 

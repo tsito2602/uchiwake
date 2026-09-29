@@ -99,8 +99,9 @@ test('Google callback verifies signature, issuer, audience, expiry, nonce, verif
   const jwk = { ...await exportJWK(publicKey), kid: 'google-test-key', alg: 'RS256', use: 'sig' };
   const originalFetch = globalThis.fetch;
   try {
+    let successfulLogins=0;
     for (const [override, expected] of [
-      [{}, '/'], [{ email: 'outsider@example.test' }, '/?auth_error=not_allowed'],
+      [{}, '/'], [{name:'New Google name'},'/'], [{ email: 'outsider@example.test' }, '/?auth_error=not_allowed'],
       [{ nonce: 'wrong' }, '/?auth_error=failed'], [{ email_verified: false }, '/?auth_error=failed'],
       [{ iss: 'https://attacker.test' }, '/?auth_error=failed'], [{ aud: 'other-client' }, '/?auth_error=failed'],
       [{ exp: 1 }, '/?auth_error=failed'], [{ azp: 'other-client' }, '/?auth_error=failed'],
@@ -125,35 +126,50 @@ test('Google callback verifies signature, issuer, audience, expiry, nonce, verif
         const user = (await me.json()).user;
         assert.equal(user.id, 'real-google-sub');
         assert.equal(user.avatarUrl, 'https://lh3.googleusercontent.com/avatar');
-        assert.equal('name' in user, false);
-        assert.equal('name' in decodeJwt(session.split(';')[0].split('=')[1]), false);
-        assert.equal(sqlite.prepare('SELECT display_name FROM user_profiles WHERE user_id=?').get(user.id).display_name, null);
+        const expectedName=successfulLogins++?'アプリで設定した名前':'Member';
+        assert.equal(user.name,expectedName);
+        assert.equal(decodeJwt(session.split(';')[0].split('=')[1]).name,override.name??'Member');
+        assert.equal(sqlite.prepare('SELECT display_name FROM user_profiles WHERE user_id=?').get(user.id).display_name,expectedName);
+        if(successfulLogins===1){
+          const saved=await request('/api/auth/profile',{method:'PUT',headers:{Cookie:session.split(';')[0],Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({name:'アプリで設定した名前'})});
+          assert.equal(saved.status,200);
+        }
         assert.ok(!session.includes(idToken));
       } else assert.equal(session, undefined);
     }
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('display-name editing is removed and cannot save through the old endpoint', async () => {
+test('display names persist across sessions, remain scoped to the signed-in user, and reject invalid changes', async () => {
   const headers = { Cookie: auth, Origin: origin, 'Content-Type': 'application/json' };
   const put = (body, custom = headers) => request('/api/auth/profile', { method: 'PUT', headers: custom, body: JSON.stringify(body) });
-  assert.equal((await put({ name: 'Unauthorized' }, { Origin: origin, 'Content-Type': 'application/json' })).status, 404);
+  assert.equal((await put({ name: 'Unauthorized' }, { Origin: origin, 'Content-Type': 'application/json' })).status, 401);
   assert.equal((await put({ name: 'Cross site' }, { ...headers, Origin: 'https://attacker.test' })).status, 401);
-  assert.equal((await put({ name: '新しい表示名', id: 'real-google-sub' })).status, 404);
-  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM user_profiles WHERE display_name IS NOT NULL').get().n,0);
+  for(const name of ['', '  ', 'x'.repeat(101), 'line\nline', null])assert.equal((await put({name})).status,400);
+  const saved=await put({name:'  新しい表示名  ',id:'real-google-sub'});
+  assert.equal(saved.status,200);assert.equal((await saved.json()).user.name,'新しい表示名');
+  const fresh=await sessionCookie({name:'Google name'});
+  assert.equal((await (await request('/api/auth/session',{headers:{Cookie:fresh}})).json()).user.name,'新しい表示名');
+  assert.equal(sqlite.prepare('SELECT display_name FROM user_profiles WHERE user_id=?').get('real-google-sub').display_name,'アプリで設定した名前');
 });
-test('old names are discarded from profiles and cookies without losing avatars or extending sessions', async () => {
+test('sessions from the nameless version stay signed in and can save a display name without losing avatars', async () => {
   const avatar='https://lh3.googleusercontent.com/retained-avatar';
-  sqlite.prepare('INSERT INTO user_profiles(user_id,display_name,avatar_url) VALUES (?,?,?)').run('old-user','以前の表示名',avatar);
-  const old=await sessionCookie({sub:'old-user',name:'Googleのアカウント名'});
-  const oldPayload=decodeJwt(old.split('=')[1]);
+  sqlite.prepare('INSERT INTO user_profiles(user_id,avatar_url) VALUES (?,?)').run('old-user',avatar);
+  const old=await sessionCookie({sub:'old-user',name:undefined});
   const response=await request('/api/auth/session',{headers:{Cookie:old}});
-  assert.deepEqual((await response.json()).user,{id:'old-user',email:'member@example.test',avatarUrl:avatar});
-  const replacement=cookieHeader(response),clean=decodeJwt(replacement.split('=')[1]);
-  assert.equal('name' in clean,false);assert.equal(clean.sub,oldPayload.sub);assert.equal(clean.email,oldPayload.email);assert.equal(clean.exp,oldPayload.exp);
-  assert.equal(sqlite.prepare('SELECT display_name FROM user_profiles WHERE user_id=?').get('old-user').display_name,null);
-  const repeated=await request('/api/auth/session',{headers:{Cookie:replacement}});
-  assert.equal((await repeated.json()).user.avatarUrl,avatar);assert.equal(repeated.headers.get('set-cookie'),null);
+  assert.deepEqual((await response.json()).user,{id:'old-user',email:'member@example.test',name:'',avatarUrl:avatar});
+  assert.equal(response.headers.get('set-cookie'),null);
+  const saved=await request('/api/auth/profile',{method:'PUT',headers:{Cookie:old,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({name:'復元後の表示名'})});
+  assert.equal(saved.status,200);
+  const repeated=await request('/api/auth/session',{headers:{Cookie:old}});
+  assert.deepEqual((await repeated.json()).user,{id:'old-user',email:'member@example.test',name:'復元後の表示名',avatarUrl:avatar});
+  assert.equal(repeated.headers.get('set-cookie'),null);
+});
+test('Google names in existing signed sessions fill missing profiles and survive a later nameless session',async()=>{
+  const google=await sessionCookie({sub:'recover-name',name:'Googleの名前'});
+  assert.equal((await (await request('/api/auth/session',{headers:{Cookie:google}})).json()).user.name,'Googleの名前');
+  const nameless=await sessionCookie({sub:'recover-name',name:undefined});
+  assert.equal((await (await request('/api/auth/session',{headers:{Cookie:nameless}})).json()).user.name,'Googleの名前');
 });
 test('provider avatar URLs accept Google HTTPS images and ignore untrusted hosts or schemes', async () => {
   for (const picture of ['https://googleusercontent.com.attacker.test/a', 'javascript:alert(1)', 'http://lh3.googleusercontent.com/a', 'https://evil@lh3.googleusercontent.com/a']) {

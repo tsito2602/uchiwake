@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTPayload } from 'jose';
-import { googleAvatar, profileFor, saveProviderAvatar } from './profile';
+import { googleAvatar, profileFor, saveDisplayName, saveProviderProfile } from './profile';
 
 export type AuthBindings = {
   DB?: D1Database;
@@ -10,7 +10,7 @@ export type AuthBindings = {
   SESSION_SECRET?: string;
   ALLOWED_EMAILS?: string;
 };
-export type AuthUser = { id: string; email: string; avatarUrl?: string };
+export type AuthUser = { id: string; email: string; name: string; avatarUrl?: string };
 type AuthEnv = { Bindings: AuthBindings };
 const SESSION_COOKIE = '__Host-uchiwake_session';
 const FLOW_COOKIE = '__Host-uchiwake_oauth';
@@ -24,8 +24,9 @@ export const authConfigured = (env: AuthBindings) => Boolean(env.GOOGLE_CLIENT_I
 const allowed = (email: string, env: AuthBindings) => allowedEmails(env).includes(email.toLowerCase());
 const random = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const key = (env: AuthBindings) => encoder.encode(env.SESSION_SECRET!);
-async function token(payload: JWTPayload, env: AuthBindings, origin: string, purpose: string, seconds: number, expiresAt?: number) {
-  return new SignJWT({ ...payload, purpose }).setProtectedHeader({ alg: 'HS256' }).setIssuer('uchiwake').setAudience(origin).setIssuedAt().setExpirationTime(expiresAt??`${seconds}s`).sign(key(env));
+const providerName = (value:unknown) => typeof value==='string'?value.replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,100):'';
+async function token(payload: JWTPayload, env: AuthBindings, origin: string, purpose: string, seconds: number) {
+  return new SignJWT({ ...payload, purpose }).setProtectedHeader({ alg: 'HS256' }).setIssuer('uchiwake').setAudience(origin).setIssuedAt().setExpirationTime(`${seconds}s`).sign(key(env));
 }
 async function verify(value: string, env: AuthBindings, origin: string, purpose: string) {
   const { payload } = await jwtVerify(value, key(env), { algorithms: ['HS256'], issuer: 'uchiwake', audience: origin, requiredClaims: ['exp', 'iat'] });
@@ -39,19 +40,23 @@ export async function sessionUser<E extends AuthEnv>(c: Context<E>): Promise<Aut
   try {
     const payload = await verify(value, c.env, new URL(c.req.url).origin, 'session');
     if (typeof payload.sub !== 'string' || !payload.sub || typeof payload.email !== 'string' || !allowed(payload.email, c.env)) return null;
-    const picture=googleAvatar(payload.picture);
-    // Replace older cookies without retaining the name or extending the login.
-    if ('name' in payload) {
-      const session=await token({sub:payload.sub,email:payload.email,...(picture?{picture}:{})},c.env,new URL(c.req.url).origin,'session',SESSION_SECONDS,payload.exp);
-      setCookie(c,SESSION_COOKIE,session,{...cookieOptions,maxAge:Math.max(0,payload.exp!-Math.floor(Date.now()/1000))});
-    }
-    return { id: payload.sub, email: payload.email, avatarUrl: picture };
+    return { id: payload.sub, email: payload.email, name: providerName(payload.name), avatarUrl: googleAvatar(payload.picture) };
   } catch { return null; }
 }
 export const authRoutes = new Hono<AuthEnv>();
 authRoutes.get('/session', async c => {
   const user = await sessionUser(c);
   return c.json({ user: user ? await profileFor(c.env.DB, user) : null, configured: authConfigured(c.env) });
+});
+authRoutes.put('/profile', async c => {
+  const user = await sessionUser(c);
+  if (!user) return c.json({ error: 'ログインし直してください' }, 401);
+  if (!c.env.DB) return c.json({ error: '表示名を保存できませんでした' }, 503);
+  const body = await c.req.json().catch(() => null);
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  if (!name || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) return c.json({ error: '表示名は1〜100文字で入力してください' }, 400);
+  await saveDisplayName(c.env.DB, user.id, name);
+  return c.json({ user: await profileFor(c.env.DB, { ...user, name }) });
 });
 authRoutes.get('/google', async c => {
   if (!authConfigured(c.env)) return c.redirect('/?auth_error=unavailable', 303);
@@ -93,8 +98,9 @@ authRoutes.get('/google/callback', async c => {
     if (payload.nonce !== flow.nonce || (payload.azp !== undefined && payload.azp !== c.env.GOOGLE_CLIENT_ID) || !payload.sub || payload.email_verified !== true || typeof payload.email !== 'string') return fail('failed');
     if (!allowed(payload.email, c.env)) return fail('not_allowed');
     const picture = googleAvatar(payload.picture);
-    await saveProviderAvatar(c.env.DB, payload.sub, picture);
-    const session = await token({ sub: payload.sub, email: payload.email, ...(picture ? { picture } : {}) }, c.env, origin, 'session', SESSION_SECONDS);
+    const name = providerName(payload.name);
+    await saveProviderProfile(c.env.DB, payload.sub, name, picture);
+    const session = await token({ sub: payload.sub, email: payload.email, name, ...(picture ? { picture } : {}) }, c.env, origin, 'session', SESSION_SECONDS);
     setCookie(c, SESSION_COOKIE, session, { ...cookieOptions, maxAge: SESSION_SECONDS });
     return c.redirect('/', 303);
   } catch {
