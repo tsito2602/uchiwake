@@ -6,6 +6,7 @@ export type ImportMeta={
   id:string;source:ImportSource;context:string;amount_uncertain:boolean;
   status:'pending'|'classifying'|'classified'|'review';original_category?:string;
   confidence?:number;noul?:number;review_causes?:JevReviewCause[];candidates?:{category:string;score:number}[];history?:string[];
+  classification_basis?:'context'|'merchant'|'unknown';
   reason?:string;rule_id?:string;remember_rule?:boolean;rule_keyword?:string;
 };
 export type SourceTotal={amount:number;file:number;page:number;label:string};

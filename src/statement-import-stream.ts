@@ -28,7 +28,8 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');
 }
 
-export async function streamStatement(files:StatementFile[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void,spaceId?:string,onEvent?:(event:ImportEvent)=>void):Promise<ImportResult> {
+export async function streamStatement(files:StatementFile[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void,spaceId?:string,onEvent?:(event:ImportEvent)=>void,pipeline:'luna'|'split'='luna'):Promise<ImportResult> {
+  const startedAt=performance.now();
   const controller=new AbortController();
   const abort=()=>controller.abort(signal.reason);
   signal.addEventListener('abort',abort,{once:true});
@@ -43,21 +44,26 @@ export async function streamStatement(files:StatementFile[],signal:AbortSignal,o
       return response;
     }finally{watch.clear();}
   };
-  const extractRequest=(recheck:string|undefined,requestSignal:AbortSignal)=>request('/api/statement/analyze',{files,mode:'live',stream:true,pipeline:'split',...(recheck?{recheck}:{})},requestSignal);
+  const extractRequest=(recheck:string|undefined,requestSignal:AbortSignal)=>request('/api/statement/analyze',{files,mode:'live',stream:true,pipeline,...(recheck?{recheck}:{})},requestSignal);
   try {
     onReasoning?.(`${files.length}ファイルを送信して、読み取りを開始しています…`);
     const response=await extractRequest(undefined,controller.signal);
     // Preserve the direct OpenAI provider and older deployed Worker protocol.
-    if(response.headers.get('X-Import-Pipeline')!=='split')return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning,onEvent);
+    const engine=response.headers.get('X-Import-Pipeline');
+    if(engine!=='split'&&engine!=='luna')return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning,onEvent);
     let initial:Response|undefined=response;
-    return await runImportPipeline({fileCount:files.length,hasNonCsv:files.some(file=>file.kind!=='csv'),
+    return await runImportPipeline({fileCount:files.length,hasNonCsv:files.some(file=>file.kind!=='csv'),engine:engine==='luna'?'luna':'jev',startedAt,
       extract:async(recheck,requestSignal,accept,onReading)=>{
         const reading=initial??await extractRequest(recheck,requestSignal);initial=undefined;
-        if(reading.ok&&reading.headers.get('X-Import-Pipeline')!=='split')throw new ImportError('invalid_result');
-        const result=await receiveStatement(reading,accept,requestSignal,CLIENT_IDLE_MS,onReading);
+        if(reading.ok&&reading.headers.get('X-Import-Pipeline')!==engine)throw new ImportError('invalid_result');
+        const result=await receiveStatement(reading,entry=>{
+          if(engine==='luna'&&(!entry.import_meta||!['classified','review'].includes(entry.import_meta.status)))throw new ImportError('classification_result');
+          accept(entry);
+        },requestSignal,CLIENT_IDLE_MS,onReading);
         return {source_total:result.source_total??null};
       },
       classify:async(entry,requestSignal,onRetry)=>{
+        if(engine==='luna')throw new ImportError('classification_result');
         const response=await request('/api/statement/classify',{entry},requestSignal);
         const result=await receiveStatement(response,()=>{},requestSignal,CLIENT_IDLE_MS,undefined,undefined,onRetry);
         const row=result.entries?.[0];

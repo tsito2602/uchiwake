@@ -17,7 +17,7 @@ function stream(result){return new ReadableStream({start(c){c.enqueue(delta(JSON
 function fixture(){const f=spaceFixture();f.db.exec("INSERT INTO spaces(id,name,kind,owner_id) VALUES('a','A','shared','owner'),('b','B','shared','b'); INSERT INTO space_members(space_id,user_id,name) VALUES('a','owner','owner'),('b','b','b');");return f;}
 const envFor=(f,run)=>({DB:f.DB,AI_GATEWAY_ID:'test',AI:{run}});
 const signal=()=>new AbortController().signal;
-const answerDiagnostics=({failure,run,classification,...answer})=>answer;
+const answerDiagnostics=({failure,run,classification,engine,recheck_reason,timing,...answer})=>answer;
 
 test('Jevの独立した根拠評価へ全費目の定義を渡し、原文と修正履歴の扱いを変えない',async()=>{
  const f=fixture();try{
@@ -201,7 +201,7 @@ test('実応答と同じ13候補のresult形式・confidence 0.78・noul 0.71は
   const row=events.at(-1).result.entries[0];
   assert.equal(row.category,'要確認');assert.equal(row.import_meta.status,'review');
   assert.equal(row.import_meta.confidence,.78);assert.equal(row.import_meta.candidates[0].category,'食費');
-  assert.equal(luna,2);assert.equal(jev,2); // One re-read, then reuse the same valid review result.
+  assert.equal(luna,1);assert.equal(jev,2); // Connection test plus one decision; review alone never re-reads.
  }finally{f.db.close();}
 });
 

@@ -36,7 +36,7 @@ async function setup(t,run){
  t.after(async()=>{await Promise.allSettled(calls.map(call=>call.done));f.db.close();});
  return {...f,calls};
 }
-const start=(signal=new AbortController().signal,onEntry=()=>{},onEvent=()=>{},files=[file])=>streamStatement(files,signal,onEntry,()=>{},'a',onEvent);
+const start=(signal=new AbortController().signal,onEntry=()=>{},onEvent=()=>{},files=[file])=>streamStatement(files,signal,onEntry,()=>{},'a',onEvent,'split');
 
 test('50回の予算を再現し、120明細をリクエスト分割すると閾値を変えず最後まで分類できる',async t=>{
  const rows=Array.from({length:120},(_,i)=>source(i+1));let jev=0,luna=0;
@@ -110,7 +110,7 @@ test('分割後の途中障害も取り込み全体を中止し、診断には�
  });
  const logs=[];t.mock.method(console,'error',value=>logs.push(value));
  let completed=false;
- await assert.rejects(runStatementImport({demo:false,signal:new AbortController().signal,onProgress:()=>{},analyze:(onEntry,onReasoning,onEvent)=>streamStatement([file],new AbortController().signal,onEntry,onReasoning,'a',onEvent)}).then(()=>{completed=true;}),error=>{
+ await assert.rejects(runStatementImport({demo:false,signal:new AbortController().signal,onProgress:()=>{},analyze:(onEntry,onReasoning,onEvent)=>streamStatement([file],new AbortController().signal,onEntry,onReasoning,'a',onEvent,'split')}).then(()=>{completed=true;}),error=>{
   assert.equal(error.code,'upstream');assert.equal(error.diagnostics.failure.model,'jev');
   assert.equal(error.diagnostics.failure.stage,'request');assert.equal(error.diagnostics.failure.source.row,53);
   assert.equal(error.diagnostics.run.received_entries,90);assert.ok(error.diagnostics.classification.evaluated>=49);
