@@ -1,5 +1,6 @@
 import { spaceApi, type Api } from './space-api';
 import { SpaceControls } from './space-controls';
+import { SpaceSwitchScreen } from './space-switch-screen';
 import { SpacePanel } from './space-panel';
 import { AllocationBreakdownPanel } from './allocation-breakdown';
 import { SpaceManagementSettings, SpaceSettingsLinks } from './space-settings';
@@ -14,7 +15,7 @@ import { AppUpdateSettings, AppInfo } from './app-update-settings';
 import { AppearanceSettings } from './appearance-settings';
 import { AuthGate, AccountSettings, type AccountProps } from './auth';
 import { streamStatement } from './statement-import-stream';
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
@@ -55,19 +56,28 @@ const yen = (amount:number) => `¥${amount.toLocaleString('ja-JP')}`;
 const monthText = (month:string) => `${Number(month.slice(0,4))}年${Number(month.slice(5))}月`;
 const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const bump = (month:string,diff:number) => { const [year,m]=month.split('-').map(Number); const date=new Date(Date.UTC(year,m-1+diff,1)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}`; };
-type SpaceAppProps=AccountProps&{space:Space;spaces:Space[];onSelectSpace:(id:string,settingsOrigin?:PanelOrigin)=>void;initialSettingsOrigin?:PanelOrigin;refreshSpaces:()=>Promise<void>;month:string;setMonth:(month:string)=>void;tab:Tab;setTab:(tab:Tab)=>void};
+type SpaceAppProps=AccountProps&{space:Space;spaces:Space[];onSelectSpace:(id:string,settingsOrigin?:PanelOrigin)=>void;onReady:(id:string)=>void;initialSettingsOrigin?:PanelOrigin;refreshSpaces:()=>Promise<void>;month:string;setMonth:(month:string)=>void;tab:Tab;setTab:(tab:Tab)=>void};
 function SpaceApp(account:AccountProps) {
  const [spaces,setSpaces]=useState<Space[]>([]),[selected,setSelected]=useState(()=>localStorage.getItem(`uchiwake-space:${account.user.id}`)||''),[error,setError]=useState('');
  const [month,setMonth]=useState(today().slice(0,7)),[tab,setTab]=useState<Tab>('home');
  const [settingsTarget,setSettingsTarget]=useState<{spaceId:string;origin:PanelOrigin}|null>(null);
+ const previousSpace=useRef<string|null>(null),switchSequence=useRef(0);
+ const [switching,setSwitching]=useState<{space:Space;sequence:number;ready:boolean}|null>(null);
  const api=useMemo(()=>spaceApi(),[]);
  async function refreshSpaces(){const result=await api<{spaces:Space[]}>('/spaces');setSpaces(result.spaces);setError('');}
  useEffect(()=>{void refreshSpaces().catch(e=>{setError(e.message);document.dispatchEvent(new Event('uchiwake:ready'));});},[]);
  const space=spaces.find(s=>s.id===selected)??(!selected?spaces.find(s=>s.id==='legacy'):undefined)??spaces.find(s=>s.kind==='personal')??spaces[0];
+ useLayoutEffect(()=>{
+  if(!space)return;
+  if(previousSpace.current&&previousSpace.current!==space.id)setSwitching({space,sequence:++switchSequence.current,ready:false});
+  previousSpace.current=space.id;
+ },[space]);
+ const ready=useCallback((id:string)=>setSwitching(current=>current?.space.id===id&&!current.ready?{...current,ready:true}:current),[]);
  const select=(id:string,origin?:PanelOrigin)=>{localStorage.setItem(`uchiwake-space:${account.user.id}`,id);setSettingsTarget(origin?{spaceId:id,origin}:null);setSelected(id);};
- return space?<App key={space.id} {...account} space={space} spaces={spaces} onSelectSpace={select} initialSettingsOrigin={settingsTarget?.spaceId===space.id?settingsTarget.origin:undefined} refreshSpaces={refreshSpaces} month={month} setMonth={setMonth} tab={tab} setTab={setTab}/>:<main className="shell"><div className="empty">{error||'スペースを読み込んでいます…'}{error&&<button className="secondary" onClick={()=>void refreshSpaces().catch(e=>setError(e.message))}>再読み込み</button>}</div></main>;
+ return <>{space?<App key={space.id} {...account} space={space} spaces={spaces} onSelectSpace={select} onReady={ready} initialSettingsOrigin={settingsTarget?.spaceId===space.id?settingsTarget.origin:undefined} refreshSpaces={refreshSpaces} month={month} setMonth={setMonth} tab={tab} setTab={setTab}/>:<main className="shell"><div className="empty">{error||'スペースを読み込んでいます…'}{error&&<button className="secondary" onClick={()=>void refreshSpaces().catch(e=>setError(e.message))}>再読み込み</button>}</div></main>}
+ {switching&&<SpaceSwitchScreen key={switching.sequence} space={switching.space} ready={switching.ready} onExited={()=>setSwitching(current=>current?.sequence===switching.sequence?null:current)}/>}</>;
 }
-function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,initialSettingsOrigin,refreshSpaces,month,setMonth,tab,setTab}:SpaceAppProps) {
+function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,onReady,initialSettingsOrigin,refreshSpaces,month,setMonth,tab,setTab}:SpaceAppProps) {
   const api:Api=useMemo(()=>spaceApi(space.id),[space.id]);
   const personal=space.kind==='personal';
   const [allocationOpen,setAllocationOpen]=useState<'month'|'default'|null>(null);
@@ -88,6 +98,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,in
   const [showTotalFirst,setShowTotalFirst]=useState(false);
   const [demoView,setDemoView]=useState(()=>window.sessionStorage.getItem('uchiwake-demo-view')==='1');
   const requestId=useRef(0);
+  const loadRequest=useRef<AbortController|null>(null);
   const loadedMode=useRef(demoView);
   const cardDestination=useRef<Tab|null>(null);
   const [state,setState]=useState<(State&Partial<SpaceData>)|null>(null);
@@ -96,10 +107,11 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,in
   const [notice,setNotice]=useState('');
   useEffect(()=>{
     if (!state && !notice) return;
+    onReady(space.id);
     const root=document.getElementById('root');
     if(root) root.dataset.bootReady='true';
     document.dispatchEvent(new Event('uchiwake:ready'));
-  },[state,notice]);
+  },[state,notice,onReady,space.id]);
   const [aiMode,setAiMode]=useState<AiMode>('demo');
   const [importMonth,setImportMonth]=useState(month);
   const [screenshots,setScreenshots]=useState<{name:string;image:string}[]>([]);
@@ -129,17 +141,21 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,in
   const [chartMonths,setChartMonths]=useState<6|12|36|60>(6);
   async function load() {
     const request=++requestId.current;
+    loadRequest.current?.abort();
+    const controller=new AbortController();loadRequest.current=controller;
+    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
     const query=`?month=${month}${demoView?'&demo=1':''}`;
     try {
       // Commit the month and its graph together, retaining the previous render
       // until both requests finish so existing animation nodes stay mounted.
       const [result,resultHistory]=await Promise.all([
-        api<State&Partial<SpaceData>>(`/state${query}`),
-        api<{months:HistoryPoint[]}>(`/settlement-history${query}`).catch(()=>({months:[]}))
+        api<State&Partial<SpaceData>>(`/state${query}`,{signal}),
+        api<{months:HistoryPoint[]}>(`/settlement-history${query}`,{signal}).catch(()=>({months:[]}))
       ]);
       if(request===requestId.current){setState(result);setHistory(resultHistory.months);setNotice('');}
     }
-    catch(e) { if(request===requestId.current){if(demoView){window.sessionStorage.removeItem('uchiwake-demo-view');setDemoView(false);}else {setNotice(String(e instanceof Error?e.message:e));if((e as {status?:number}).status===404){setState(null);void refreshSpaces();}}} }
+    catch(e) { if(request===requestId.current&&!controller.signal.aborted){if(demoView){window.sessionStorage.removeItem('uchiwake-demo-view');setDemoView(false);}else {setNotice(signal.aborted?'データの読み込みがタイムアウトしました。もう一度お試しください。':String(e instanceof Error?e.message:e));if((e as {status?:number}).status===404){setState(null);void refreshSpaces();}}} }
+    finally {controller.abort();if(loadRequest.current===controller)loadRequest.current=null;}
   }
   useEffect(()=>{
     requestId.current++;
@@ -149,9 +165,9 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,in
   useEffect(()=>{cardDestination.current=null;setCategoryDetails(null);setOpenCard(null);setCategoryDraft({});setAmountDraft({});setDeletedEntryIds([]);},[month,demoView]);
   useEffect(()=>{setRentStartMonth(month);},[month]);
   useEffect(()=>{const active=state?.cards.filter(card=>card.active)||[];if(active.length&&!active.some(card=>card.id===selectedCardId))setSelectedCardId(active[0].id);},[state?.cards,selectedCardId]);
-  useEffect(()=>()=>{requestId.current++;},[]);
+  useEffect(()=>()=>{requestId.current++;loadRequest.current?.abort();},[]);
   useEffect(()=>{
-    const refresh=()=>{if(document.visibilityState==='visible'&&!busy&&!openCard&&!editing&&!cardSettings&&!categorySettings&&!importPanel&&!allocationOpen&&!allocationBreakdown&&!spaceSettings&&!spaceDock)void load();};
+    const refresh=()=>{if(document.visibilityState==='visible'&&!loadRequest.current&&!busy&&!openCard&&!editing&&!cardSettings&&!categorySettings&&!importPanel&&!allocationOpen&&!allocationBreakdown&&!spaceSettings&&!spaceDock)void load();};
     const timer=window.setInterval(refresh,15000);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
     return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
   },[month,demoView,busy,openCard,editing,cardSettings,categorySettings,importPanel,allocationOpen,allocationBreakdown,spaceSettings,spaceDock]);

@@ -1,0 +1,25 @@
+.space-switch-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: var(--canvas);
+  color: var(--ink);
+  opacity: 1;
+  touch-action: none;
+  overscroll-behavior: none;
+  transition-property: opacity;
+  transition-timing-function: ease-out;
+}
+.space-switch-screen:focus { outline: none; }
+.space-switch-screen[data-leaving='true'] { opacity: 0; }
+.space-switch-symbol { animation: space-switch-breathe 900ms cubic-bezier(.45,0,.55,1) infinite; }
+@keyframes space-switch-breathe {
+  0%,100% { transform: scale(.93); opacity: .5; }
+  50% { transform: scale(1.025); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .space-switch-symbol { animation: none; }
+  .space-switch-screen { transition: none; }
+}
