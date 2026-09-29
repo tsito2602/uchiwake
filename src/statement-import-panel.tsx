@@ -18,12 +18,13 @@ type Props = {
 
 export function StatementImportPanel({reviewing,processing,progress,origin,closing,onExited,context,children,suspended=false}:Props) {
   const panel=useRef<HTMLDivElement>(null);
+  const list=useRef<HTMLDivElement>(null);
   usePanelMorph(panel,origin,closing,onExited,context.onBack,suspended);
-  useLayoutEffect(()=>{panel.current?.scrollTo({top:0,behavior:'instant'});},[reviewing,processing]);
+  useLayoutEffect(()=>{panel.current?.scrollTo({top:0,behavior:'instant'});list.current?.scrollTo({top:0,behavior:'instant'});},[reviewing,processing]);
   useEffect(()=>{
     if(!processing||!progress?.entries.length)return;
     const frame=requestAnimationFrame(()=>{
-      const viewport=panel.current;
+      const viewport=list.current;
       if(viewport)scrollImportToLatest(viewport,window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     });
     return ()=>cancelAnimationFrame(frame);
@@ -34,10 +35,10 @@ export function StatementImportPanel({reviewing,processing,progress,origin,closi
       <div className="card-panel-glass" aria-hidden="true"/>
       {processing&&<SoftOrbitGlow/>}
       {processing&&<div className="import-border-beam" aria-hidden="true"><BorderBeam size="md" theme="light" colorVariant="colorful" borderRadius={28} style={{position:'absolute',inset:0}}><div style={{height:'100%',borderRadius:28}}/></BorderBeam></div>}
-      <div ref={panel} className="card-panel statement-import-panel" style={{borderRadius:28}} role="dialog" aria-modal="true" aria-labelledby="import-panel-title">
+      <div ref={panel} className="card-panel statement-import-panel" data-processing={processing} style={{borderRadius:28}} role="dialog" aria-modal="true" aria-labelledby="import-panel-title">
         <header className="card-panel-header"><span className="card-panel-icon"><Files size={22}/></span><div><h2 id="import-panel-title" tabIndex={-1}>{processing?'明細を仕分ける':reviewing?'明細を確認':'明細を取り込む'}</h2></div><button className="card-panel-close" aria-label={processing?'取り込みを中止':'戻る'} onClick={context.onBack}><X size={20}/></button></header>
         {processing&&progress&&<ImportPhaseStatus progress={progress}/>}
-        <div className="card-panel-scroll">{children}</div>
+        <div ref={list} className="card-panel-scroll" data-import-list-viewport={processing?'':undefined}>{children}</div>
         <footer className="card-panel-footer panel-desktop-actions"><button className={context.actionAppearance==='studio'?'studio-action':context.actionAppearance==='breathing'?'breathing-action':undefined} disabled={context.disabled} onClick={context.onAction}>{context.actionAppearance==='studio'?<StudioActionLabel label={context.actionLabel}/>:context.actionAppearance==='breathing'?<ImportProcessingLabel label={context.actionLabel}/>:context.actionLabel}</button></footer>
       </div>
     </div>

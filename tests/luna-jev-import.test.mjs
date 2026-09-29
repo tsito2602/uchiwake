@@ -458,12 +458,13 @@ test('Cloudflareを選択したAPIはOpenAIキーなしで取り込みとレポ�
  const f=fixture();try{
   const models=[];Object.assign(f.env,{AI_IMPORT_PROVIDER:'cloudflare',AI_GATEWAY_ID:'test',AI:{async run(model,input){models.push(model);
    if(model==='typesafe/jev'){const keys=Object.keys(input.questions.category.criteria);return {answers:{category:{type:'choice',choice:'食費',confidence:.99,probabilities:Object.fromEntries(keys.map(key=>[key,key==='食費'?1:0]))},sufficient:{type:'noul',noul:.99}}};}
-   return input.stream?stream(extraction()):new Response(JSON.stringify({status:'completed',output:[{content:[{type:'output_text',text:'食費が100円です。'}]}]}),{headers:{'Content-Type':'application/json; charset=utf-8'}});
+   const result={confirmed_total:0,entries:[{spent_on:source.spent_on,title:source.title,amount:source.amount,category:'食費'}]};
+   return input.stream?stream(result):new Response(JSON.stringify({status:'completed',output:[{content:[{type:'output_text',text:input.text?JSON.stringify(result):'食費が100円です。'}]}]}),{headers:{'Content-Type':'application/json; charset=utf-8'}});
   }}});
   const response=await f.call('owner','/statement/analyze','POST',{mode:'live',files:[file]},'a');assert.equal(response.status,200,await response.clone().text());assert.equal((await response.json()).entries[0].category,'食費');
   f.db.exec("INSERT INTO shared_cards(id,name,active,space_id) VALUES('c','カード',1,'a'); INSERT INTO card_statements(id,card_id,due_month,title,confirmed_total,space_id) VALUES('s','c','2026-09','明細',100,'a'); INSERT INTO card_entries(id,statement_id,spent_on,title,category,amount,space_id) VALUES('e','s','2026-09-01','スーパー','食費',100,'a');");
   const report=await f.call('owner','/report/comment','POST',{mode:'live',month:'2026-09'},'a');assert.equal(report.status,200,await report.clone().text());assert.equal((await report.json()).comment,'食費が100円です。');
-  assert.ok(models.includes('typesafe/jev'));assert.equal(models.filter(m=>m==='openai/gpt-6-luna').length,2);
+  assert.ok(!models.includes('typesafe/jev'));assert.equal(models.filter(m=>m==='openai/gpt-6-luna').length,2);
   delete f.env.AI;f.env.OPENAI_API_KEY='do-not-use';assert.equal((await f.call('owner','/statement/analyze','POST',{mode:'live',files:[file]},'a')).status,503);
  }finally{f.db.close();}
 });

@@ -28,7 +28,7 @@ async function setup(t,run){
  t.after(()=>f.db.close());
  return {...f,calls};
 }
-const start=(onEntry=()=>{},signal=new AbortController().signal,onEvent=()=>{})=>streamStatement(files,signal,onEntry,()=>{},'a',onEvent);
+const start=(onEntry=()=>{},signal=new AbortController().signal,onEvent=()=>{})=>streamStatement(files,signal,onEntry,()=>{},'a',onEvent,'luna');
 
 test('通常の画像取り込みはLuna一回で68件を分類し、要確認が65件あっても再読・Jev要求をしない',async t=>{
  let aiCalls=0;
@@ -195,7 +195,7 @@ test('必要な再読でLunaが429を返したら成功にも部分保存にも�
  let calls=0;const logs=[];t.mock.method(console,'error',value=>logs.push(value));
  const f=await setup(t,async()=>++calls===1?stream(extraction([source()],200)):new Response('private upstream',{status:429}));
  let completed=false;
- await assert.rejects(runStatementImport({demo:false,signal:new AbortController().signal,onProgress:()=>{},analyze:(onEntry,onReasoning,onEvent)=>streamStatement(files,new AbortController().signal,onEntry,onReasoning,'a',onEvent)}).then(()=>{completed=true;}),error=>{
+ await assert.rejects(runStatementImport({demo:false,signal:new AbortController().signal,onProgress:()=>{},analyze:(onEntry,onReasoning,onEvent)=>streamStatement(files,new AbortController().signal,onEntry,onReasoning,'a',onEvent,'luna')}).then(()=>{completed=true;}),error=>{
   assert.equal(error.code,'rate_limit');const d=error.diagnostics;
   assert.equal(d.failure.model,'luna');assert.equal(d.failure.http_status,429);assert.equal(d.engine,'luna');
   assert.equal(d.run.rechecking,true);assert.equal(d.run.received_entries,0);assert.equal(d.recheck_reason,'amount_mismatch');

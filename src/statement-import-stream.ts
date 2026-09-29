@@ -28,7 +28,7 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');
 }
 
-export async function streamStatement(files:StatementFile[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void,spaceId?:string,onEvent?:(event:ImportEvent)=>void,pipeline:'luna'|'split'='luna'):Promise<ImportResult> {
+export async function streamStatement(files:StatementFile[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void,spaceId?:string,onEvent?:(event:ImportEvent)=>void,pipeline:'simple'|'luna'|'split'='simple'):Promise<ImportResult> {
   const startedAt=performance.now();
   const controller=new AbortController();
   const abort=()=>controller.abort(signal.reason);
@@ -44,13 +44,21 @@ export async function streamStatement(files:StatementFile[],signal:AbortSignal,o
       return response;
     }finally{watch.clear();}
   };
-  const extractRequest=(recheck:string|undefined,requestSignal:AbortSignal)=>request('/api/statement/analyze',{files,mode:'live',stream:true,pipeline,...(recheck?{recheck}:{})},requestSignal);
+  const extractRequest=(recheck:string|undefined,requestSignal:AbortSignal)=>request('/api/statement/analyze',{files,mode:'live',stream:true,...(pipeline!=='simple'?{pipeline}:{}),...(recheck?{recheck}:{})},requestSignal);
   try {
     onReasoning?.(`${files.length}ファイルを送信して、読み取りを開始しています…`);
     const response=await extractRequest(undefined,controller.signal);
-    // Preserve the direct OpenAI provider and older deployed Worker protocol.
+    // Normal imports use the original single request and four-field entries.
+    // Explicit older pipeline modes remain available for cached clients.
     const engine=response.headers.get('X-Import-Pipeline');
-    if(engine!=='split'&&engine!=='luna')return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning,onEvent);
+    if(engine!=='split'&&engine!=='luna'){
+      let received=0;
+      return await receiveStatement(response,entry=>{
+        received++;
+        onEvent?.({type:'activity',activity:{phase:'reading',count:null,rechecking:false,text:`読み取り・仕分け ${received}件完了`}});
+        onEntry(entry);
+      },controller.signal,CLIENT_IDLE_MS,undefined,onEvent);
+    }
     let initial:Response|undefined=response;
     return await runImportPipeline({fileCount:files.length,hasNonCsv:files.some(file=>file.kind!=='csv'),engine:engine==='luna'?'luna':'jev',startedAt,
       extract:async(recheck,requestSignal,accept,onReading)=>{
