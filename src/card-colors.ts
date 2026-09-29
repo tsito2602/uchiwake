@@ -18,19 +18,19 @@ export const cardColors = [
   {value:'#cb5c5c',label:'コーラル'},
   {value:'#bd424c',label:'レッド'},
 ] as const;
-// One fixed palette for every category, including the original muted colors.
+// Distinct category colors first; keep every saved palette ID valid.
 export const categoryColors = [
+  {value:'#738778',label:'フォレストグリーン'},
+  {value:'#b78d6a',label:'バーミリオン'},
+  {value:'#8995a5',label:'ロイヤルブルー'},
+  {value:'#c0a16e',label:'ゴールド'},
+  {value:'#8a87a4',label:'バイオレット'},
+  {value:'#6f98a1',label:'ターコイズ'},
+  {value:'#a28c80',label:'チェスナット'},
+  {value:'#b48a96',label:'ローズ'},
+  {value:'#9c94b4',label:'マゼンタ'},
+  {value:'#989898',label:'ニュートラルグレー'},
   ...cardColors,
-  {value:'#738778',label:'セージグリーン'},
-  {value:'#b78d6a',label:'キャメル'},
-  {value:'#8995a5',label:'ブルーグレー'},
-  {value:'#c0a16e',label:'サンドベージュ'},
-  {value:'#8a87a4',label:'ラベンダーグレー'},
-  {value:'#6f98a1',label:'ダスティブルー'},
-  {value:'#a28c80',label:'グレージュ'},
-  {value:'#b48a96',label:'ダスティローズ'},
-  {value:'#9c94b4',label:'ラベンダー'},
-  {value:'#989898',label:'グレー'},
 ] as const;
 export const defaultCardColor = cardColors[0].value;
 export const validCardColor = (value:unknown):value is string =>

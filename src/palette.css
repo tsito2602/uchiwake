@@ -18,15 +18,15 @@
   --palette-d05d8c: #b9537d;
   --palette-cb5c5c: #bd5656;
   --palette-bd424c: #bd424c;
-  --palette-738778: #697b6d;
-  --palette-b78d6a: #916f54;
-  --palette-8995a5: #6e7784;
-  --palette-c0a16e: #88724e;
-  --palette-8a87a4: #75738b;
-  --palette-6f98a1: #5a7b82;
-  --palette-a28c80: #857369;
-  --palette-b48a96: #8e6d76;
-  --palette-9c94b4: #7a738c;
+  --palette-738778: #15803d;
+  --palette-b78d6a: #c2410c;
+  --palette-8995a5: #2563eb;
+  --palette-c0a16e: #8a6500;
+  --palette-8a87a4: #7c3aed;
+  --palette-6f98a1: #007b91;
+  --palette-a28c80: #87512f;
+  --palette-b48a96: #c92c53;
+  --palette-9c94b4: #a62b9d;
   --palette-989898: #757575;
 }
 :root[data-brand-theme="dark"] {
@@ -48,14 +48,14 @@
   --palette-d05d8c: #d46a95;
   --palette-cb5c5c: #d17070;
   --palette-bd424c: #ce7179;
-  --palette-738778: #7e9183;
-  --palette-b78d6a: #b78d6a;
-  --palette-8995a5: #8995a5;
-  --palette-c0a16e: #c0a16e;
-  --palette-8a87a4: #8e8ba7;
-  --palette-6f98a1: #6f98a1;
-  --palette-a28c80: #a28c80;
-  --palette-b48a96: #b48a96;
-  --palette-9c94b4: #9c94b4;
-  --palette-989898: #989898;
+  --palette-738778: #4ade80;
+  --palette-b78d6a: #fb923c;
+  --palette-8995a5: #60a5fa;
+  --palette-c0a16e: #facc15;
+  --palette-8a87a4: #a78bfa;
+  --palette-6f98a1: #22d3ee;
+  --palette-a28c80: #c68a60;
+  --palette-b48a96: #fb7185;
+  --palette-9c94b4: #e879f9;
+  --palette-989898: #a3a3a3;
 }

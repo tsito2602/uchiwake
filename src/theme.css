@@ -52,6 +52,7 @@ html, body, #root { background: var(--canvas); color: var(--ink); }
 :root[data-brand-theme='dark'] .card-active-switch { background: #555; }
 :root[data-brand-theme='dark'] .card-settings-active input:checked + .card-active-switch .card-active-switch-thumb { background: #171717; }
 :root[data-brand-theme='dark'] .color-swatch > input:checked + span { box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--swatch-color); }
+:root[data-brand-theme='dark'] .swatch-check { color: #171717; }
 :root[data-brand-theme='dark'] :is(.card-panel-delete,.delete,.context-delete button,.context-action-group > .context-delete-action,.card-panel-footer button.delete-action) { color: var(--danger); }
 :root[data-brand-theme='dark'] .import-thinking-text { background-image: linear-gradient(90deg,#999 35%,#fff 50%,#999 65%); }
 @media(prefers-reduced-motion:reduce) { :root[data-brand-theme='dark'] .import-thinking-text { background: none; color: var(--muted); } }
