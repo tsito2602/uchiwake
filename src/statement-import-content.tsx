@@ -8,6 +8,7 @@ import { CategoryIcon } from './category-icon';
 import type { ImportProgress } from './statement-import-flow';
 import { ImportThinking } from './import-thinking';
 import { statementFileAccept, statementFileSize, type StatementFile } from './statement-files';
+import { reviewCauseLabel } from './import-policy';
 
 export function ImportSetup({cards,cardId,month,files,mode,demoEnabled,liveEnabled,demoView=false,loading=false,disabled=false,onCard,onMonth,onMode,onFiles,onRemove,onManual}:{
   cards:SharedCard[];cardId:string;month:string;files:StatementFile[];loading?:boolean;disabled?:boolean;
@@ -51,7 +52,8 @@ function ReceiptLines(){return <><FileImage size={22}/><div><span>スーパー</
 export function ImportEntryLine({entry,settings}:{entry:EntryDraft;settings:CategoryAppearance[]}) {
   const appearance=categoryAppearance(entry.category,settings);
   const label=entry.import_meta?.status==='pending'?'仕分け待ち':entry.import_meta?.status==='classifying'?'仕分け中…':entry.category;
-  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color)}}>{label}</span></span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
+  const causes=entry.import_meta?.status==='review'?entry.import_meta.review_causes:undefined;
+  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color)}}>{label}</span>{!!causes?.length&&<small>{causes.map(reviewCauseLabel).join('・')}</small>}</span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
 }
 
 export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {

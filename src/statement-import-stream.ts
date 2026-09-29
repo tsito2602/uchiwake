@@ -9,8 +9,8 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
     const timeout=new AbortController();
     const watch=idleWatch(()=>timeout.abort(new ImportIdleError()),idleMs);
     const combined=AbortSignal.any([signal,timeout.signal]);
-    const data=await abortable(response.json(),combined).catch(error=>{combined.throwIfAborted();return null;}).finally(()=>watch.clear()) as {error?:string}|null;
-    throw new Error(data?.error||'明細を読み取れませんでした');
+    const data=await abortable(response.json(),combined).catch(error=>{combined.throwIfAborted();return null;}).finally(()=>watch.clear()) as {error?:string;code?:string;diagnostics?:unknown}|null;
+    throw Object.assign(new Error(data?.error||'明細を読み取れませんでした'),{code:data?.code},data?.diagnostics?{diagnostics:data.diagnostics}:{});
   }
   if(!response.body||!response.headers.get('Content-Type')?.includes('application/x-ndjson'))throw new Error('明細の受信形式を確認できませんでした');
   for await(const line of streamLines(response.body,signal,idleMs)){
@@ -19,7 +19,7 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
     if(event.type==='entry')onEntry(event.entry);
     else if(event.type==='reasoning'&&typeof event.text==='string'&&event.text.trim())onReasoning?.(event.text);
     else if(event.type==='entry_update'||event.type==='replace'||event.type==='status'||event.type==='activity')onEvent?.(event);
-    else if(event.type==='error')throw Object.assign(new Error(event.error||'明細の受信に失敗しました'),event.diagnostics?{diagnostics:event.diagnostics}:{});
+    else if(event.type==='error')throw Object.assign(new Error(event.error||'明細の受信に失敗しました'),{code:event.code},event.diagnostics?{diagnostics:event.diagnostics}:{});
     else if(event.type==='complete')return event.result as ImportResult;
   }
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');

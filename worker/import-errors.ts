@@ -17,8 +17,25 @@ const messages={
   upstream:'AI側でエラーが発生し、明細の受信を完了できませんでした。'
 } as const;
 export type ImportErrorCode=keyof typeof messages;
+export type ImportDiagnostics=Partial<ReturnType<typeof import('./jev').jevDiagnostics>>&{
+  failure?:{model:'luna'|'jev'|'unknown';stage:'request'|'response'|'stream'|'validation';http_status:number|null;provider_code:string;attempt?:number;source?:{file:number;page:number;row:number}};
+  run?:{rechecking:boolean;received_entries:number};
+  classification?:{evaluated:number;classified:number;review:number;low_confidence:number;low_evidence:number;missing_merchant:number;missing_purchase_context:number;with_purchase_context:number;retries:number;confidence_min:number|null;confidence_max:number|null;noul_min:number|null;noul_max:number|null};
+};
 export class ImportError extends Error {
-  constructor(public code:ImportErrorCode,public diagnostics?:ReturnType<typeof import('./jev').jevDiagnostics>){super(messages[code]);}
+  retryAfterMs?:number;
+  constructor(public code:ImportErrorCode,public diagnostics?:ImportDiagnostics){super(messages[code]);}
+}
+// Do not copy exception messages, arbitrary provider codes, request IDs or bodies.
+export function describeAIFailure(error:ImportError,model:string,stage:NonNullable<ImportDiagnostics['failure']>['stage'],status?:unknown,code?:unknown) {
+  const knownCodes=['insufficient_quota','rate_limit_exceeded','invalid_api_key','model_not_found','permission_denied','server_error','internal_server_error','overloaded_error','service_unavailable'];
+  if(!error.diagnostics?.failure)error.diagnostics={...error.diagnostics,failure:{
+    model:model==='typesafe/jev'?'jev':model==='openai/gpt-6-luna'?'luna':'unknown',stage,
+    http_status:typeof status==='number'&&Number.isInteger(status)&&status>=100&&status<=599?status:null,
+    provider_code:typeof code==='string'&&knownCodes.includes(code)?code:code==null?'absent':'unrecognized'
+  }};
+  if(error.code==='upstream'&&error.diagnostics.failure?.model!=='unknown')error.message=error.diagnostics.failure?.model==='jev'?'費目の仕分け中にAIサービスでエラーが発生したため、取り込みを中断しました。':'明細の読み取り中にAIサービスでエラーが発生したため、取り込みを中断しました。';
+  return error;
 }
 export function upstreamImportError(code:unknown,status?:number):ImportError {
   if(code==='insufficient_quota')return new ImportError('quota');

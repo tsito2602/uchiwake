@@ -249,7 +249,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       const card=state?.cards.find(item=>item.id===selectedCardId);
       setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,source_total:result.source_total,total_alternative:result.total_alternative,demo:!!result.demo});setTotalChecked(false);
       if(!result.entries.length)setNotice('利用行を読み取れませんでした。明細行を手入力してください。');
-    }catch(e){if(!controller.signal.aborted){setNotice(String(e instanceof Error?e.message:e));const diagnostics=(e as {diagnostics?:unknown})?.diagnostics;if(diagnostics)setJevDiagnostic(JSON.stringify({ok:false,diagnostics},null,2));}}
+    }catch(e){if(!controller.signal.aborted){setNotice(String(e instanceof Error?e.message:e));const diagnostics=(e as {diagnostics?:unknown})?.diagnostics;if(diagnostics)setJevDiagnostic(JSON.stringify({ok:false,code:(e as {code?:string})?.code,diagnostics},null,2));}}
     finally{if(importRequest.current===controller){importRequest.current=null;setImportProgress(null);setBusy(false);}}
   }
   function cancelImport() {

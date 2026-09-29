@@ -1,15 +1,18 @@
 import type { EntryDraft } from './domain';
 
 export type ImportSource={file:number;page:number;row:number;excerpt:string};
+export type JevReviewCause='low_confidence'|'low_evidence'|'missing_merchant'|'missing_purchase_context';
 export type ImportMeta={
   id:string;source:ImportSource;context:string;amount_uncertain:boolean;
   status:'pending'|'classifying'|'classified'|'review';original_category?:string;
-  confidence?:number;candidates?:{category:string;score:number}[];history?:string[];
+  confidence?:number;noul?:number;review_causes?:JevReviewCause[];candidates?:{category:string;score:number}[];history?:string[];
   reason?:string;rule_id?:string;remember_rule?:boolean;rule_keyword?:string;
 };
 export type SourceTotal={amount:number;file:number;page:number;label:string};
 export type ClassificationRule={id:string;merchant_key:string;context_keyword:string;category:string};
 export const AUTO_CLASSIFY_CONFIDENCE=0.85; // Provisional; tune against reviewed imports, not as a correctness probability.
+export const AUTO_CLASSIFY_EVIDENCE=0.9;
+export const reviewCauseLabel=(cause:JevReviewCause)=>({low_confidence:'候補が複数',low_evidence:'根拠不足',missing_merchant:'店名不明',missing_purchase_context:'購入内容不明'})[cause];
 export const merchantKey=(title:string)=>title.trim().toLowerCase();
 export const broadMerchant=(title:string)=>/amazon|アマゾン|楽天|rakuten|yahoo|ヤフー|paypal|ペイパル|メルカリ|mercari|コンビニ|セブン.?イレブン|ファミリーマート|ローソン/i.test(title);
 export const rowTotal=(entries:EntryDraft[])=>entries.reduce((sum,row)=>sum+row.amount,0);
@@ -47,7 +50,12 @@ export function jevDecision(raw:unknown,allowed:string[],entry:EntryDraft,review
   if(Object.keys(probabilities).length!==allowed.length||allowed.some(category=>typeof probabilities[category]!=='number'||!Number.isFinite(probabilities[category])||Number(probabilities[category])<0||Number(probabilities[category])>1))throw new Error('invalid Jev probabilities');
   const candidates=allowed.map(category=>({category,score:Number(probabilities[category])})).sort((a,b)=>b.score-a.score);
   if(Math.abs(candidates.reduce((sum,item)=>sum+item.score,0)-1)>0.01||Number(probabilities[answer.choice])+0.000001<candidates[0].score)throw new Error('invalid Jev choice');
-  const evidence=sufficient.noul>=0.9&&!!entry.title&&(!broadMerchant(entry.title)||!!entry.import_meta?.context.trim());
-  const certain=evidence&&answer.confidence>=AUTO_CLASSIFY_CONFIDENCE;
-  return {...entry,category:certain?answer.choice:reviewCategory,import_meta:{...entry.import_meta!,status:certain?'classified':'review',confidence:answer.confidence,candidates:candidates.slice(0,3),original_category:certain?answer.choice:reviewCategory,...(!certain?{reason:evidence?'複数の費目が候補に残っています。購入内容に合う費目を選んでください。':'店名だけでは購入内容を特定できません。購入履歴・レシートを確認して費目を選んでください。'}:{})}};
+  const causes:JevReviewCause[]=[];
+  if(answer.confidence<AUTO_CLASSIFY_CONFIDENCE)causes.push('low_confidence');
+  if(sufficient.noul<AUTO_CLASSIFY_EVIDENCE)causes.push('low_evidence');
+  if(!entry.title)causes.push('missing_merchant');
+  if(broadMerchant(entry.title)&&!entry.import_meta?.context.trim())causes.push('missing_purchase_context');
+  const certain=causes.length===0;
+  const reasons={low_confidence:'複数の費目が候補に残っています。',low_evidence:'費目を決める根拠が十分ではありません。',missing_merchant:'店名・内容が不明です。',missing_purchase_context:'このお店の名前だけでは購入内容を特定できません。'};
+  return {...entry,category:certain?answer.choice:reviewCategory,import_meta:{...entry.import_meta!,status:certain?'classified':'review',confidence:answer.confidence,noul:sufficient.noul,review_causes:causes,candidates:candidates.slice(0,3),original_category:certain?answer.choice:reviewCategory,...(!certain?{reason:causes.map(cause=>reasons[cause]).join('')+'購入履歴・レシートを確認して費目を選んでください。'}:{})}};
 }

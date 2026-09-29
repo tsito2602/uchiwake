@@ -302,3 +302,13 @@ test('未解決の金額には原本との金額差・具体的な確認理由�
  const progress=processing({settings:[],progress:{phase:'sorting',count:null,demo:false,entries:[{...entry,import_meta:{...entry.import_meta,status:'classifying'}}]}});
  assert.ok(progress.includes('仕分け中…'));assert.ok(progress.includes('仕分け済み <b>0</b>件'));
 });
+
+test('要確認になった理由を処理中にも表示し、仕分け待ち・仕分け中と区別する',()=>{
+ const entry={title:'テスト明細',spent_on:'2026-09-01',category:'要確認',amount:100,import_meta:{id:'1',status:'review',review_causes:['low_confidence','low_evidence']}};
+ const render=row=>processing({settings:[],progress:{phase:'sorting',count:1,demo:false,entries:[row]}});
+ assert.ok(render(entry).includes('候補が複数・根拠不足'));
+ for(const [status,label] of [['pending','仕分け待ち'],['classifying','仕分け中…']]){
+  const markup=render({...entry,import_meta:{...entry.import_meta,status}});
+  assert.ok(markup.includes(label));assert.ok(!markup.includes('候補が複数・根拠不足'));
+ }
+});

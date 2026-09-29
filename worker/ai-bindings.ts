@@ -1,6 +1,6 @@
 import { abortable, idleWatch, IMPORT_IDLE_MS, ImportIdleError } from '../src/streaming/idle';
 import { streamLines } from '../src/streaming/lines';
-import { ImportError, upstreamImportError } from './import-errors';
+import { ImportError, upstreamImportError, describeAIFailure } from './import-errors';
 
 export type AIBindings={
   AI_IMPORT_PROVIDER?:string;AI_GATEWAY_ID?:string;
@@ -22,24 +22,31 @@ export async function cloudflareRun(env:AIBindings,model:string,input:Record<str
   const timer=new AbortController(),signal=AbortSignal.any([requestSignal,timer.signal]);
   signal.throwIfAborted();
   const watch=idleWatch(()=>timer.abort(new ImportError('timeout')));
+  let status:unknown,code:unknown,stage:'request'|'response'='request';
   try{
     // The binding auto-decodes only the exact Content-Type "application/json".
     // Preserve HTTP status and decode JSON bodies ourselves, including charset variants.
     const raw=await abortable(env.AI.run(model,input,{gateway:{id:env.AI_GATEWAY_ID,skipCache:true,collectLog:false},returnRawResponse:true,signal}),signal);
     watch.clear();
+    stage='response';if(raw instanceof Response)status=raw.status;
     if(raw instanceof Response&&!raw.ok){
       let data:unknown;
       try{data=await bindingJson(raw,signal);}catch(error){if(!(error instanceof SyntaxError)&&!(error instanceof ImportError&&error.code==='invalid_result'))throw error;}
-      const code=(data as {error?:{code?:unknown};errors?:{code?:unknown}[]})?.error?.code??(data as {errors?:{code?:unknown}[]})?.errors?.[0]?.code;
-      throw upstreamImportError(code,raw.status);
+      code=(data as {error?:{code?:unknown};errors?:{code?:unknown}[]})?.error?.code??(data as {errors?:{code?:unknown}[]})?.errors?.[0]?.code;
+      const failure=upstreamImportError(code,raw.status);
+      const after=raw.headers.get('Retry-After');
+      if(after){const ms=/^\d+(?:\.\d+)?$/.test(after)?Number(after)*1000:Date.parse(after)-Date.now();if(Number.isFinite(ms)&&ms>=0)failure.retryAfterMs=ms;}
+      throw failure;
     }
     return input.stream===true?raw:await bindingJson(raw,signal);
   }catch(error){
-    if(signal.aborted)throw signal.reason;
-    if(error instanceof ImportError)throw error;
-    if(error instanceof ImportIdleError)throw new ImportError('timeout');
-    if(error instanceof SyntaxError)throw new ImportError('invalid_result');
-    throw upstreamImportError((error as {code?:unknown})?.code,(error as {status?:number})?.status);
+    // A sibling request may abort us with its own failure; preserve its origin.
+    if(requestSignal.aborted)throw requestSignal.reason;
+    if(signal.aborted)throw describeAIFailure(signal.reason instanceof ImportError?signal.reason:new ImportError('timeout'),model,stage,status,code);
+    const details=error as {code?:unknown;status?:unknown};
+    if(!(error instanceof ImportError)){status??=details?.status;code??=details?.code;}
+    const failure=error instanceof ImportError?error:error instanceof ImportIdleError?new ImportError('timeout'):error instanceof SyntaxError?new ImportError('invalid_result'):upstreamImportError(code,typeof status==='number'?status:undefined);
+    throw describeAIFailure(failure,model,stage,status,code);
   }finally{watch.clear();}
 }
 

@@ -1,4 +1,4 @@
-import { requestJev } from './jev';
+import { requestJevWithRetry } from './jev';
 import { cloudflareRun, type AIBindings } from './ai-bindings';
 import type { EntryDraft } from '../src/domain';
 import type { StatementFile } from '../src/statement-files';
@@ -7,7 +7,7 @@ import { jevDecision, applicableRules, matchingRule, rowTotal, type SourceTotal 
 import { statementFileParts } from './statement-files';
 import { StatementDecoder } from './statement-stream';
 import { classificationMemory } from './classification-memory';
-import { ImportError, incompleteImportError, logImportFailure, upstreamImportError } from './import-errors';
+import { ImportError, incompleteImportError, logImportFailure, upstreamImportError, describeAIFailure, type ImportDiagnostics } from './import-errors';
 import { IMPORT_IDLE_MS, ImportIdleError } from '../src/streaming/idle';
 import { sseData } from '../src/streaming/lines';
 
@@ -39,6 +39,8 @@ type Send=(event:Record<string,unknown>)=>void;
 export async function runLunaJev(env:AIBindings&{DB:D1Database},space:string,files:StatementFile[],categories:string[],reviewCategory:string,requestSignal:AbortSignal,send:Send):Promise<ImportResult> {
   const control=new AbortController();
   const signal=AbortSignal.any([requestSignal,control.signal]);
+  let rechecking=false,receivedEntries=0,readingInProgress=true;
+  const classification:NonNullable<ImportDiagnostics['classification']>={evaluated:0,classified:0,review:0,low_confidence:0,low_evidence:0,missing_merchant:0,missing_purchase_context:0,with_purchase_context:0,retries:0,confidence_min:null,confidence_max:null,noul_min:null,noul_max:null};
   try{
   if(!env.AI||!env.AI_GATEWAY_ID)throw new ImportError('configuration');
   const allowed=categories.filter(category=>category!==reviewCategory);
@@ -53,11 +55,28 @@ export async function runLunaJev(env:AIBindings&{DB:D1Database},space:string,fil
     if(rule)return {...base,category:rule.category,import_meta:{...base.import_meta,status:'classified',original_category:rule.category,rule_id:rule.id}};
     if(applicableRules(base,memory.rules).length)return {...base,category:reviewCategory,import_meta:{...base.import_meta,status:'review',original_category:reviewCategory,reason:'保存された自動分類ルールの費目が競合しています。今回の費目を選び、スペース設定でルールを整理してください。'}};
     try{
-    const {payload,diagnostics}=await requestJev(env,entry,allowed,signal);
-    try{return jevDecision(payload,allowed,base,reviewCategory);}catch{throw new ImportError('classification_result',diagnostics);}
-    }catch(error){if(error instanceof ImportError&&error.code==='invalid_result')throw new ImportError('classification_result');throw error;}
+    const {payload,diagnostics}=await requestJevWithRetry(env,entry,allowed,signal,attempt=>{
+      classification.retries++;
+      activity({phase:readingInProgress?'reading':'sorting',count:readingInProgress?null:receivedEntries,rechecking,text:`仕分けサービスが一時的に応答できないため、再試行を待っています（${attempt}/3回目）…`});
+    });
+    let row:EntryDraft;
+    try{row=jevDecision(payload,allowed,base,reviewCategory);}catch{throw new ImportError('classification_result',diagnostics);}
+    classification.evaluated++;classification[row.import_meta!.status==='classified'?'classified':'review']++;
+    classification.with_purchase_context+=Number(!!entry.import_meta?.context.trim());
+    for(const cause of row.import_meta!.review_causes??[])classification[cause]++;
+    for(const key of ['confidence','noul'] as const){const value=row.import_meta![key]!;classification[`${key}_min`]=Math.min(classification[`${key}_min`]??value,value);classification[`${key}_max`]=Math.max(classification[`${key}_max`]??value,value);}
+    return row;
+    }catch(error){
+      if(signal.aborted)throw signal.reason;
+      const failure=error instanceof ImportError?(error.code==='invalid_result'?new ImportError('classification_result',error.diagnostics):error):new ImportError('upstream');
+      describeAIFailure(failure,'typesafe/jev','validation');
+      const {file,page,row}=entry.import_meta!.source;
+      failure.diagnostics!.failure!.source={file,page,row};
+      throw failure;
+    }
   };
   const extract=async(recheck:string|undefined,previous?:EntryDraft[],recheckReason?:string)=>{
+    rechecking=!!recheck;receivedEntries=0;readingInProgress=true;
     const decoder=new StatementDecoder(categories,reviewCategory,raw=>extractedEntry(raw,files.length,reviewCategory));
     const entries:EntryDraft[]=[];
     const active=new Set<Promise<void>>();
@@ -88,7 +107,7 @@ export async function runLunaJev(env:AIBindings&{DB:D1Database},space:string,fil
         if(duplicate.title===entry.title&&duplicate.amount===entry.amount&&duplicate.spent_on===entry.spent_on)return;
         throw new ImportError('invalid_result'); // Conflicting readings of one source location.
       }
-      const index=entries.length;entries.push(entry);sources.set(entry.import_meta!.id,entry);send({type:'entry',entry});publish();
+      const index=entries.length;entries.push(entry);receivedEntries=entries.length;sources.set(entry.import_meta!.id,entry);send({type:'entry',entry});publish();
       const old=fingerprints.get(JSON.stringify([entry.title,entry.spent_on,entry.amount,entry.import_meta?.context,entry.import_meta?.amount_uncertain]));
       if(old){update(index,{...old,import_meta:{...old.import_meta!,id:entry.import_meta!.id,source:entry.import_meta!.source}});return;}
       // Keep consuming Luna's stream while the bounded Jev queue works independently.
@@ -116,14 +135,20 @@ export async function runLunaJev(env:AIBindings&{DB:D1Database},space:string,fil
           decoder.finish();completed=true;break;
         }else if(event.type==='response.incomplete')throw incompleteImportError(event.response?.incomplete_details?.reason);
         else if(event.type==='response.refusal.delta')throw new ImportError('refusal');
-        else if(event.type==='error'||event.type==='response.failed')throw upstreamImportError(event.response?.error?.code??event.error?.code??event.code);
+        else if(event.type==='error'||event.type==='response.failed'){
+          const code=event.response?.error?.code??event.error?.code??event.code;
+          throw describeAIFailure(upstreamImportError(code),'openai/gpt-6-luna','stream',undefined,code);
+        }
       }
       if(!completed)throw new ImportError('disconnected');
-      readingFinished=true;publish();
+      readingFinished=true;readingInProgress=false;publish();
       while(active.size)await Promise.all([...active]);
       signal.throwIfAborted();if(failure)throw failure;
       const parsed=JSON.parse(decoder.text);
       return {entries,source_total:sourceTotal(parsed.source_total,parsed.confirmed_total,files.length)};
+    }catch(error){
+      if(signal.aborted)throw signal.reason;
+      throw describeAIFailure(error instanceof ImportError?error:new ImportError(error instanceof ImportIdleError?'timeout':'invalid_result'),'openai/gpt-6-luna','stream');
     }finally{
       // Handlers above always consume rejections; stop writes after this extraction fails.
       if(!completed)failure=failure||new ImportError('incomplete');
@@ -151,6 +176,11 @@ export async function runLunaJev(env:AIBindings&{DB:D1Database},space:string,fil
   activity({phase:'checking',text:'金額の照合結果と要確認の項目をまとめています…',count:result.entries.length,rechecking:false});
   send({type:'status',phase:'checking'});
   return {...result,confirmed_total:result.source_total?.amount??0,...(totalAlternative?{total_alternative:totalAlternative}:{})};
+  }catch(error){
+    if(requestSignal.aborted)throw requestSignal.reason;
+    const failure=error instanceof ImportError?error:new ImportError(error instanceof ImportIdleError?'timeout':'invalid_result');
+    failure.diagnostics={...failure.diagnostics,run:{rechecking,received_entries:receivedEntries},classification:{...classification}};
+    throw failure;
   }finally{control.abort();}
 }
 
