@@ -18,7 +18,7 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
     const event=JSON.parse(line);
     if(event.type==='entry')onEntry(event.entry);
     else if(event.type==='reasoning'&&typeof event.text==='string'&&event.text.trim())onReasoning?.(event.text);
-    else if(event.type==='entry_update'||event.type==='replace'||event.type==='status')onEvent?.(event);
+    else if(event.type==='entry_update'||event.type==='replace'||event.type==='status'||event.type==='activity')onEvent?.(event);
     else if(event.type==='error')throw new Error(event.error||'明細の受信に失敗しました');
     else if(event.type==='complete')return event.result as ImportResult;
   }
@@ -32,6 +32,7 @@ export async function streamStatement(files:StatementFile[],signal:AbortSignal,o
   if(signal.aborted)abort();
   const watch=idleWatch(()=>controller.abort(new ImportIdleError()),CLIENT_IDLE_MS);
   try {
+    onReasoning?.(`${files.length}ファイルを送信して、読み取りを開始しています…`);
     const response=await abortable(fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json',...(spaceId?{'X-Space-Id':spaceId}:{})},cache:'no-store',signal:controller.signal,body:JSON.stringify({files,mode:'live',stream:true})}),controller.signal);
     watch.clear();
     if(response.status===401)window.dispatchEvent(new Event('uchiwake:session-expired'));

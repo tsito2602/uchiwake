@@ -1,8 +1,9 @@
 import type { EntryDraft } from './domain';
 
 export type ImportResult={confirmed_total:number;entries:EntryDraft[];demo?:boolean;source_total?:import('./import-policy').SourceTotal|null;total_alternative?:import('./import-policy').SourceTotal};
-export type ImportEvent={type:'entry_update';entry:EntryDraft}|{type:'replace';entries:EntryDraft[]}|{type:'status';phase:'reading'|'sorting'|'checking'};
-export type ImportProgress={phase:'reading'|'sorting'|'checking';entries:EntryDraft[];count:number|null;demo:boolean;reasoning?:string;checkedCount?:number;checkedTotal?:number};
+export type ImportActivity={phase:'reading'|'sorting'|'checking';text:string;count:number|null;rechecking:boolean};
+export type ImportEvent={type:'entry_update';entry:EntryDraft}|{type:'replace';entries:EntryDraft[]}|{type:'status';phase:'reading'|'sorting'|'checking'}|{type:'activity';activity:ImportActivity};
+export type ImportProgress={phase:'reading'|'sorting'|'checking';entries:EntryDraft[];count:number|null;demo:boolean;reasoning?:string;activity?:ImportActivity;checkedCount?:number;checkedTotal?:number};
 
 export function demoImportResult(month:string):ImportResult {
   const entries:EntryDraft[]=[
@@ -45,19 +46,22 @@ export async function runStatementImport({analyze,onProgress,signal,demo,reduced
   if(!demo){
     const entries:EntryDraft[]=[];
     let reasoning:string|undefined;
+    let activity:ImportActivity|undefined;
+    const publish=(phase:ImportProgress['phase']=entries.length?'sorting':'reading')=>onProgress({phase:activity?.phase??phase,entries:[...entries],count:activity?.count??null,demo:false,reasoning,activity});
     const result=await analyze(entry=>{
       signal.throwIfAborted();
       entries.push(entry);
-      onProgress({phase:'sorting',entries:[...entries],count:null,demo:false,reasoning});
+      publish();
     },text=>{
       signal.throwIfAborted();
       reasoning=text;
-      onProgress({phase:entries.length?'sorting':'reading',entries:[...entries],count:null,demo:false,reasoning});
+      publish();
     },event=>{
       signal.throwIfAborted();
       if(event.type==='entry_update'){const index=entries.findIndex(row=>row.import_meta?.id===event.entry.import_meta?.id);if(index>=0)entries[index]=event.entry;}
       else if(event.type==='replace')entries.splice(0,entries.length,...event.entries);
-      onProgress({phase:event.type==='status'?event.phase:entries.length?'sorting':'reading',entries:[...entries],count:null,demo:false,reasoning});
+      else if(event.type==='activity')activity=event.activity;
+      publish(event.type==='status'?event.phase:undefined);
     });
     signal.throwIfAborted();
     const total=result.entries.reduce((sum,entry)=>sum+entry.amount,0);

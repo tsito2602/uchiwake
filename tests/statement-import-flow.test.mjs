@@ -82,3 +82,20 @@ test('要約で読み取り表示を更新し、受信済みの明細を保持�
   assert.throws(()=>summarize('古い通信の更新'),{name:'AbortError'});
   assert.equal(frames.at(-1).phase,'checking');
 });
+
+test('実工程を優先して読み取りと仕分けの並行処理・全件数確定・再確認を表示する',async()=>{
+ const frames=[],controller=new AbortController();let emit;
+ const sample=demoImportResult('2026-09');
+ await runStatementImport({demo:false,signal:controller.signal,onProgress:p=>frames.push(p),analyze:async(onEntry,onReasoning,onEvent)=>{
+  emit=onEvent;
+  onEvent({type:'activity',activity:{phase:'reading',text:'読み取り中',count:null,rechecking:false}});
+  onEntry(sample.entries[0]);onReasoning('従来の表示');
+  assert.equal(frames.at(-1).phase,'reading');assert.equal(frames.at(-1).activity.text,'読み取り中');assert.equal(frames.at(-1).count,null);
+  onEvent({type:'activity',activity:{phase:'sorting',text:'仕分け中',count:1,rechecking:false}});
+  assert.equal(frames.at(-1).phase,'sorting');assert.equal(frames.at(-1).count,1);
+  onEvent({type:'activity',activity:{phase:'reading',text:'差額を再確認中',count:null,rechecking:true}});onEvent({type:'replace',entries:[]});
+  assert.equal(frames.at(-1).phase,'reading');assert.equal(frames.at(-1).count,null);assert.equal(frames.at(-1).activity.rechecking,true);
+  return sample;
+ }});
+ controller.abort();assert.throws(()=>emit({type:'activity',activity:{phase:'reading',text:'古い結果',count:null,rechecking:false}}),{name:'AbortError'});
+});
