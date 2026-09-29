@@ -128,9 +128,12 @@ app.put('/api/category-settings/:category', async c => {
 app.get('/api/settlement-history', async c => {
   const month=c.req.query('month')||'';
   if (!monthPattern.test(month)) return error('月を確認してください');
-  if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json({months:demoHistory(month)}):error('見つかりません',404);
+  const period=c.req.query('months')??'60';
+  if(period!=='60'&&period!=='120')return error('表示期間を確認してください');
+  const count=Number(period);
+  if(c.req.query('demo')==='1')return c.env.APP_ENV==='staging'?c.json({months:demoHistory(month,undefined,count)}):error('見つかりません',404);
   const [year,value]=month.split('-').map(Number);
-  const start=new Date(Date.UTC(year,value-60,1)).toISOString().slice(0,7);
+  const start=new Date(Date.UTC(year,value-count,1)).toISOString().slice(0,7);
   const id=c.get('spaceId'),personal=c.get('space').kind==='personal';
   const [bills,statements,entries,rentRules,settings,rules,members,preferences]=await Promise.all([
     c.env.DB.prepare('SELECT * FROM bills WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,start,month).all<Bill>(),
@@ -142,8 +145,8 @@ app.get('/api/settlement-history', async c => {
     membersFor(c.env.DB,id),
     readSpacePreferences(c.env.DB,id)
   ]);
-  return c.json({months:Array.from({length:60},(_,index)=>{
-    const key=new Date(Date.UTC(year,value-60+index,1)).toISOString().slice(0,7);
+  return c.json({months:Array.from({length:count},(_,index)=>{
+    const key=new Date(Date.UTC(year,value-count+index,1)).toISOString().slice(0,7);
     const items=settlementItems({month:key,cards:[],bills:bills.results.filter(b=>b.due_month===key),statements:statements.results.filter(s=>s.due_month===key),entries:entries.results,rent_rules:rentRules.results,category_settings:settings,space_preferences:preferences},personal);
     const total=items.reduce((n,item)=>n+item.amount,0);
     const rule=rules.results.find(r=>r.scope==='month'&&r.month===key)??rules.results.find(r=>r.scope==='default'&&r.month<=key);

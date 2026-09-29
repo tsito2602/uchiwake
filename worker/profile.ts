@@ -14,22 +14,22 @@ export function googleAvatar(value: unknown): string | undefined {
   } catch { /* Ignore an invalid provider image URL. */ }
 }
 
-export async function profileFor<T extends { id: string; name: string; avatarUrl?: string }>(db: D1Database | undefined, user: T): Promise<T> {
-  if (!db) return user;
+async function prepareProfiles(db:D1Database) {
   await db.prepare(profileSchema).run();
-  const profile = await db.prepare('SELECT display_name, avatar_url FROM user_profiles WHERE user_id = ?').bind(user.id).first<{ display_name: string | null; avatar_url: string | null }>();
-  return { ...user, name: profile?.display_name ?? user.name, avatarUrl: googleAvatar(profile?.avatar_url) ?? user.avatarUrl };
+  // Keep the legacy nullable column for compatibility; discard its values.
+  await db.prepare('UPDATE user_profiles SET display_name=NULL WHERE display_name IS NOT NULL').run();
+}
+
+export async function profileFor<T extends { id: string; avatarUrl?: string }>(db: D1Database | undefined, user: T): Promise<T> {
+  if (!db) return user;
+  await prepareProfiles(db);
+  const profile = await db.prepare('SELECT avatar_url FROM user_profiles WHERE user_id = ?').bind(user.id).first<{ avatar_url: string | null }>();
+  return { ...user, avatarUrl: googleAvatar(profile?.avatar_url) ?? user.avatarUrl };
 }
 
 export async function saveProviderAvatar(db: D1Database | undefined, id: string, avatar: string | undefined) {
   if (!db || !avatar) return;
-  await db.prepare(profileSchema).run();
+  await prepareProfiles(db);
   await db.prepare(`INSERT INTO user_profiles (user_id, avatar_url) VALUES (?, ?)
     ON CONFLICT(user_id) DO UPDATE SET avatar_url = excluded.avatar_url, updated_at = CURRENT_TIMESTAMP`).bind(id, avatar).run();
-}
-
-export async function saveDisplayName(db: D1Database, id: string, name: string) {
-  await db.prepare(profileSchema).run();
-  await db.prepare(`INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET display_name = excluded.display_name, updated_at = CURRENT_TIMESTAMP`).bind(id, name).run();
 }

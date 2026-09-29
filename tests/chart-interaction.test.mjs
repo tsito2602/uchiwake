@@ -56,8 +56,8 @@ test('左右の端や指がグラフの外に出ても金額ラベルが表示�
 });
 
 test('横スクロール後も指の下の月を選び、金額ラベルを表示領域内に保つ',()=>{
-  for(const width of [140,280,472])for(const visible of [6,12,36,60]) {
-    const count=60,slot=width/visible,labelWidth=Math.min(width,184);
+  for(const count of [60,120])for(const width of [140,280,472])for(const visible of [6,12,36,60]) {
+    const slot=width/visible,labelWidth=Math.min(width,184);
     for(const first of [0,Math.floor((count-visible)/2),count-visible]) {
       const scrollLeft=first*slot;
       for(let i=0;i<visible;i++) {
@@ -81,13 +81,14 @@ test('月をタップしても表示中の位置を保ち、表示外の月だ�
   assert.equal(historyScrollForIndex(59,60,300,60,0),0);
 });
 
-test('過去の月を選んでも新しい月を残し、5年の範囲を超えたときだけ取得期間を動かす',()=>{
-  assert.equal(historyEndMonth('2026-09'),'2026-09');
-  assert.equal(historyEndMonth('2026-04','2026-09'),'2026-09');
-  assert.equal(historyEndMonth('2021-10','2026-09'),'2026-09');
-  assert.equal(historyEndMonth('2021-09','2026-09'),'2026-08');
-  assert.equal(historyEndMonth('2026-10','2026-09'),'2026-10');
-  assert.equal(historyEndMonth('2018-12','2026-09'),'2023-11');
+test('初期表示の左右に過去と未来を用意し、範囲内の月を選んでも位置を保つ',()=>{
+  assert.equal(historyEndMonth('2026-09'),'2031-09');
+  assert.equal(historyEndMonth('2026-04','2031-09'),'2031-09');
+  assert.equal(historyEndMonth('2026-12','2031-09'),'2031-09');
+  assert.equal(historyEndMonth('2021-10','2031-09'),'2031-09');
+  assert.equal(historyEndMonth('2021-09','2031-09'),'2026-09');
+  assert.equal(historyEndMonth('2031-10','2031-09'),'2036-10');
+  assert.equal(historyEndMonth('2018-12','2031-09'),'2023-12');
 });
 
 test('左右の端へ近づくほど速くスクロールし、中央では止まる',()=>{

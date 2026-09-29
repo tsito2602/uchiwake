@@ -5,8 +5,8 @@ import {build} from 'esbuild';
 const {outputFiles}=await build({entryPoints:['src/history-chart-gesture.ts'],bundle:true,write:false,format:'esm',platform:'node'});
 const {createHistoryGesture}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 
-function fixture({scrollLeft=1500,visibleMonths=6}={}) {
-  const viewport={left:20,width:300,count:60,visibleMonths,scrollLeft};
+function fixture({scrollLeft=1500,visibleMonths=6,count=60}={}) {
+  const viewport={left:20,width:300,count,visibleMonths,scrollLeft};
   const frames=new Map(),selected=[],previews=[];
   let serial=0,time=0;
   const gesture=createHistoryGesture({
@@ -87,4 +87,18 @@ test('別の指の移動・終了・キャンセルで操作中の指を置き�
   const f=fixture();f.gesture.start(f.pointer(95));assert.equal(f.gesture.start(f.pointer(20,100,2)),false);
   f.gesture.move(f.pointer(20,100,2));f.gesture.end(f.pointer(20,100,2));f.gesture.cancel(2);
   f.advance(96);f.gesture.end(f.pointer(95));assert.deepEqual(f.selected,[31]);
+});
+
+test('6M・1Y・3Y・5Yのすべてで現在の月を越えて未来へスクロールし、タップでその月を選ぶ',()=>{
+  for(const visibleMonths of [6,12,36,60]) {
+    const slot=300/visibleMonths;
+    const f=fixture({count:120,visibleMonths,scrollLeft:(60-visibleMonths)*slot});
+    f.gesture.start(f.pointer(170));f.gesture.move(f.pointer(320));f.advance(1024);
+    assert.ok(f.previews.at(-1)>59);
+    f.gesture.end(f.pointer(320));assert.deepEqual(f.selected,[]);
+    f.gesture.start(f.pointer(315));const future=f.previews.at(-1);f.advance(80);f.gesture.end(f.pointer(315));
+    assert.deepEqual(f.selected,[future]);assert.ok(future>59);
+    f.gesture.start(f.pointer(170));f.gesture.move(f.pointer(20));const before=f.viewport.scrollLeft;f.advance(1024);
+    assert.ok(f.viewport.scrollLeft<before);f.gesture.cancel();
+  }
 });

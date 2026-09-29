@@ -45,10 +45,10 @@ export function demoState(month:string,anchor=demoAnchor()):State {
   return {month,bills,statements,entries,cards,category_settings:[],rent_rules:[{effective_month:demoMonths(anchor)[0],amount:126000}],space_preferences:{rent_enabled:true,revision:0},ai_enabled:false,demo_enabled:true};
 }
 
-export function demoHistory(month:string,anchor=demoAnchor()) {
+export function demoHistory(month:string,anchor=demoAnchor(),count=60) {
   const available=new Set(demoMonths(anchor));
-  return Array.from({length:60},(_,index)=>{
-    const key=shiftMonth(month,index-59);
+  return Array.from({length:count},(_,index)=>{
+    const key=shiftMonth(month,index-count+1);
     if(!available.has(key))return {month:key,amount:0,total:0};
     const state=demoState(key,anchor);
     const total=state.statements.reduce((sum,item)=>sum+item.confirmed_total,0)+(state.bills[0]?.amount??126000);

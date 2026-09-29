@@ -10,7 +10,7 @@ import { panelOrigin, type PanelOrigin } from './use-panel-morph';
 type View='menu'|'create'|'join';
 type Props={space:Space;spaces:Space[];disabled:boolean;api:Api;onSelect:(id:string)=>void;onSettings:()=>void;onRefresh:()=>Promise<void>;onDockChange:SpaceDockChange};
 export function SpaceControls({space,spaces,disabled,api,onSelect,onSettings,onRefresh,onDockChange}:Props){
- const [view,setView]=useState<View|null>(null),[name,setName]=useState(''),[code,setCode]=useState(()=>sessionStorage.getItem('uchiwake-invite-code')||''),[preview,setPreview]=useState<{space_id:string;name:string;inviter:string}|null>(null);
+ const [view,setView]=useState<View|null>(null),[name,setName]=useState(''),[code,setCode]=useState(()=>sessionStorage.getItem('uchiwake-invite-code')||''),[preview,setPreview]=useState<{space_id:string;name:string}|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const [origin,setOrigin]=useState<PanelOrigin>(),[closing,setClosing]=useState(false);
  const exitAction=useRef<()=>void>(()=>setView('menu'));
@@ -38,6 +38,6 @@ export function SpaceControls({space,spaces,disabled,api,onSelect,onSettings,onR
  {view&&view!=='menu'&&<SpacePanel title={view==='create'?'スペースを作成':'招待コードで参加'} icon={view==='create'?Plus:KeyRound} context={context} origin={origin} closing={closing} onExited={()=>exitAction.current()} onDockChange={onDockChange}>
  {error&&<p className="notice" role="alert">{error}</p>}
  {view==='create'&&<form onSubmit={e=>{e.preventDefault();if(!context.disabled)void create();}}><label className="field"><span>スペース名</span><input maxLength={40} value={name} onChange={e=>setName(e.target.value)} placeholder="うちの家計" disabled={blocked}/></label><p className="subtle">作成後、招待コードでメンバーを追加できます。</p></form>}
- {view==='join'&&<form onSubmit={e=>{e.preventDefault();if(!context.disabled)void join();}}><label className="field"><span>招待コード</span><input autoCapitalize="characters" autoComplete="off" spellCheck={false} value={code} disabled={blocked} onChange={e=>{setCode(e.target.value);setPreview(null);sessionStorage.setItem('uchiwake-invite-code',e.target.value);}} placeholder="XXXX-XXXX-XXXX"/></label>{preview&&<div className="space-join-preview"><strong>{preview.name}</strong><p>{preview.inviter}さんからの招待</p><p className="subtle">このスペースの家計を一緒に閲覧・編集できます。</p></div>}</form>}
+ {view==='join'&&<form onSubmit={e=>{e.preventDefault();if(!context.disabled)void join();}}><label className="field"><span>招待コード</span><input autoCapitalize="characters" autoComplete="off" spellCheck={false} value={code} disabled={blocked} onChange={e=>{setCode(e.target.value);setPreview(null);sessionStorage.setItem('uchiwake-invite-code',e.target.value);}} placeholder="XXXX-XXXX-XXXX"/></label>{preview&&<div className="space-join-preview"><strong>{preview.name}</strong><p className="subtle">このスペースの家計を一緒に閲覧・編集できます。</p></div>}</form>}
  </SpacePanel>}</>;
 }

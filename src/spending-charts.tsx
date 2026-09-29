@@ -69,8 +69,8 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth}:{data:H
     return()=>{release();window.removeEventListener('blur',release);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);document.removeEventListener('visibilitychange',hide);};
   },[gesture]);
   const visibleCount=Math.min(data.length,visibleMonths);
-  const firstVisible=plotWidth?Math.floor(scrollLeft/plotWidth*visibleCount):Math.max(0,data.length-visibleCount);
-  const lastVisible=plotWidth?Math.ceil((scrollLeft+plotWidth)/plotWidth*visibleCount):data.length;
+  const firstVisible=plotWidth?Math.floor(scrollLeft/plotWidth*visibleCount+1e-9):Math.max(0,data.length-visibleCount);
+  const lastVisible=plotWidth?Math.ceil((scrollLeft+plotWidth)/plotWidth*visibleCount-1e-9):data.length;
   const maximum=Math.max(1,...data.slice(firstVisible,lastVisible).map(item=>Math.abs(item.total)));
   const slot=1000/Math.max(1,data.length);
   const index=Math.min(data.length-1,active??cursor.current??Math.max(0,data.findIndex(item=>item.month===month)));

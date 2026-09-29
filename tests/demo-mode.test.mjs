@@ -25,7 +25,7 @@ test('デモ表示は半年分のカード2枚と家賃を使い、各月の明�
 
 test('デモデータはステージングだけで読み取り可能でDBを書き換えない', async () => {
   const DB={prepare:()=>{throw Error('Demo must not use DB');}};
-  for(const path of ['/api/state?month=2026-09&demo=1','/api/settlement-history?month=2026-09&demo=1']) {
+  for(const path of ['/api/state?month=2026-09&demo=1','/api/settlement-history?month=2026-09&demo=1','/api/settlement-history?month=2031-09&months=120&demo=1']) {
     const staging=await app.fetch(read(path),{...base,DB});
     assert.equal(staging.status,200);
     const production=await app.fetch(read(path),{...base,DB,APP_ENV:'production'});
@@ -33,6 +33,13 @@ test('デモデータはステージングだけで読み取り可能でDBを書
   }
   const legacy=await app.fetch(request('/api/expenses',{spent_on:'2026-09-01',title:'旧レシート',amount:100}),base);
   assert.equal(legacy.status,404);
+});
+
+test('デモの未来は空の月としてスクロールでき、過去の6か月分は保持する',()=>{
+  const data=demoHistory('2031-09','2026-09',120);
+  assert.equal(data.length,120);assert.equal(data[0].month,'2021-10');assert.equal(data.at(-1).month,'2031-09');
+  assert.equal(data.filter(item=>item.total>0).length,6);
+  assert.ok(data.slice(60).every(item=>item.total===0&&item.amount===0));
 });
 
 test('月次デモコメントは実際の費目集計を使い、外部APIを呼ばない', async () => {

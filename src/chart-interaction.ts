@@ -1,7 +1,7 @@
 export function historyIndexAt(clientX:number,left:number,width:number,count:number,scrollLeft=0,visibleMonths=count) {
   if(count<1||width<=0)return null;
   const x=Math.max(0,Math.min(width-.001,clientX-left));
-  return Math.max(0,Math.min(count-1,Math.floor((x+scrollLeft)/width*Math.min(count,visibleMonths))));
+  return Math.max(0,Math.min(count-1,Math.floor((x+scrollLeft)/width*Math.min(count,visibleMonths)+1e-9)));
 }
 
 export function historyLabelLeft(index:number,count:number,width:number,labelWidth:number,scrollLeft=0,visibleMonths=count) {
@@ -10,11 +10,12 @@ export function historyLabelLeft(index:number,count:number,width:number,labelWid
   return Math.max(0,Math.min(width-labelWidth,center-labelWidth/2));
 }
 
-// Keep newer months available after tapping an older bar. Move the fetched
-// five-year window only when the requested month falls outside it.
-export function historyEndMonth(month:string,currentEnd=month) {
+// Reserve five years to the right of the initial month as well as past history.
+// Tapping within this window must not move the timeline beneath the finger.
+export function historyEndMonth(month:string,currentEnd?:string) {
   const serial=(value:string)=>Number(value.slice(0,4))*12+Number(value.slice(5))-1;
-  const end=Math.max(serial(month),Math.min(serial(currentEnd),serial(month)+59));
+  const selected=serial(month),previous=currentEnd?serial(currentEnd):selected+60;
+  const end=selected>previous||selected<previous-119?selected+60:previous;
   return `${Math.floor(end/12)}-${String(end%12+1).padStart(2,'0')}`;
 }
 
