@@ -20,6 +20,21 @@ export async function classificationMemory(db:D1Database,space:string,entry:Entr
   ]);
   return {rules:rules.results.filter(rule=>allowed.includes(rule.category)),history:[...new Set(history.results.map(row=>row.category).filter(category=>allowed.includes(category)))]};
 }
+// Load once for a streamed statement, not two D1 queries per returned row.
+export async function classificationMemoryForSpace(db:D1Database,space:string,allowed:string[]) {
+  const [rules,history]=await Promise.all([
+    db.prepare('SELECT id,merchant_key,context_keyword,category FROM classification_rules WHERE space_id=?').bind(space).all<ClassificationRule>(),
+    db.prepare('SELECT merchant_key,category FROM (SELECT merchant_key,category,ROW_NUMBER() OVER (PARTITION BY merchant_key ORDER BY created_at DESC,rowid DESC) AS rank FROM classification_history WHERE space_id=?) WHERE rank<=5 ORDER BY merchant_key,rank').bind(space).all<{merchant_key:string;category:string}>()
+  ]);
+  const byMerchant=new Map<string,string[]>();
+  for(const row of history.results){
+    if(!allowed.includes(row.category))continue;
+    const categories=byMerchant.get(row.merchant_key)??[];
+    if(!categories.includes(row.category))categories.push(row.category);
+    byMerchant.set(row.merchant_key,categories);
+  }
+  return {rules:rules.results.filter(rule=>allowed.includes(rule.category)),history:(title:string)=>byMerchant.get(merchantKey(title))??[]};
+}
 export function importMemoryWrites(db:D1Database,space:string,user:string,entries:EntryDraft[]) {
   const writes:D1PreparedStatement[]=[];
   for(const entry of entries){

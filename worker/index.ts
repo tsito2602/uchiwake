@@ -1,5 +1,6 @@
 import { cloudflareReport, importAIEnabled, usesCloudflare } from './ai-bindings';
 import { testJevConnection } from './jev';
+import { lunaImportStream } from './luna-import';
 import { lunaJevStream, runLunaJev, lunaExtractStream, importStream, classifyEntry, extractedEntry } from './luna-jev-import';
 import { classificationRoutes, importMemoryWrites } from './classification-memory';
 import { spacesRoutes, membership, membersFor, settlementFor, type SpaceEnv } from './spaces';
@@ -354,6 +355,10 @@ app.post('/api/statement/analyze', async c => {
     const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
     const names=allCategoryAppearances(settings).map(item=>item.category);
     const review=fallbackCategory(settings);
+    if(body.pipeline==='luna'){
+      if(body.stream!==true||(body.recheck!==undefined&&typeof body.recheck!=='string'))return error('読み取りの形式を確認してください');
+      return lunaImportStream(c.env,c.get('spaceId'),files,names,review,body.recheck as string|undefined,c.req.raw.signal);
+    }
     if(body.pipeline==='split'){
       if(body.stream!==true||(body.recheck!==undefined&&typeof body.recheck!=='string'))return error('読み取りの形式を確認してください');
       return lunaExtractStream(c.env,files,names,review,body.recheck as string|undefined,c.req.raw.signal);

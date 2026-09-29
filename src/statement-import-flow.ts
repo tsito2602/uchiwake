@@ -1,6 +1,6 @@
 import type { EntryDraft } from './domain';
 
-export type ImportResult={confirmed_total:number;entries:EntryDraft[];demo?:boolean;source_total?:import('./import-policy').SourceTotal|null;total_alternative?:import('./import-policy').SourceTotal};
+export type ImportResult={confirmed_total:number;entries:EntryDraft[];demo?:boolean;source_total?:import('./import-policy').SourceTotal|null;total_alternative?:import('./import-policy').SourceTotal;diagnostics?:import('./import-errors').ImportDiagnostics};
 export type ImportActivity={phase:'reading'|'sorting'|'checking';text:string;count:number|null;rechecking:boolean};
 export type ImportEvent={type:'entry_update';entry:EntryDraft}|{type:'replace';entries:EntryDraft[]}|{type:'status';phase:'reading'|'sorting'|'checking'}|{type:'activity';activity:ImportActivity};
 export type ImportProgress={phase:'reading'|'sorting'|'checking';entries:EntryDraft[];count:number|null;demo:boolean;reasoning?:string;activity?:ImportActivity;checkedCount?:number;checkedTotal?:number};

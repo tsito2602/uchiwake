@@ -20,6 +20,9 @@ export type ImportErrorCode=keyof typeof messages;
 export type ImportDiagnostics=Partial<ReturnType<typeof import('../worker/jev').jevDiagnostics>>&{
   failure?:{model:'luna'|'jev'|'unknown';stage:'request'|'response'|'stream'|'validation';http_status:number|null;provider_code:string;attempt?:number;source?:{file:number;page:number;row:number}};
   run?:{rechecking:boolean;received_entries:number};
+  engine?:'luna'|'jev';
+  recheck_reason?:'amount_mismatch'|'unclear_entries'|null;
+  timing?:{total_ms:number;first_entry_ms:number|null;reading_ms:number;sorting_wait_ms:number;extraction_requests:number;classification_requests:number};
   classification?:{evaluated:number;classified:number;review:number;low_confidence:number;low_evidence:number;missing_merchant:number;missing_purchase_context:number;with_purchase_context:number;retries:number;confidence_min:number|null;confidence_max:number|null;noul_min:number|null;noul_max:number|null};
 };
 export class ImportError extends Error {

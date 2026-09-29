@@ -59,11 +59,15 @@ export async function classifyEntry(env:AIBindings&{DB:D1Database},space:string,
   }
 }
 
-export async function extractLuna(env:AIBindings,files:StatementFile[],categories:string[],reviewCategory:string,recheck:string|undefined,signal:AbortSignal,accept:(entry:EntryDraft)=>void,onReading:(text:string)=>void) {
-  const decoder=new StatementDecoder(categories,reviewCategory,raw=>extractedEntry(raw,files.length,reviewCategory));
+export type ExtractionPolicy={properties:Record<string,unknown>;instructions:string;entry:(raw:unknown)=>EntryDraft};
+export async function extractLuna(env:AIBindings,files:StatementFile[],categories:string[],reviewCategory:string,recheck:string|undefined,signal:AbortSignal,accept:(entry:EntryDraft)=>void,onReading:(text:string)=>void,policy?:ExtractionPolicy) {
+  const decoder=new StatementDecoder(categories,reviewCategory,policy?.entry??(raw=>extractedEntry(raw,files.length,reviewCategory)));
+  const properties={...rowProperties,...policy?.properties};
+  const outputSchema=policy?{...schema,properties:{...schema.properties,entries:{type:'array',items:{type:'object',properties,required:Object.keys(properties),additionalProperties:false}}}}:schema;
+  const instructions=policy?extractionInstructions.replace('費目の分類は行わない。','')+'\n'+policy.instructions:extractionInstructions;
   let receivedOutput=false;
-    const content=[{type:'input_text',text:extractionInstructions+(recheck?`\n再確認：${recheck} 元の明細を再読して全行を返す。読めない情報は不明のままにし、説明のための行を追加しない。`:'')},...files.flatMap((file,index)=>[{type:'input_text',text:`source_file: ${index+1}`},...statementFileParts([file])])];
-    const raw=await cloudflareRun(env,'openai/gpt-6-luna',{input:[{role:'user',content}],store:false,stream:true,reasoning:{effort:'low'},text:{format:{type:'json_schema',name:'statement_extraction',strict:true,schema}}},signal);
+    const content=[{type:'input_text',text:instructions+(recheck?`\n再確認：${recheck} 元の明細を再読して全行を返す。読めない情報は不明のままにし、説明のための行を追加しない。`:'')},...files.flatMap((file,index)=>[{type:'input_text',text:`source_file: ${index+1}`},...statementFileParts([file])])];
+    const raw=await cloudflareRun(env,'openai/gpt-6-luna',{input:[{role:'user',content}],store:false,stream:true,reasoning:{effort:'low'},text:{format:{type:'json_schema',name:'statement_extraction',strict:true,schema:outputSchema}}},signal);
     const body=raw instanceof Response?raw.body:raw instanceof ReadableStream?raw:null;
     if(!body)throw new ImportError('invalid_result');
     let completed=false;

@@ -15,8 +15,8 @@ const {outputFiles}=await build({stdin:{contents:`
   import {StatementImportPanel} from './src/statement-import-panel';
   import {FloatingDock} from './src/floating-dock';
   import {ThinkingOrb} from 'thinking-orbs';
-  import {JevConnectionTest} from './src/jev-connection-test';
-  export const jevTest=props=>renderToStaticMarkup(createElement(JevConnectionTest,props));
+  import {ImportDiagnostics} from './src/import-diagnostics';
+  export const diagnostics=props=>renderToStaticMarkup(createElement(ImportDiagnostics,props));
   export const defaultOrb=()=>renderToStaticMarkup(createElement(ThinkingOrb,{state:'breathing',size:20,theme:'dark','aria-hidden':'true'}));
   export const setup=props=>renderToStaticMarkup(createElement(ImportSetup,props));
   export const review=props=>renderToStaticMarkup(createElement(ImportReview,props));
@@ -27,15 +27,16 @@ const {outputFiles}=await build({stdin:{contents:`
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
 // Resolve external React imports from the project, not from a data URL.
 const bundle=outputFiles[0].text.replace(/from "(react(?:-dom(?:\/server)?|\/jsx-runtime)?|lucide-react|border-beam|thinking-orbs|motion\/react)"/g,(_match,name)=>`from ${JSON.stringify(import.meta.resolve(name))}`);
-const {setup,review,processing,panel,dock,defaultOrb,withDraftEntries,jevTest}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
+const {setup,review,processing,panel,dock,defaultOrb,withDraftEntries,diagnostics}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
 const sample=demoImportResult('2026-09');
 const draft={...sample,card_id:'one',due_month:'2026-09',title:'カード明細',demo:true};
 const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],settings:[],busy:false,checked:false,onChange:()=>{},onChecked:()=>{}};
 
-test('Jev接続テストは画像不要・1回の呼び出しを案内し、結果をコピーできる',()=>{
- const markup=jevTest({busy:false,result:'{"ok":false,"value":"<script>"}',onRun:()=>{}});
- assert.ok(markup.includes('Jev接続テスト'));assert.ok(markup.includes('AI呼び出しは1回'));assert.ok(markup.includes('診断結果をコピー'));assert.match(markup,/readonly=""/i);assert.ok(!markup.includes('<script>'));
- assert.ok(jevTest({busy:true,result:'',onRun:()=>{}}).includes('disabled=""'));
+test('取り込み診断は折りたたみ表示し、追加AI呼び出しなしでコピーできる',()=>{
+ const markup=diagnostics({result:'{"ok":true,"value":"<script>"}'});
+ assert.ok(markup.includes('<details'));assert.ok(markup.includes('取り込みの診断'));assert.ok(markup.includes('診断結果をコピー'));
+ assert.match(markup,/readonly=""/i);assert.ok(!markup.includes('<script>'));assert.ok(!markup.includes('Jev接続テスト'));
+ assert.equal(diagnostics({result:''}),'');
 });
 
 test('保存操作のないパネルでも削除を独立した島に表示し、操作禁止を反映する',()=>{

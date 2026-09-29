@@ -239,9 +239,9 @@
 .classification-rule strong,.classification-rule small { display:block; }
 .classification-rule small { margin-top:5px; color:var(--muted); }
 .classification-rule button { flex:none; }
-.jev-connection-test { display: grid; gap: 8px; margin: 0 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; }
-.jev-connection-test small { color: var(--muted); font-size: 11px; line-height: 1.6; }
-.jev-connection-test textarea { width: 100%; min-width: 0; font-size: 11px; resize: vertical; white-space: pre; }
+.import-diagnostics { margin: 0 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; }
+.import-diagnostics summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.import-diagnostics textarea { margin: 8px 0; width: 100%; min-width: 0; font-size: 11px; resize: vertical; white-space: pre; }
 .import-sorted-entry[data-classification=classifying] .import-category-tag { color:var(--muted); }
 .import-sorted-entry[data-classification=classified] .import-category-tag { animation:import-classified .25s ease-out; }
 @keyframes import-classified { from { opacity:.4; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
