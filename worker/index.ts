@@ -10,7 +10,7 @@ import { authRoutes, authConfigured, sessionUser, type AuthBindings } from './au
 import { ImportError, upstreamImportError, logImportFailure, incompleteImportError } from './import-errors';
 import { abortable, idleWatch } from '../src/streaming/idle';
 import { readCategorySettings, categorySchemaReady } from './category-settings';
-import { StatementDecoder, statementStream } from './statement-stream';
+import { StatementDecoder, statementStream, normalizeReviewReason } from './statement-stream';
 import { statementRequest } from './statement-request';
 import { readStatementFiles } from './statement-files';
 import { Hono } from 'hono';
@@ -418,8 +418,10 @@ app.post('/api/statement/analyze', async c => {
   let parsed: {confirmed_total?:unknown;entries?:unknown};
   try {parsed=JSON.parse(response);} catch {return error('AIの結果を確認できませんでした',502);}
   if (!Array.isArray(parsed.entries)) return error('AIから受信した明細の形式を確認できませんでした',502);
-  const entries=parsed.entries.map((raw:unknown)=>{const entry=(raw&&typeof raw==='object'?raw:{}) as Record<string,unknown>;return {spent_on:datePattern.test(String(entry.spent_on))?entry.spent_on:'',title:safeString(entry.title),category:allowedCategories.includes(entry.category as string)?entry.category:reviewCategory,amount:Number.isSafeInteger(entry.amount)&&Math.abs(Number(entry.amount))<=100_000_000?Number(entry.amount):0};});
-  return c.json({entries,confirmed_total:validAmount(parsed.confirmed_total)?Number(parsed.confirmed_total):0});
+  try{
+    const entries=parsed.entries.map((raw:unknown)=>{const entry=(raw&&typeof raw==='object'?raw:{}) as Record<string,unknown>;const review_reason=normalizeReviewReason(entry.review_reason);return {spent_on:datePattern.test(String(entry.spent_on))?entry.spent_on:'',title:safeString(entry.title),category:allowedCategories.includes(entry.category as string)?entry.category:reviewCategory,amount:Number.isSafeInteger(entry.amount)&&Math.abs(Number(entry.amount))<=100_000_000?Number(entry.amount):0,...(review_reason!==undefined?{review_reason}:{})};});
+    return c.json({entries,confirmed_total:validAmount(parsed.confirmed_total)?Number(parsed.confirmed_total):0});
+  }catch{return error('AIから受信した明細の形式を確認できませんでした',502);}
 });
 
 app.post('/api/report/comment', async c => {

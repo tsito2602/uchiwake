@@ -48,7 +48,7 @@ export async function streamStatement(files:StatementFile[],signal:AbortSignal,o
   try {
     onReasoning?.(`${files.length}ファイルを送信して、読み取りを開始しています…`);
     const response=await extractRequest(undefined,controller.signal);
-    // Normal imports use the original single request and four-field entries.
+    // Normal imports use one request, including the review reason for each entry.
     // Explicit older pipeline modes remain available for cached clients.
     const engine=response.headers.get('X-Import-Pipeline');
     if(engine!=='split'&&engine!=='luna'){

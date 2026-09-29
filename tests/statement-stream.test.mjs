@@ -279,7 +279,7 @@ test('画像・PDF・1000行を超えるCSVを同じ入口から送信し、全�
     assert.equal(sent.model,'gpt-6-luna');assert.equal(sent.store,false);
     assert.equal(parts.find(p=>p.type==='input_image').image_url,image);
     assert.deepEqual(parts.find(p=>p.type==='input_file'),{type:'input_file',filename:'明細.pdf',file_data:pdf});
-    const csvPart=JSON.parse(parts.filter(p=>p.type==='input_text')[1].text);
+    const csvPart=JSON.parse(parts.filter(p=>p.type==='input_text').at(-1).text);
     assert.equal(csvPart.csv,csv);assert.ok(csvPart.csv.includes('店舗1200'));
     assert.ok(parts[0].text.includes('同日・同店・同額というだけで別の利用を重複扱いにしない'));
     return new Response(delta(JSON.stringify(result))+done);

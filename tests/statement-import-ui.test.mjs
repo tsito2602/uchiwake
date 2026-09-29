@@ -316,3 +316,29 @@ test('要確認になった理由を処理中にも表示し、仕分け待ち�
   assert.ok(markup.includes(label));assert.ok(!markup.includes('候補が複数・根拠不足'));
  }
 });
+
+test('一回の読み取りで受信した理由区分を確認画面で出し分け、費目修正後は消す',()=>{
+ const messages={
+  purchase_unknown:'購入内容が分からないため、費目を決められませんでした。購入履歴・レシートを確認して費目を選んでください。',
+  merchant_unknown:'店名・支払先を特定できませんでした。利用したお店やサービスを確認して費目を選んでください。',
+  multiple_categories:'複数の費目が候補に残っています。購入内容や用途を確認して費目を選んでください。'
+ };
+ for(const [reason,text] of Object.entries(messages)){
+  const entry={title:'架空店舗',spent_on:'2026-09-01',category:'要確認',amount:100,review_reason:reason};
+  const render=(row,settings=[])=>review({...props,settings,draft:{...draft,entries:[row],confirmed_total:100}});
+  const markup=render(entry);assert.ok(markup.includes(text));assert.ok(!markup.includes('費目を絞り込めませんでした'));
+  assert.ok(!markup.includes('今後もこの条件で分類'));
+  assert.ok(!render({...entry,category:'食費'}).includes(text));
+  const renamed=render({...entry,category:'確認待ち'},[{category:'確認待ち',original_category:'要確認',icon:'circle-help',color:'#999999'}]);
+  assert.ok(renamed.includes(text));
+ }
+});
+
+test('該当なしは理由として表示せず、空欄・金額0の既存の確認事項を維持する',()=>{
+ const entry={title:'',spent_on:'',category:'要確認',amount:0,review_reason:'none'};
+ const markup=review({...props,draft:{...draft,entries:[entry]}});
+ for(const text of ['店名・内容を読み取れませんでした','金額を確定できませんでした','利用日を読み取れませんでした','費目を絞り込めませんでした'])assert.ok(markup.includes(text));
+ assert.ok(!markup.includes('購入内容が分からないため'));assert.ok(!markup.includes('複数の費目が候補'));
+ const classified=review({...props,draft:{...draft,entries:[{...sample.entries[0],review_reason:'none'}]}});
+ assert.ok(!classified.includes('import-review-reasons'));
+});
