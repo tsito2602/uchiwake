@@ -78,17 +78,19 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
                     const deleted=deletedIds.has(entry.id);
                     const invalid=!Number.isSafeInteger(entry.amount)||entry.amount===0||Math.abs(entry.amount)>100_000_000;
                     return <div className="statement-edit-item" data-deleted={deleted} key={entry.id}>
-                      <div className="statement-edit-heading"><div><strong>{entry.title}</strong><small>{entry.spent_on?<time dateTime={entry.spent_on}>{entry.spent_on}</time>:'利用日不明'}</small></div><button type="button" className={deleted?'entry-restore':'entry-delete'} disabled={demo||busy} aria-label={`${entry.title}${deleted?'の削除を取り消す':'を削除'}`} onClick={()=>onToggleDeleteEntry(entry.id)}>{deleted?<><Undo2 size={16} aria-hidden="true"/>戻す</>:<Trash2 size={18} aria-hidden="true"/>}</button></div>
-                      {deleted?<p className="statement-entry-deleted">保存すると削除されます</p>:<>
+                      <div className="statement-edit-heading"><div><strong><span className="statement-edit-name">{entry.title}</span></strong><small>{entry.spent_on?<time dateTime={entry.spent_on}>{entry.spent_on}</time>:'利用日不明'}</small></div><button type="button" className={deleted?'entry-restore':'entry-delete'} disabled={demo||busy} aria-label={`${entry.title}${deleted?'の削除を取り消す':'を削除'}`} onClick={()=>onToggleDeleteEntry(entry.id)}><span className="entry-action-icon entry-trash-icon" aria-hidden="true"><Trash2 size={18}/></span><span className="entry-action-icon entry-undo-icon" aria-hidden="true"><Undo2 size={18}/></span></button></div>
+                      <div className="statement-edit-details" aria-hidden={deleted} inert={deleted}><div className="statement-edit-clip">
                         <div className="statement-edit-fields">
                           <label className="statement-edit-field"><span>金額</span><span className="entry-amount-editor"><span aria-hidden="true">¥</span><input type="number" inputMode="decimal" step="1" aria-label={`${entry.title}の金額（円）`} aria-invalid={invalid} aria-describedby={invalid?`entry-error-${entry.id}`:undefined} disabled={busy} value={amountDraft[entry.id]??String(entry.amount)} onChange={event=>onChangeAmount(entry.id,event.target.value)}/></span></label>
                           <label className="statement-edit-field"><span>費目</span><select disabled={busy} aria-label={`${entry.title}の費目`} value={entry.category} onChange={event=>onChangeCategory(entry.id,event.target.value as Category)}>{allCategoryAppearances(categorySettings).map(({category})=><option key={category}>{category}</option>)}</select></label>
                         </div>
                         {invalid&&<p className="statement-entry-error" id={`entry-error-${entry.id}`}>金額は0以外の整数で、1億円以内にしてください。</p>}
-                      </>}
+                      </div></div>
+                      <div className="statement-edit-status" data-visible={deleted} aria-hidden={!deleted}><div className="statement-edit-clip"><p className="statement-entry-deleted">保存すると削除されます</p></div></div>
                     </div>;
                   })}</div>
-                  {!remaining.length?<p className="statement-edit-hint" role="status">全項目を削除すると、この明細も削除されます。</p>:(!Number.isFinite(statementTotal)||statementTotal<=0||statementTotal>100_000_000)&&<p className="statement-entry-error" role="status">明細の合計は1円以上、1億円以下にしてください。</p>}
+                  <div className="statement-edit-status statement-delete-notice" data-visible={!remaining.length} aria-hidden={!!remaining.length}><div className="statement-edit-clip"><p className="statement-edit-hint">全項目を削除すると、この明細も削除されます。</p></div></div>
+                  {remaining.length>0&&(!Number.isFinite(statementTotal)||statementTotal<=0||statementTotal>100_000_000)&&<p className="statement-entry-error" role="status">明細の合計は1円以上、1億円以下にしてください。</p>}
                 </section>;
               })}
             </div>:view==='summary'?entryGroups.map(group=><section className="card-panel-statement" aria-label={group.label} key={group.label}>

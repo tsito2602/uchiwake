@@ -76,7 +76,10 @@ test('編集は項目順のカードと削除操作を表示し、カテゴリ�
 test('削除予定の行は戻す操作に切り替わり、合計と件数から除外される',()=>{
   const html=render({...props,deletedEntryIds:['a']});
   assert.ok(html.includes('スーパーの削除を取り消す'));
-  assert.ok(!html.includes('スーパーの金額（円）'));
+  assert.match(html,/<div class="statement-edit-details" aria-hidden="true" inert=""><div class="statement-edit-clip">[\s\S]*?aria-label="スーパーの金額（円）"/);
+  const restoreButton=html.match(/<button[^>]*class="entry-restore"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  assert.ok(restoreButton?.includes('entry-undo-icon'));
+  assert.ok(!restoreButton?.includes('戻す'));
   assert.ok(html.includes('¥1,000'));
   assert.ok(html.includes('1件'));
   assert.ok(render({...props,deletedEntryIds:['a','b']}).includes('この明細も削除されます'));
