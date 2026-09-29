@@ -4,6 +4,7 @@ import { SpaceSwitchScreen } from './space-switch-screen';
 import { SpacePanel } from './space-panel';
 import { AllocationBreakdownPanel } from './allocation-breakdown';
 import { SpaceManagementSettings, SpaceSettingsLinks } from './space-settings';
+import type { NameSaveAction } from './name-settings-form';
 import { SettingsToggle } from './settings-toggle';
 import { SettlementSettingsPanel } from './settlement-settings';
 import { defaultConfig, settlementItems, settlementDetails, type Space, type SpaceData } from './spaces';
@@ -18,7 +19,7 @@ import { streamStatement } from './statement-import-stream';
 import { readStatementFile, mergeStatementFiles, type StatementFile } from './statement-files';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles } from 'lucide-react';
+import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
 import { CardStatementPanel } from './card-statement-panel';
@@ -87,6 +88,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [spaceDock,setSpaceDock]=useState<DockContext>();
   const [spaceSettings,setSpaceSettings]=useState<{origin?:PanelOrigin;closing?:boolean}|null>(()=>initialSettingsOrigin?{origin:initialSettingsOrigin}:null);
   const [settingsDock,setSettingsDock]=useState<DockContext>();
+  const [spaceNameAction,setSpaceNameAction]=useState<NameSaveAction>();
   const [allocationBreakdown,setAllocationBreakdown]=useState<{origin:PanelOrigin}|null>(null);
   const [breakdownDock,setBreakdownDock]=useState<DockContext>();
   const [allocationDock,setAllocationDock]=useState<DockContext>();
@@ -369,12 +371,12 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   };
   const openSpaceSettings=(source?:HTMLElement)=>{setNotice('');setSpaceSettings({origin:source?panelOrigin(source):undefined});};
   const dismissSpaceSettings=()=>{
-    if(busy||spaceDock||allocationOpen||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)return;
+    if(busy||spaceNameAction?.saving||spaceDock||allocationOpen||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)return;
     setSpaceSettings(current=>current?{...current,closing:true}:null);
   };
   const removeSpace=async()=>{
     const fallback=spaces.find(candidate=>candidate.kind==='personal');
-    if(demoView||busy||personal||space.owner_id!==user.id||!fallback||!spaceSettings||spaceSettings.closing||settingsSuspended)return;
+    if(demoView||busy||spaceNameAction?.saving||personal||space.owner_id!==user.id||!fallback||!spaceSettings||spaceSettings.closing||settingsSuspended)return;
     if(!confirm(`「${space.name}」を削除しますか？ メンバー全員がアクセスできなくなります。`))return;
     setBusy(true);setNotice('');
     try{await api(`/spaces/${space.id}/space`,{method:'DELETE'});await refreshSpaces();onSelectSpace(fallback.id);}
@@ -459,8 +461,9 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     disabled:busy||demoView||!validCategoryName(categorySettings.draft.category)||categoryNameDuplicate||(!categorySettings.isNew&&categorySettings.saved.icon===categorySettings.draft.icon&&categorySettings.saved.color===categorySettings.draft.color&&categorySettings.saved.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.saved.include_in_settlement!==false)===(categorySettings.draft.include_in_settlement!==false))
   }:undefined;
   const PageIcon=({home:Calculator,ledger:ReceiptText,settings:Settings,import:Camera} as const)[tab];
-  const settingsPanelContext:DockContext={label:'スペース設定',backOnly:true,onBack:dismissSpaceSettings,actionLabel:'閉じる',onAction:dismissSpaceSettings,
-    secondaryAction:!personal&&space.owner_id===user.id?{label:'このスペースを削除',disabled:demoView||busy||!!spaceSettings?.closing,onAction:()=>void removeSpace()}:undefined
+  const settingsPanelContext:DockContext={label:'スペース設定',contentKey:`space-settings:${spaceNameAction?'save':'idle'}`,backOnly:!spaceNameAction,commit:!!spaceNameAction,onBack:dismissSpaceSettings,
+    actionLabel:spaceNameAction?.label??'閉じる',onAction:()=>{if(!busy&&!spaceSettings?.closing)spaceNameAction?.onAction();},disabled:!spaceNameAction||spaceNameAction.disabled||busy||!!spaceSettings?.closing,
+    secondaryAction:!personal&&space.owner_id===user.id?{label:'このスペースを削除',disabled:demoView||busy||spaceNameAction?.saving||!!spaceSettings?.closing,onAction:()=>void removeSpace()}:undefined
   };
   const settingsSuspended=!!(spaceDock||allocationOpen||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails);
   const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,entryControls:{sort:categorySort,onSort:setCategorySort,groupByCard,onGroupByCard:setGroupByCard},backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
@@ -507,7 +510,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         <div className="settings-group-heading settings-common-heading"><small>アプリ共通</small><h2>アカウント・表示</h2></div>
         <AccountSettings user={user} signingOut={signingOut} updateProfile={saveProfile}/>
         <AppearanceSettings/>
-        {state.demo_enabled&&<section className="section settings-section demo-settings"><h2>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
+        {state.demo_enabled&&<section className="section settings-section demo-settings"><h2 className="section-heading"><Database size={20} aria-hidden="true"/>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
         <AppUpdateSettings/>
         <button type="button" className="settings-add-card settings-logout" disabled={signingOut || savingProfile} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
         <AppInfo/>
@@ -518,7 +521,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     {spaceSettings&&state&&<SpacePanel title="スペース設定" icon={personal?UserRound:UsersRound} context={settingsPanelContext} origin={spaceSettings.origin} closing={spaceSettings.closing} suspended={settingsSuspended} onExited={()=>{setSpaceSettings(null);setNotice('');}} onDockChange={setSettingsDock}><div className="settings-page space-settings-content">
       {notice&&<p className="notice" role="alert">{notice}</p>}
         <div className="settings-group-heading"><small>{personal?'個人スペース':'共有スペース'}</small><h2>{personal?<UserRound size={22}/>:<UsersRound size={22}/>}<span>{space.name}</span></h2></div>
-        <SpaceManagementSettings space={space} userId={user.id} members={state.members??[]} disabled={demoView||busy} api={api} onRefresh={refreshSpaces} onReload={load} onDockChange={setSpaceDock}/>
+        <SpaceManagementSettings space={space} userId={user.id} members={state.members??[]} disabled={demoView||busy||!!spaceSettings.closing} api={api} onRefresh={refreshSpaces} onReload={load} onDockChange={setSpaceDock} onNameActionChange={setSpaceNameAction}/>
         <section className="section settings-section"><h2 className="section-heading"><CreditCard size={20} aria-hidden="true"/>{personal?'カード':'共有カード'}</h2><p className="subtle">カードを登録すると、明細を取り込む際に選べます。</p><div className="card-settings-list">{state.cards.map(card=><button type="button" className="settings-card-button panel-source" data-panel-source={cardSettings?.card?.id===card.id?'true':undefined} key={card.id} onClick={event=>openSettings(card,event.currentTarget)}><CreditCard size={21} color={displayColor(card.color)}/><span><strong>{card.name}</strong><small>{card.active?'使用中':'使用停止中'}</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>openSettings(undefined,event.currentTarget)}><Plus size={17}/> カードを追加</button></section>
         <section className="section settings-section"><h2 className="section-heading"><Tags size={20} aria-hidden="true"/>費目</h2><p className="subtle">費目名・アイコン・色と、精算に含めるかを設定できます。</p><div className="card-settings-list category-settings-list">{categoryOptions.map(value=><button type="button" className="settings-card-button panel-source" data-panel-source={categorySettings?.saved.category===value.category?'true':undefined} key={value.category} onClick={event=>{setNotice('');setCategorySettings({saved:value,draft:value,view:'edit',origin:panelOrigin(event.currentTarget)});}}><CategoryIcon name={value.icon} color={value.color} size={21}/><span><strong>{value.category}</strong>{value.include_in_settlement===false&&<small>精算対象外</small>}</span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{const value={category:'',icon:'tag',color:defaultCardColor};setNotice('');setCategorySettings({saved:value,draft:value,isNew:true,view:'edit',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 費目を追加</button></section>
         {!personal&&<section className="section settings-section"><h2 className="section-heading"><UsersRound size={20} aria-hidden="true"/>負担</h2><button className="settings-card-button" type="button" disabled={demoView||busy} onClick={()=>setAllocationOpen('default')}><UsersRound size={21}/><span><strong>負担の設定</strong><small>対象者・均等割り・割合指定</small></span><ChevronRight size={18}/></button></section>}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, RefreshCw } from 'lucide-react';
+import { Download, RefreshCw, Info } from 'lucide-react';
 import { pathData, FIRST_STROKE_OFFSET_Y } from './brand-motion';
 import { checkAppUpdate, currentVersion, type AppVersion } from './app-update';
 
@@ -35,7 +35,7 @@ export function AppUpdateSettings() {
     window.location.reload();
   }
   return <section className="section settings-section app-update-settings">
-    <h2 className="section-heading">アプリ</h2>
+    <h2 className="section-heading"><Info size={20} aria-hidden="true"/>アプリ</h2>
     <button type="button" className="settings-add-card" disabled={checking || updating} onClick={available ? update : () => void check()}>
       {available ? <Download size={18} aria-hidden="true"/> : <RefreshCw size={18} aria-hidden="true"/>}
       {updating ? '更新中…' : checking ? '確認中…' : available ? '新しいバージョンに更新' : '更新を確認'}

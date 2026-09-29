@@ -17,7 +17,7 @@ function useSpaceDock(context:DockContext,onDockChange:SpaceDockChange) {
   ...(context.auxiliaryAction?{auxiliaryAction:{...context.auxiliaryAction,onAction:()=>current.current.auxiliaryAction?.onAction()}}:{}),
   ...(context.secondaryAction?{secondaryAction:{...context.secondaryAction,onAction:()=>current.current.secondaryAction?.onAction()}}:{}),
   ...(context.detailAction?{detailAction:{...context.detailAction,onAction:()=>current.current.detailAction?.onAction()}}:{})
- }),[context.label,context.actionLabel,context.actionAppearance,context.disabled,context.backOnly,context.commit,
+ }),[context.contentKey,context.label,context.actionLabel,context.actionAppearance,context.disabled,context.backOnly,context.commit,
   context.auxiliaryAction?.label,context.auxiliaryAction?.disabled,context.auxiliaryAction?.icon,
   context.secondaryAction?.label,context.secondaryAction?.disabled,
   context.detailAction?.label,context.detailAction?.disabled,context.detailAction?.icon]);

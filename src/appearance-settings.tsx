@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { Monitor, Sun, Moon } from 'lucide-react';
+import { Monitor, Sun, Moon, Paintbrush } from 'lucide-react';
 import { getThemePreference, setThemePreference, THEME_EVENT } from './theme';
 
 const subscribe = (listener: () => void) => {
@@ -10,7 +10,7 @@ const subscribe = (listener: () => void) => {
 export function AppearanceSettings() {
   const preference = useSyncExternalStore(subscribe, getThemePreference);
   return <section className="section settings-section appearance-settings">
-    <h2 className="section-heading">外観</h2>
+    <h2 className="section-heading"><Paintbrush size={20} aria-hidden="true"/>外観</h2>
     <div className="appearance-control" role="group" aria-label="表示モード">
       {([
         { value: 'system', label: '自動', accessibleLabel: '端末に合わせる', icon: Monitor },

@@ -6,7 +6,7 @@ import type { Api } from './space-api';
 import type { DockContext } from './floating-dock';
 import { SpacePanel, type SpaceDockChange } from './space-panel';
 import { panelOrigin, type PanelOrigin } from './use-panel-morph';
-import { NameSettingsForm } from './name-settings-form';
+import { NameSettingsForm, type NameSaveAction } from './name-settings-form';
 
 
 export function SpaceSettingsLinks({spaces,disabled,onOpen}:{spaces:Space[];disabled:boolean;onOpen:(space:Space,source:HTMLElement)=>void}){
@@ -21,8 +21,8 @@ export function SpaceSettingsLinks({spaces,disabled,onOpen}:{spaces:Space[];disa
  </>;
 }
 
-type Props={space:Space;userId:string;members:Member[];disabled:boolean;api:Api;onRefresh:()=>Promise<void>;onReload:()=>Promise<void>;onDockChange:SpaceDockChange};
-export function SpaceManagementSettings({space,userId,members,disabled,api,onRefresh,onReload,onDockChange}:Props){
+type Props={space:Space;userId:string;members:Member[];disabled:boolean;api:Api;onRefresh:()=>Promise<void>;onReload:()=>Promise<void>;onDockChange:SpaceDockChange;onNameActionChange:(action:NameSaveAction|undefined)=>void};
+export function SpaceManagementSettings({space,userId,members,disabled,api,onRefresh,onReload,onDockChange,onNameActionChange}:Props){
  const [view,setView]=useState<'invite'|null>(null),[origin,setOrigin]=useState<PanelOrigin>();
  const [invite,setInvite]=useState<{code:string;expires_at:number}|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(false),[closing,setClosing]=useState(false);
  const owner=space.owner_id===userId,shared=space.kind==='shared',blocked=disabled||busy||closing;
@@ -42,7 +42,7 @@ export function SpaceManagementSettings({space,userId,members,disabled,api,onRef
  };
  return <><section className="section settings-section space-management-settings">
   <h2 className="section-heading"><Pencil size={20} aria-hidden="true"/>スペース名</h2>
-  <NameSettingsForm key={space.id} label="スペース名" showLabel={false} value={space.name} maxLength={40} disabled={blocked||!owner} onSave={saveName}/>
+  <NameSettingsForm key={space.id} label="スペース名" showLabel={false} value={space.name} maxLength={40} disabled={blocked||!owner} onSave={saveName} onActionChange={onNameActionChange}/>
   {!owner&&<p className="subtle">変更は作成者のみ</p>}
  </section>
  {shared&&<section className="section settings-section space-management-settings">

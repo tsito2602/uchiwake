@@ -20,7 +20,7 @@ export const dockTabs = [
 ] as const;
 
 export type DockAction = {icon?:'invite'|'copy'|'refresh';label:string;onAction:()=>void;disabled?:boolean;commit?:boolean};
-export type DockContext = { detailAction?:DockAction; entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
+export type DockContext = { contentKey?:string; detailAction?:DockAction; entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
 type DockAdd = {label:string;options:AddOption[];disabled?:boolean};
 type Props = {personal?:boolean;tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext;panelActive?:boolean;month:string;onMonthChange:(month:string)=>void;onPrevMonth:()=>void;onNextMonth:()=>void};
 
@@ -96,7 +96,7 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
     <div className={`floating-nav-host${context?.entryControls?' has-entry-controls':''}${context||panelActive?' context-host':''}`}><div ref={root} className="kondo-floating-dock thumb-dock" data-mode={context?'context':'browse'}>
 
       <FluidDockSurface root={root} ref={morph} addOpen={menuOpen}/>
-      <DockContent identity={context?'context':'browse'} mode={context?'context':'browse'}>
+      <DockContent identity={context?.contentKey??(context?'context':'browse')} mode={context?'context':'browse'}>
         {context?<nav className={`context-dock${context.entryControls?' context-entries':''}${context.rentActions?' context-rent':''}`} aria-label={context.label}>
           <div className="context-island context-back"><PanelBackButton onBack={context.onBack}/></div>
           {context.detailAction&&<div className="context-island context-detail"><button aria-label={context.detailAction.label} onClick={context.detailAction.onAction} disabled={context.detailAction.disabled}><DockActionIcon action={context.detailAction} fallback="details"/></button></div>}
