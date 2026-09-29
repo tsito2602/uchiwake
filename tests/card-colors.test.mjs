@@ -29,15 +29,15 @@ function fixture() {
   return {db,call};
 }
 
-test('新しい共通12色と旧色を保存でき、既存カードの色を維持する',async()=>{
+test('共通24色と旧色を保存でき、既存カードの色を維持する',async()=>{
   const {db,call}=fixture();
   try {
     const getCard=async()=>((await (await call('/state?month=2026-09')).json()).cards[0]);
     assert.equal((await getCard()).color,'#171717');
-    assert.equal(cardColors.length,12);
+    assert.equal(cardColors.length,24);
     assert.deepEqual(categoryColors,cardColors);
-    assert.equal(new Set(cardColors.map(color=>color.value)).size,12);
-    assert.equal(allPaletteColors.length,28);
+    assert.equal(new Set(cardColors.map(color=>color.value)).size,24);
+    assert.equal(allPaletteColors.length,40);
     for(const {value} of allPaletteColors){
       assert.equal((await call('/cards/existing','PUT',{name:'生活費',active:true,color:value})).status,200);
       assert.equal((await getCard()).color,value);
