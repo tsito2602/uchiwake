@@ -6,6 +6,7 @@ import { categoryTotals, statementSettlementAmount, type CategoryAppearance, typ
 import { allCategoryAppearances, categoryAppearance } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import { CategoryChart } from './spending-charts';
+import { NumberTicker } from './number-ticker';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 
 type Props = {
@@ -66,14 +67,14 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
             {view==='summary'&&<div className="card-panel-total"><span>精算対象額</span><strong>{yen(settlementTotal)}</strong>{excluded!==0&&<small>引落額 ¥{total.toLocaleString('ja-JP')} · 精算対象外 ¥{excluded.toLocaleString('ja-JP')}</small>}</div>}
             {view==='details'&&cardEntries.length>0&&<CategoryChart data={categoryTotals(cardEntries)} settings={categorySettings} animateAmounts={false}/>}
             {view==='edit'?<div className="statement-editor">
-              <div className="statement-edit-summary"><div><span>変更後の合計</span><strong>{Number.isFinite(editTotal)?yen(editTotal):'—'}</strong></div><span>{remainingEntries.length}件</span></div>
+              <div className="statement-edit-summary"><div><span>変更後の合計</span><strong>{Number.isFinite(editTotal)?<NumberTicker value={editTotal}/>: '—'}</strong></div><span>{remainingEntries.length}件</span></div>
               <p className="statement-edit-hint">金額・費目を変更できます。削除は保存するまで取り消せます。</p>
               {statements.map(statement=>{
                 const statementEntries=cardEntries.filter(entry=>entry.statement_id===statement.id);
                 const remaining=statementEntries.filter(entry=>!deletedIds.has(entry.id));
                 const statementTotal=remaining.reduce((sum,entry)=>sum+entry.amount,0);
                 return <section className="statement-edit-group" aria-label={statement.title} key={statement.id}>
-                  {statements.length>1&&<div className="card-panel-statement-title"><strong>{statement.title}</strong><span>{Number.isFinite(statementTotal)?yen(statementTotal):'—'}</span></div>}
+                  {statements.length>1&&<div className="card-panel-statement-title"><strong>{statement.title}</strong><span>{Number.isFinite(statementTotal)?<NumberTicker value={statementTotal}/>: '—'}</span></div>}
                   <div className="statement-edit-list">{statementEntries.map(entry=>{
                     const deleted=deletedIds.has(entry.id);
                     const invalid=!Number.isSafeInteger(entry.amount)||entry.amount===0||Math.abs(entry.amount)>100_000_000;
