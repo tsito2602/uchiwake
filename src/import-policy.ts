@@ -1,4 +1,5 @@
 import type { EntryDraft } from './domain';
+import { statementReviewReasonText } from './statement-review-reason';
 
 export type ImportSource={file:number;page:number;row:number;excerpt:string};
 export type JevReviewCause='low_confidence'|'low_evidence'|'missing_merchant'|'missing_purchase_context';
@@ -44,7 +45,7 @@ export function reviewReasons(entry:EntryDraft,reviewCategory:string):string[] {
   if(!entry.title.trim())reasons.push('店名・内容を読み取れませんでした。元の明細を見て入力してください。');
   if(!entry.amount||entry.import_meta?.amount_uncertain)reasons.push('金額を確定できませんでした。元の明細の金額を確認して入力してください。');
   if(!entry.spent_on)reasons.push('利用日を読み取れませんでした。元の明細で確認してください。');
-  if(entry.category===reviewCategory)reasons.push(entry.import_meta?.reason||'費目を絞り込めませんでした。購入内容に合う費目を選んでください。');
+  if(entry.category===reviewCategory)reasons.push(statementReviewReasonText(entry.review_reason)||entry.import_meta?.reason||'費目を絞り込めませんでした。購入内容に合う費目を選んでください。');
   return reasons;
 }
 

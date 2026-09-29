@@ -4,12 +4,21 @@ import type { ImportResult } from '../src/statement-import-flow';
 import { sseData } from '../src/streaming/lines';
 import { idleWatch, IMPORT_IDLE_MS } from '../src/streaming/idle';
 import { StatementReasoning } from './statement-reasoning';
+import { statementReviewReasonCodes, type StatementReviewReason } from '../src/statement-review-reason';
+
+export function normalizeReviewReason(raw:unknown):StatementReviewReason|undefined {
+  // Older four-field responses have no reason. Never invent one for them.
+  if(raw===undefined)return undefined;
+  if(typeof raw!=='string'||!statementReviewReasonCodes.includes(raw as StatementReviewReason))throw new ImportError('invalid_result');
+  return raw as StatementReviewReason;
+}
 
 function normalizeEntry(raw:unknown,categories:string[],reviewCategory:string):EntryDraft {
   if(!raw||typeof raw!=='object')throw new ImportError('invalid_result');
   const row=raw as Record<string,unknown>;
   if(typeof row.title!=='string'||typeof row.spent_on!=='string'||typeof row.category!=='string'||!Number.isSafeInteger(row.amount)||Math.abs(Number(row.amount))>100_000_000)throw new ImportError('invalid_result');
-  return {title:row.title.trim().slice(0,100),spent_on:/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(row.spent_on)?row.spent_on:'',category:categories.includes(row.category)?row.category:reviewCategory,amount:Number(row.amount)};
+  const review_reason=normalizeReviewReason(row.review_reason);
+  return {title:row.title.trim().slice(0,100),spent_on:/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(row.spent_on)?row.spent_on:'',category:categories.includes(row.category)?row.category:reviewCategory,amount:Number(row.amount),...(review_reason!==undefined?{review_reason}:{})};
 }
 
 // Only emit a complete entry object. Braces/quotes inside titles are not delimiters.
