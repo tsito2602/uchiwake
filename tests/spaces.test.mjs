@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { spaceFixture } from './spaces-fixture.mjs';
 const {outputFiles}=await build({entryPoints:[new URL('../src/spaces.ts',import.meta.url).pathname],bundle:true,write:false,format:'esm',platform:'node'});
-const {allocate,settlementDetails,settlementAmounts,settlementItems,validateConfig}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {allocate,settlementDetails,settlementAmounts,settlementItems,validateConfig,prepareSettlementConfig}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 const equal=(...ids)=>({mode:'equal',shares:ids.map(user_id=>({user_id,weight:1}))});
 const percent=(...weights)=>({mode:'percent',shares:weights.map(([user_id,weight])=>({user_id,weight}))});
 const config=(common,items={})=>({uniform:!Object.keys(items).length,common,items});
@@ -22,6 +22,33 @@ test('均等・割合・返金の端数配分は常に合計に一致する',()=
  assert.equal(validateConfig(config(percent(['a',5000],['b',4999])),new Set(['a','b'])),false);
  assert.equal(validateConfig(config(equal('a','a')),new Set(['a'])),false);
  assert.equal(validateConfig(config(equal('outsider')),new Set(['a'])),false);
+});
+
+test('個別設定の保存は表示中の割合と休止中の設定を保ち、非表示の共通設定で保存を妨げない',()=>{
+ const ids=new Set(['a','b']);
+ const items=[{key:'card:one',amount:3001},{key:'rent',amount:100001}];
+ const original={uniform:false,common:percent(['a',6000],['b',4000]),items:{rent:equal('a'),'bill:paused':equal('b')}};
+ const before=structuredClone(original);
+ const saved=prepareSettlementConfig(original,items,ids);
+ assert.deepEqual(saved.items['card:one'],original.common);
+ assert.deepEqual(saved.items.rent,original.items.rent);
+ assert.deepEqual(saved.items['bill:paused'],original.items['bill:paused']);
+ assert.deepEqual(settlementAmounts(items,saved),settlementAmounts(items,original));
+ assert.deepEqual(saved.common,original.common);
+ assert.deepEqual(original,before);
+ assert.equal(validateConfig(saved,ids),true);
+ const former={...original,common:equal('a','former')};
+ assert.equal(validateConfig(prepareSettlementConfig(former,items,ids),ids),false);
+ const corrected={...former,items:{...former.items,'card:one':equal('b')}};
+ const repaired=prepareSettlementConfig(corrected,items,ids);
+ assert.equal(validateConfig(repaired,ids),true);
+ assert.deepEqual(settlementAmounts(items,repaired),settlementAmounts(items,corrected));
+ assert.deepEqual(repaired.common,equal('a','b'));
+ const unfinished={...corrected,items:{...corrected.items,rent:percent(['a',9000])}};
+ assert.equal(validateConfig(prepareSettlementConfig(unfinished,items,ids),ids),false);
+ const uniform={...former,uniform:true};
+ assert.strictEqual(prepareSettlementConfig(uniform,items,ids),uniform);
+ assert.equal(validateConfig(uniform,ids),false);
 });
 
 test('個人・複数共有の作成と、既存データの安全な所有者移行',async()=>{

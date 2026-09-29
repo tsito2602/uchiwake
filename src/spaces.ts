@@ -3,6 +3,7 @@ export type Space = {id:string;name:string;kind:'personal'|'shared';owner_id:str
 export type Member = {user_id:string;name:string;active:boolean;avatarUrl?:string};
 export type Split = {mode:'equal'|'percent';shares:{user_id:string;weight:number}[]};
 export type SettlementConfig = {uniform:boolean;common:Split;items:Record<string,Split>};
+export type SettlementItem = {key:string;label:string;amount:number;color?:string};
 export type SettlementSettings = {config:SettlementConfig;revision:number;scope:'default'|'month';month:string};
 export type SpaceData = {space:Space;members:Member[];settlement:SettlementSettings};
 export function defaultSplit(members:Member[]):Split {
@@ -19,6 +20,14 @@ export function validateConfig(value:unknown,memberIds:Set<string>):value is Set
   &&(split.mode==='equal'?split.shares.every(s=>s.weight===1):split.shares.reduce((n,s)=>n+s.weight,0)===10000);
  return valid(config.common)&&Object.entries(config.items).every(([key,split])=>/^(card|statement|bill):[^\s]{1,100}$|^rent$/.test(key)&&valid(split));
 }
+export function prepareSettlementConfig(config:SettlementConfig,items:Pick<SettlementItem,'key'>[],memberIds:Set<string>):SettlementConfig {
+ if(config.uniform)return config;
+ // Save every displayed split explicitly before repairing an unusable, hidden fallback.
+ const next={...config,items:{...config.items}};
+ for(const item of items)next.items[item.key]??=config.common;
+ if(!validateConfig({...config,items:{}},memberIds))next.common={mode:'equal',shares:[...memberIds].map(user_id=>({user_id,weight:1}))};
+ return next;
+}
 // Integer arithmetic using BigInt avoids floating-point rounding and supports refunds.
 function allocationDetails(amount:number,split:Split) {
  if(!Number.isSafeInteger(amount)||!split.shares.length)throw new Error('負担の対象者と金額を確認してください');
@@ -34,8 +43,8 @@ function allocationDetails(amount:number,split:Split) {
 }
 export function allocate(amount:number,split:Split):Record<string,number> {return allocationDetails(amount,split).amounts;}
 export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'entries'|'bills'|'rent_rules'|'category_settings'|'space_preferences'>,personal=false) {
- const items=new Map<string,{key:string;label:string;amount:number}>();
- for(const card of state.cards)items.set(`card:${card.id}`,{key:`card:${card.id}`,label:card.name,amount:0});
+ const items=new Map<string,SettlementItem>();
+ for(const card of state.cards)items.set(`card:${card.id}`,{key:`card:${card.id}`,label:card.name,amount:0,color:card.color});
  for(const s of state.statements){
   const key=s.card_id?`card:${s.card_id}`:`statement:${s.id}`;
   const item=items.get(key)??{key,label:s.title,amount:0};

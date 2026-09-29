@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import { Check, ChevronDown, CircleAlert, CreditCard, Home, ListFilter, ReceiptText, RotateCcw, UsersRound } from 'lucide-react';
 import { MemberAvatar } from './member-avatar';
+import { displayColor } from './display-color';
 import { equalPercent, percentWeight, splitStatus } from './split-input';
-import type { Member, SettlementConfig, Split } from './spaces';
+import type { Member, SettlementConfig, SettlementItem, Split } from './spaces';
 
 function PercentInput({label,value,onChange}:{label:string;value:number;onChange:(weight:number)=>void}) {
   const [text,setText]=useState(value>0?String(value/100):'');
@@ -39,30 +40,28 @@ function splitSummary(value:Split,members:Member[]) {
   return selected.slice(0,2).map(share=>`${share.name} ${share.weight/100}%`).join(' / ')+(selected.length>2?` ほか${selected.length-2}人`:'');
 }
 
-function ItemSplit({item,value,common,members,onChange,onReset}:{item:{key:string;label:string};value?:Split;common:Split;members:Member[];onChange:(value:Split)=>void;onReset:()=>void}) {
+function ItemSplit({item,value,members,onChange}:{item:SettlementItem;value:Split;members:Member[];onChange:(value:Split)=>void}) {
   const [open,setOpen]=useState(false);
   const bodyId=useId();
-  const split=value??common;
-  const status=splitStatus(split);
+  const status=splitStatus(value);
   const Icon=item.key==='rent'?Home:item.key.startsWith('card:')?CreditCard:ReceiptText;
   return <div className="split-item" data-open={open}>
-    <button type="button" className="split-item-heading" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(!open)}><Icon size={20}/><span><strong>{item.label}</strong><small>{splitSummary(split,members)}</small></span><span className="split-item-badge" data-invalid={!status.valid}>{status.valid?(value?'個別':'共通'):status.label}</span><ChevronDown size={17}/></button>
+    <button type="button" className="split-item-heading" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(!open)}><Icon size={20} color={item.key.startsWith('card:')?displayColor(item.color):undefined}/><span><strong>{item.label}</strong><small>{splitSummary(value,members)}</small></span>{!status.valid&&<span className="split-item-badge" data-invalid="true">{status.label}</span>}<ChevronDown size={17}/></button>
     <div className="split-item-body" id={bodyId} inert={!open} aria-hidden={!open}><div>
-      <SplitEditor compact label={`${item.label}の負担`} value={split} members={members} onChange={onChange}/>
-      {value&&<button type="button" className="split-use-common" onClick={onReset}><RotateCcw size={14}/>共通の設定に戻す</button>}
+      <SplitEditor compact label={`${item.label}の負担`} value={value} members={members} onChange={onChange}/>
     </div></div>
   </div>;
 }
 
-export function SettlementConfigEditor({config,members,items,onChange}:{config:SettlementConfig;members:Member[];items:{key:string;label:string;amount:number}[];onChange:(config:SettlementConfig)=>void}) {
+export function SettlementConfigEditor({config,members,items,onChange}:{config:SettlementConfig;members:Member[];items:SettlementItem[];onChange:(config:SettlementConfig)=>void}) {
   // Include saved overrides absent from this month's costs so they remain editable.
   const allItems=[...items,...Object.keys(config.items).filter(key=>!items.some(item=>item.key===key)).map(key=>({key,label:key==='rent'?'家賃':'この月の利用がない費用',amount:0}))];
   const hiddenInvalid=config.uniform&&Object.values(config.items).some(split=>!splitStatus(split).valid);
   return <div className="settlement-config-editor">
     <div className="split-section-heading"><h3>負担の決め方</h3></div>
-    <div className="split-segments split-strategy" role="group" aria-label="設定の単位"><button type="button" aria-pressed={config.uniform} onClick={()=>onChange({...config,uniform:true})}><UsersRound size={18}/>まとめて設定</button><button type="button" aria-pressed={!config.uniform} onClick={()=>onChange({...config,uniform:false})}><ListFilter size={18}/>費用ごとに設定</button></div>
-    <SplitEditor label={config.uniform?'全体の負担':'共通の負担'} value={config.common} members={members} onChange={common=>onChange({...config,common})}/>
+    <div className="split-segments split-strategy" role="group" aria-label="設定の単位"><button type="button" aria-pressed={config.uniform} onClick={()=>onChange({...config,uniform:true})}><UsersRound size={18}/>まとめて設定</button><button type="button" aria-pressed={!config.uniform} onClick={()=>onChange({...config,uniform:false})}><ListFilter size={18}/>個別に設定</button></div>
+    {config.uniform&&<SplitEditor label="全体の負担" value={config.common} members={members} onChange={common=>onChange({...config,common})}/>}
     {hiddenInvalid&&<button type="button" className="split-hidden-error" onClick={()=>onChange({...config,uniform:false})}><CircleAlert size={16}/>費用ごとの未入力を確認<ChevronDown size={16}/></button>}
-    {!config.uniform&&<section className="split-items"><div className="split-section-heading"><h3>費用ごとの負担</h3></div>{allItems.length?allItems.map(item=><ItemSplit key={item.key} item={item} value={config.items[item.key]} common={config.common} members={members} onChange={split=>onChange({...config,items:{...config.items,[item.key]:split}})} onReset={()=>{const next={...config.items};delete next[item.key];onChange({...config,items:next});}}/>):<p className="split-empty">費用を登録すると表示されます</p>}</section>}
+    {!config.uniform&&<section className="split-items"><div className="split-section-heading"><h3>費用ごとの負担</h3></div>{allItems.length?allItems.map(item=><ItemSplit key={item.key} item={item} value={config.items[item.key]??config.common} members={members} onChange={split=>onChange({...config,items:{...config.items,[item.key]:split}})}/>):<p className="split-empty">費用を登録すると表示されます</p>}</section>}
   </div>;
 }
