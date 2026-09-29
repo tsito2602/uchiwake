@@ -316,7 +316,7 @@ app.post('/api/statement/test-jev',async c=>{
   const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
   const allowed=allCategoryAppearances(settings).map(item=>item.category).filter(name=>name!==fallbackCategory(settings));
   try{return c.json(await testJevConnection(c.env,allowed,c.req.raw.signal));}
-  catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');return c.json({ok:false,code:err.code,message:err.message});}
+  catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');return c.json({ok:false,code:err.code,message:err.message,...(err.diagnostics?{diagnostics:err.diagnostics}:{})});}
 });
 
 app.post('/api/statement/analyze', async c => {
@@ -338,7 +338,7 @@ app.post('/api/statement/analyze', async c => {
     const review=fallbackCategory(settings);
     if(body.stream===true)return lunaJevStream(c.env,c.get('spaceId'),files,names,review,c.req.raw.signal);
     try{return c.json(await runLunaJev(c.env,c.get('spaceId'),files,names,review,c.req.raw.signal,()=>{}));}
-    catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');logImportFailure(err,0);return error(err.message,502);}
+    catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');logImportFailure(err,0);return c.json({error:err.message,code:err.code,...(err.diagnostics?{diagnostics:err.diagnostics}:{})},502);}
   }
   const model=AI_MODEL;
   if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);

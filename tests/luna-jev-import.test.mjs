@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { spaceFixture } from './spaces-fixture.mjs';
 
 const {outputFiles}=await build({stdin:{contents:`export * from './worker/luna-jev-import';export * from './worker/jev';export * from './worker/classification-memory';export * from './src/import-policy';export * from './src/statement-import-flow';export * from './src/statement-import-stream';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
-const {runLunaJev,lunaJevStream,extractedEntry,jevDecision,jevDiagnostics,testJevConnection,matchingRule,validRule,classificationMemory,runStatementImport,receiveStatement}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {runLunaJev,lunaJevStream,extractedEntry,jevDecision,jevDiagnostics,testJevConnection,requestJevWithRetry,matchingRule,validRule,classificationMemory,runStatementImport,receiveStatement}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 const cats=['食費','日用品費','要確認'];
 const file={name:'明細.csv',kind:'csv',data:'利用日,店名,金額\n2026-09-01,スーパー,100',size:100};
 const source={spent_on:'2026-09-01',title:'スーパー',amount:100,source_file:1,page:1,row:1,excerpt:'9/1 スーパー 100',context:'',amount_uncertain:false};
@@ -17,6 +17,150 @@ function stream(result){return new ReadableStream({start(c){c.enqueue(delta(JSON
 function fixture(){const f=spaceFixture();f.db.exec("INSERT INTO spaces(id,name,kind,owner_id) VALUES('a','A','shared','owner'),('b','B','shared','b'); INSERT INTO space_members(space_id,user_id,name) VALUES('a','owner','owner'),('b','b','b');");return f;}
 const envFor=(f,run)=>({DB:f.DB,AI_GATEWAY_ID:'test',AI:{run}});
 const signal=()=>new AbortController().signal;
+const answerDiagnostics=({failure,run,classification,...answer})=>answer;
+
+test('Jevの独立した根拠評価へ全費目の定義を渡し、原文と修正履歴の扱いを変えない',async()=>{
+ const f=fixture();try{
+  const allowed=['食費','外食費','日用品費','独自費目'];let calls=0;
+  await testJevConnection(envFor(f,async(model,input)=>{
+   calls++;assert.equal(model,'typesafe/jev');
+   assert.deepEqual(input.state,{merchant:'診断用スーパー',purchase_context:'食品'});
+   assert.deepEqual(Object.keys(input.questions.category.criteria),allowed);
+   assert.deepEqual(input.questions.sufficient.instructions.expense_categories,input.questions.category.criteria);
+   assert.match(input.questions.category.criteria.食費,/excludes restaurant/);
+   assert.match(input.questions.category.criteria.外食費,/excludes groceries/);
+   assert.match(input.questions.category.criteria.独自費目,/独自費目/);
+   assert.ok(!JSON.stringify(input).includes('history'));return {};
+  }),allowed,signal());assert.equal(calls,1);
+ }finally{f.db.close();}
+});
+
+test('要確認の理由を信頼度・根拠・購入内容で分け、根拠スコアも保持する',()=>{
+ const row=extractedEntry({...source,context:'食品',excerpt:'スーパー 食品 100円'},1,'要確認');
+ for(const [confidence,noul,causes] of [[.79,.71,['low_confidence','low_evidence']],[.79,.99,['low_confidence']],[.99,.71,['low_evidence']],[.85,.9,[]]]){
+  const result=jevDecision(decision(confidence,noul),cats.slice(0,2),row,'要確認');
+  assert.deepEqual(result.import_meta.review_causes,causes);assert.equal(result.import_meta.noul,noul);
+  assert.ok(!result.import_meta.reason?.includes('店名だけ'));
+ }
+ const broad=jevDecision(decision(),cats.slice(0,2),{...row,title:'Amazon',import_meta:{...row.import_meta,context:''}},'要確認');
+ assert.deepEqual(broad.import_meta.review_causes,['missing_purchase_context']);assert.equal(broad.category,'要確認');
+});
+
+test('Jevの一時HTTP障害だけを最大2回再試行し、Retry-Afterを尊重する',async()=>{
+ const f=fixture();try{
+  const row=extractedEntry(source,1,'要確認');
+  for(const status of [429,500,502,503,504]){
+   let calls=0;const attempts=[],waits=[];
+   const env=envFor(f,async()=>++calls<3?new Response('private upstream',{status,headers:{'Retry-After':'2'}}):{result:decision()});
+   const result=await requestJevWithRetry(env,row,cats.slice(0,2),signal(),attempt=>attempts.push(attempt),async ms=>{waits.push(ms);});
+   assert.equal(calls,3);assert.deepEqual(attempts,[2,3]);assert.deepEqual(waits,[2000,2000]);
+   assert.equal(jevDecision(result.payload,cats.slice(0,2),row,'要確認').category,'食費');
+  }
+ }finally{f.db.close();}
+});
+
+test('Jevの認証・課金・不正応答・未知の例外を再試行せず、要確認の正常回答も呼び直さない',async()=>{
+ const f=fixture();try{
+  const row=extractedEntry(source,1,'要確認');
+  const failures=[
+   ()=>new Response('private upstream',{status:400}),()=>new Response(null,{status:401}),()=>new Response(null,{status:403}),
+   ()=>new Response(JSON.stringify({error:{code:'insufficient_quota',message:'private upstream'}}),{status:429}),
+   ()=>new Response('{incomplete'),()=>({result:{answers:null}}),
+   ()=>new Response(null,{status:503,headers:{'Retry-After':'31'}}),
+   ()=>{throw Object.assign(new Error('private upstream'),{code:'private-code',status:'private-status'});}
+  ];
+  for(const failure of failures){
+   let calls=0;const env=envFor(f,async()=>{calls++;return failure();});
+   await assert.rejects(requestJevWithRetry(env,row,cats.slice(0,2),signal(),()=>assert.fail('must not retry')));
+   assert.equal(calls,1);
+  }
+  let calls=0;const env=envFor(f,async()=>{calls++;return {result:decision(.79,.71)};});
+  const result=await requestJevWithRetry(env,row,cats.slice(0,2),signal(),()=>assert.fail('must not retry'));
+  assert.equal(calls,1);assert.equal(jevDecision(result.payload,cats.slice(0,2),row,'要確認').category,'要確認');
+ }finally{f.db.close();}
+});
+
+test('再試行待ちを中止すると追加のJevを呼ばず終了する',{timeout:2000},async()=>{
+ const f=fixture();try{
+  const abort=new AbortController();let calls=0,waiting;
+  const ready=new Promise(resolve=>waiting=resolve);
+  const running=requestJevWithRetry(envFor(f,async()=>{calls++;return new Response(null,{status:503});}),extractedEntry(source,1,'要確認'),cats.slice(0,2),abort.signal,waiting);
+  await ready;abort.abort();await assert.rejects(running);assert.equal(calls,1);
+ }finally{f.db.close();}
+});
+
+test('Luna読取中のJev再試行で読取ゲージを完了扱いせず、復旧後だけ行を分類する',{timeout:4000},async()=>{
+ const f=fixture();try{
+  let controller,calls=0;const events=[];
+  const body=new ReadableStream({start(c){controller=c;c.enqueue(delta('{"entries":['+JSON.stringify(source)));}});
+  const env=envFor(f,async model=>model==='typesafe/jev'?(++calls===1?new Response(null,{status:503}):decision()):body);
+  const result=await runLunaJev(env,'a',[file],cats,'要確認',signal(),event=>{
+   events.push(event);
+   if(event.type==='entry_update'&&event.entry.import_meta.status==='classified'){
+    controller.enqueue(delta('],"confirmed_total":0,"source_total":null}'));controller.enqueue(done());controller.close();
+   }
+  });
+  assert.equal(calls,2);assert.equal(result.entries[0].category,'食費');
+  const retry=events.find(e=>e.type==='activity'&&e.activity.text.includes('再試行'));
+  assert.equal(retry.activity.phase,'reading');assert.equal(retry.activity.count,null);
+ }finally{f.db.close();}
+});
+
+test('Jevの再試行を使い切ったら仕分けエラーと診断を返し、部分結果を完了・保存させない', {timeout:6000},async t=>{
+ const f=fixture();try{
+  t.mock.method(console,'error',()=>{});let calls=0;
+  const env=envFor(f,async model=>model==='typesafe/jev'?(calls++,new Response(JSON.stringify({error:{code:'server_error',message:'private upstream'}}),{status:503})):stream(extraction()));
+  const events=(await lunaJevStream(env,'a',[file],cats,'要確認',signal()).text()).trim().split('\n').map(JSON.parse);
+  assert.equal(calls,3);assert.ok(!events.some(e=>e.type==='complete'));
+  assert.ok(events.some(e=>e.type==='activity'&&e.activity.text.includes('再試行')));
+  const failure=events.at(-1);assert.equal(failure.code,'upstream');assert.match(failure.error,/費目の仕分け中/);
+  assert.deepEqual(failure.diagnostics.failure,{model:'jev',stage:'response',http_status:503,provider_code:'server_error',attempt:3,source:{file:1,page:1,row:1}});
+  assert.equal(failure.diagnostics.classification.retries,2);assert.equal(failure.diagnostics.classification.evaluated,0);
+  assert.ok(!JSON.stringify(failure).includes('private upstream'));
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM card_statements').get().n,0);
+ }finally{f.db.close();}
+});
+
+test('途中失敗でも要確認の集計・スコア範囲を診断に残し、店名や自由文を漏らさない',{timeout:2000},async t=>{
+ const f=fixture();try{
+  const logs=[];t.mock.method(console,'error',value=>logs.push(value));let calls=0,reviewed=0,release;
+  const twoReviews=new Promise(resolve=>release=resolve);
+  const env=envFor(f,async model=>{
+   if(model!=='typesafe/jev')return stream(extraction([source,{...source,row:2,context:'食品',excerpt:'スーパー 食品'},{...source,row:3}]));
+   const index=++calls;if(index<3)return {result:decision(index===1?.79:.78,.71)};
+   await twoReviews;return new Response(JSON.stringify({error:{code:'秘密の店名',message:'秘密の明細'}}),{status:400});
+  });
+  await assert.rejects(runLunaJev(env,'a',[file],cats,'要確認',signal(),event=>{if(event.type==='entry_update'&&event.entry.import_meta.status==='review'&&++reviewed===2)release();}),error=>{
+   const d=error.diagnostics;assert.equal(d.failure.model,'jev');assert.equal(d.failure.http_status,400);assert.equal(d.failure.provider_code,'unrecognized');
+   assert.deepEqual(d.classification,{evaluated:2,classified:0,review:2,low_confidence:2,low_evidence:2,missing_merchant:0,missing_purchase_context:0,with_purchase_context:1,retries:0,confidence_min:.78,confidence_max:.79,noul_min:.71,noul_max:.71});
+   const text=JSON.stringify(d);for(const privateValue of ['秘密','スーパー','食費',source.excerpt])assert.ok(!text.includes(privateValue));return true;
+  });assert.equal(calls,3);
+ }finally{f.db.close();}
+});
+
+test('Lunaのストリーム内障害をJevの失敗と区別し、画像全体を再送しない',{timeout:2000},async t=>{
+ const f=fixture();try{
+  t.mock.method(console,'error',()=>{});let luna=0,controller;
+  const body=new ReadableStream({start(c){controller=c;c.enqueue(delta('{"entries":['+JSON.stringify(source)));}});
+  const env=envFor(f,async model=>{if(model==='typesafe/jev')return decision(.79,.71);luna++;return body;});
+  await assert.rejects(runLunaJev(env,'a',[file],cats,'要確認',signal(),event=>{
+   if(event.type==='entry_update'&&event.entry.import_meta.status==='review'){controller.enqueue(frame({type:'response.failed',response:{error:{code:'server_error',message:'private stream detail'}}}));controller.close();}
+  }),error=>{
+   assert.deepEqual(error.diagnostics.failure,{model:'luna',stage:'stream',http_status:null,provider_code:'server_error'});
+   assert.equal(error.diagnostics.classification.review,1);assert.match(error.message,/明細の読み取り中/);assert.ok(!JSON.stringify(error).includes('private stream detail'));return true;
+  });assert.equal(luna,1);
+ }finally{f.db.close();}
+});
+
+test('接続テストの上流障害は1回だけで診断を返し、HTTPエラーの診断もフロントへ渡す',async()=>{
+ const f=fixture();try{
+  let calls=0;Object.assign(f.env,{AI_IMPORT_PROVIDER:'cloudflare',AI_GATEWAY_ID:'test',AI:{async run(){calls++;return new Response(JSON.stringify({error:{code:'server_error',message:'private detail'}}),{status:503});}}});
+  const report=await (await f.call('owner','/statement/test-jev','POST',{},'a')).json();
+  assert.equal(calls,1);assert.equal(report.ok,false);assert.equal(report.diagnostics.failure.model,'jev');assert.equal(report.diagnostics.failure.http_status,503);
+  await assert.rejects(receiveStatement(Response.json({error:report.message,code:report.code,diagnostics:report.diagnostics},{status:502}),()=>{},signal()),error=>error.code==='upstream'&&error.diagnostics.failure.http_status===503);
+  assert.ok(!JSON.stringify(report).includes('private detail'));
+ }finally{f.db.close();}
+});
 
 test('Jevの直接形式とresult形式をJSON・charset付きResponse・バイトストリームから同じ基準で分類する',async()=>{
  const f=fixture();try{
@@ -109,7 +253,8 @@ test('両形式で欠けた項目・不正な分布・明示的な失敗を拒�
    const env=envFor(f,async model=>model==='typesafe/jev'?raw:stream(extraction()));
    const report=await testJevConnection(env,cats.slice(0,2),signal());assert.equal(report.ok,false);
    await assert.rejects(runLunaJev(env,'a',[file],cats,'要確認',signal(),()=>{}),error=>{
-    assert.equal(error.code,'classification_result');assert.deepEqual(error.diagnostics,report.diagnostics);
+    assert.equal(error.code,'classification_result');assert.deepEqual(answerDiagnostics(error.diagnostics),answerDiagnostics(report.diagnostics));
+    assert.equal(error.diagnostics.failure.model,'jev');assert.equal(error.diagnostics.classification.evaluated,0);
     assert.ok(!JSON.stringify(error).includes('private provider detail'));return true;
    });
   });
@@ -372,9 +517,9 @@ test('実取り込みの仕分けエラーでも変換前の安全な診断を�
   const response=lunaJevStream(env,'a',[file],cats,'要確認',signal());
   await assert.rejects(receiveStatement(response,()=>{},signal()),error=>{
    assert.equal(error.diagnostics.answers,'result');assert.equal(error.diagnostics.probability_sum,.5);
-   assert.deepEqual(error.diagnostics,report.diagnostics);return true;
+   assert.deepEqual(answerDiagnostics(error.diagnostics),answerDiagnostics(report.diagnostics));return true;
   });
-  assert.equal(logs.length,1);assert.deepEqual(JSON.parse(logs[0]).diagnostics,report.diagnostics);
+  assert.equal(logs.length,1);assert.deepEqual(answerDiagnostics(JSON.parse(logs[0]).diagnostics),answerDiagnostics(report.diagnostics));
   const exposed=JSON.stringify([logs,report]);
   for(const privateValue of ['secret upstream','秘密','スーパー','食費','日用品費',source.excerpt,JSON.stringify(raw)])assert.ok(!exposed.includes(privateValue));
  }finally{f.db.close();}
