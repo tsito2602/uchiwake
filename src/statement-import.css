@@ -47,6 +47,24 @@
 .import-file-list button:focus-visible { outline: 2px solid var(--ink); outline-offset: -4px; }
 .import-file-list button:active { background: var(--soft); }
 .import-file-status { margin: 12px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
+.import-confirmation { display: grid; gap: 24px; }
+.import-confirmation-cost { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: var(--soft); }
+.import-confirmation-cost > svg { flex: none; margin-top: 1px; }
+.import-confirmation-cost strong { font-size: 15px; font-weight: 650; }
+.import-confirmation-cost p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.import-confirmation-summary { display: grid; gap: 16px; margin: 0; }
+.import-confirmation-summary > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.import-confirmation-summary dt { flex: none; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.import-confirmation-summary dd { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; margin: 0; font-size: 14px; line-height: 1.6; text-align: right; overflow-wrap: anywhere; }
+.import-confirmation-summary dd svg { flex: none; }
+.import-confirmation-files { min-width: 0; padding-top: 20px; border-top: 1px solid var(--line); }
+.import-confirmation-files ul { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.import-confirmation-files li { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.import-confirmation-files li > svg { flex: none; color: var(--muted); }
+.import-confirmation-files li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.import-confirmation-files li > small { flex: none; color: var(--muted); font-size: 10px; }
+.import-confirmation-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.import-confirmation-files .import-confirmation-note { margin-top: 16px; }
 @keyframes import-file-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .import-hint { color: var(--muted); font-size: 12px; text-align: center; }
 .import-manual { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }

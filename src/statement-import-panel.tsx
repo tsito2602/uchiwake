@@ -11,14 +11,14 @@ import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 import type { DockContext } from './floating-dock';
 
 type Props = {
-  reviewing:boolean; processing:boolean; origin?:PanelOrigin; closing?:boolean;
+  reviewing:boolean; processing:boolean; origin?:PanelOrigin; closing?:boolean; suspended?:boolean;
   progress?:ImportProgress|null;
   onExited:()=>void; context:DockContext; children:ReactNode;
 };
 
-export function StatementImportPanel({reviewing,processing,progress,origin,closing,onExited,context,children}:Props) {
+export function StatementImportPanel({reviewing,processing,progress,origin,closing,onExited,context,children,suspended=false}:Props) {
   const panel=useRef<HTMLDivElement>(null);
-  usePanelMorph(panel,origin,closing,onExited,context.onBack);
+  usePanelMorph(panel,origin,closing,onExited,context.onBack,suspended);
   useLayoutEffect(()=>{panel.current?.scrollTo({top:0,behavior:'instant'});},[reviewing,processing]);
   useEffect(()=>{
     if(!processing||!progress?.entries.length)return;
@@ -28,7 +28,7 @@ export function StatementImportPanel({reviewing,processing,progress,origin,closi
     });
     return ()=>cancelAnimationFrame(frame);
   },[processing,progress?.entries.length]);
-  return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)context.onBack();}}>
+  return <div className="card-panel-backdrop" onClick={event=>{if(!suspended&&event.target===event.currentTarget)context.onBack();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
     <div className="card-panel-frame statement-import-frame">
       <div className="card-panel-glass" aria-hidden="true"/>

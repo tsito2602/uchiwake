@@ -25,6 +25,7 @@ import { CardStatementPanel } from './card-statement-panel';
 import { prepareStatementEdits, applyStatementEdit } from './statement-edit';
 import { defaultCardColor } from './card-colors';
 import { StatementImportPanel } from './statement-import-panel';
+import { ImportConfirmationPanel } from './import-confirmation-panel';
 import { ImportSetup, ImportProcessing } from './statement-import-content';
 import { ImportReview, type ImportDraft } from './statement-import-review';
 import { demoImportResult, runStatementImport, type ImportProgress } from './statement-import-flow';
@@ -119,6 +120,8 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [readingFiles,setReadingFiles]=useState(false);
   const [selectedCardId,setSelectedCardId]=useState('');
   const [importPanel,setImportPanel]=useState<{origin?:PanelOrigin;closing?:boolean}|null>(null);
+  const [importConfirmation,setImportConfirmation]=useState<{origin?:PanelOrigin;card:SharedCard}|null>(null);
+  const [importConfirmationDock,setImportConfirmationDock]=useState<DockContext>();
   const importDestination=useRef<Tab|null>(null);
   const importRequest=useRef<AbortController|null>(null);
   const [importProgress,setImportProgress]=useState<ImportProgress|null>(null);
@@ -218,9 +221,17 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       if(errors.length)setNotice(errors.join('\n'));
     } finally {setReadingFiles(false);}
   }
+  const selectedImportCard=state?.cards.find(card=>card.id===selectedCardId);
+  const canStartImport=!!importPanel&&!importPanel.closing&&!busy&&!readingFiles&&!draft&&!!selectedImportCard?.active&&(!importConfirmation||importConfirmation.card.id===selectedCardId)&&(aiMode==='demo'?!!state?.demo_enabled:!!importFiles.length&&!!state?.ai_enabled);
+  function openImportConfirmation() {
+    if(!canStartImport||importConfirmation||!selectedImportCard)return;
+    const focused=document.activeElement;
+    const source=focused instanceof HTMLElement&&focused.matches('button')?focused:document.querySelector<HTMLElement>('.context-primary button');
+    setNotice('');setImportConfirmation({origin:source?panelOrigin(source):undefined,card:selectedImportCard});
+  }
   async function analyzeStatement() {
     const isDemo=aiMode==='demo';
-    if(busy||readingFiles||!selectedCardId||(isDemo?!state?.demo_enabled:!importFiles.length||!state?.ai_enabled))return;
+    if(!canStartImport||importRequest.current)return;
     const controller=new AbortController();
     importRequest.current=controller;
     setBusy(true);setNotice('');
@@ -341,6 +352,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     setImportPanel({origin:source instanceof HTMLElement?panelOrigin(source):undefined});
   };
   const selectTab=(value:Tab)=>{
+    if(importConfirmation||readingFiles)return;
     setCategoryDetails(null);
     if(value==='import'){
       if(openCard){cardDestination.current='import';dismissCard();return;}
@@ -367,7 +379,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     catch(error){setNotice(error instanceof Error?error.message:String(error));}
     finally{setBusy(false);}
   };
-  const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setImportFiles([]);setEditing(null);setDemoView(enabled);};
+  const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setImportConfirmation(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setImportFiles([]);setEditing(null);setDemoView(enabled);};
   const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&!!draft.card_id&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount&&!isReviewCategory(e.category,state?.category_settings));
   const chart=history.length?history.slice(-chartMonths):Array.from({length:chartMonths},(_,index)=>({month:bump(month,index-chartMonths+1),amount:0,total:0}));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
@@ -428,11 +440,11 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   }:undefined;
   const importContext:DockContext|undefined=importPanel?{
     label:draft?'カード明細の確認':'明細の取り込み',commit:true,
-    actionAppearance:importProgress?'breathing':!draft&&state?.cards.some(card=>card.active)?'studio':undefined,
-    onBack:()=>{if(importRequest.current){cancelImport();return;}if(busy||readingFiles)return;if(draft){setImportMonth(draft.due_month);setSelectedCardId(draft.card_id);setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
-    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):readingFiles?'ファイルを準備中…':!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'Thinking...':aiMode==='demo'?'デモで仕分ける':'取り込みを始める',
-    onAction:()=>{if(busy||readingFiles)return;if(draft)void saveStatement();else if(!state?.cards.some(card=>card.active))selectTab('settings');else void analyzeStatement();},
-    disabled:busy||readingFiles||!!((demoView||draft?.demo)&&draft)||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:(aiMode==='live'&&(!importFiles.length||!state.ai_enabled))||(aiMode==='demo'&&!state.demo_enabled)))
+    actionAppearance:importProgress?'breathing':undefined,
+    onBack:()=>{if(importConfirmation)return;if(importRequest.current){cancelImport();return;}if(busy||readingFiles)return;if(draft){setImportMonth(draft.due_month);setSelectedCardId(draft.card_id);setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
+    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):readingFiles?'ファイルを準備中…':!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'Thinking...':'確認へ',
+    onAction:()=>{if(busy||readingFiles)return;if(draft)void saveStatement();else if(!state?.cards.some(card=>card.active))selectTab('settings');else openImportConfirmation();},
+    disabled:busy||readingFiles||!!((demoView||draft?.demo)&&draft)||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:!canStartImport))
   }:undefined;
   const categoryOptions=allCategoryAppearances(state?.category_settings);
   const categoryNameDuplicate=!!categorySettings&&categoryOptions.some(item=>item.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.isNew||item.category!==categorySettings.saved.category));
@@ -449,7 +461,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   };
   const settingsSuspended=!!(spaceDock||allocationOpen||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails);
   const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,entryControls:{sort:categorySort,onSort:setCategorySort,groupByCard,onGroupByCard:setGroupByCard},backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
-  const dockContext=spaceDock||allocationDock||(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||breakdownDock||settingsDock||undefined;
+  const dockContext=importConfirmationDock||spaceDock||allocationDock||(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||breakdownDock||settingsDock||undefined;
   return <>
     <SpaceControls space={space} spaces={spaces} disabled={busy||!!(spaceSettings||allocationBreakdown||spaceDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onSettings={()=>openSpaceSettings(document.querySelector<HTMLElement>('.space-switcher')??undefined)} onRefresh={refreshSpaces} onDockChange={setSpaceDock}/>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
@@ -515,13 +527,14 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     {categoryDetails&&state&&<CategoryEntriesPanel sort={categorySort} groupByCard={groupByCard} category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
     {openCard&&state&&panelTitle&&<CardStatementPanel sort={cardSort} key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} deletedEntryIds={deletedEntryIds} onToggleDeleteEntry={id=>{if(!busy&&!demoView)setDeletedEntryIds(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);}} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});setDeletedEntryIds([]);if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
-    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setImportFiles([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
+    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} suspended={!!importConfirmation} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setImportConfirmation(null);setDraft(null);setImportFiles([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
       <p className="space-import-target">登録先：{space.name}</p>
       {notice&&<div className="notice" role="alert">{notice}</div>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
         {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={importMonth} onMonth={setImportMonth} files={importFiles} loading={readingFiles} disabled={busy||readingFiles} mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setImportFiles([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseImportFiles(files);}} onRemove={index=>setImportFiles(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
       </>:<ImportReview draft={draft} cards={state.cards} settings={state.category_settings} busy={busy} checked={totalChecked} onChange={value=>{setDraft(value);setTotalChecked(false);}} onChecked={setTotalChecked}/>)}
     </StatementImportPanel>}
+    {importConfirmation&&importPanel&&<ImportConfirmationPanel spaceName={space.name} card={importConfirmation.card} month={importMonth} files={importFiles} mode={aiMode} demoView={demoView} disabled={!canStartImport} origin={importConfirmation.origin} onClose={()=>setImportConfirmation(null)} onStart={()=>void analyzeStatement()} onDockChange={setImportConfirmationDock}/>}
     {editing&&<BillPanel bill={editing.data} view={editing.view} onView={openFixedRent} deleteAction={billContext!.secondaryAction} origin={editing.origin} closing={editing.closing} onExited={()=>setEditing(null)} actionLabel={billContext!.actionLabel} onAction={billContext!.onAction} actionDisabled={billContext!.disabled} month={month} demo={demoView} busy={busy} rentStartMonth={rentStartMonth} rentAmount={rentAmount} onRentStartMonth={setRentStartMonth} onRentAmount={setRentAmount} onChange={data=>setEditing({...editing,data})} onClose={billContext!.onBack}/>}
     {cardSettings&&<CardSettingsPanel key={cardSettings.card?.id||'new'} card={cardSettings.card} view={cardSettings.view} origin={cardSettings.origin} closing={cardSettings.closing} busy={busy} name={cardSettings.name} active={cardSettings.active} color={cardSettings.color} onColor={color=>setCardSettings({...cardSettings,color})} deleteAction={settingsContext!.secondaryAction} error={notice} actionLabel={settingsContext!.actionLabel} actionDisabled={settingsContext!.disabled} onName={name=>setCardSettings({...cardSettings,name})} onActive={active=>setCardSettings({...cardSettings,active})} onClose={settingsContext!.onBack} onExited={()=>setCardSettings(null)} onSave={()=>settingsContext!.onAction()}/>}
   </>;

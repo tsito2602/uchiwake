@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { LucideIcon } from 'lucide-react';
 import type { DockContext } from './floating-dock';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
+import { StudioActionLabel } from './studio-action-label';
 
 export type SpaceDockChange = (context:DockContext|undefined)=>void;
 
@@ -16,7 +17,7 @@ function useSpaceDock(context:DockContext,onDockChange:SpaceDockChange) {
   ...(context.auxiliaryAction?{auxiliaryAction:{...context.auxiliaryAction,onAction:()=>current.current.auxiliaryAction?.onAction()}}:{}),
   ...(context.secondaryAction?{secondaryAction:{...context.secondaryAction,onAction:()=>current.current.secondaryAction?.onAction()}}:{}),
   ...(context.detailAction?{detailAction:{...context.detailAction,onAction:()=>current.current.detailAction?.onAction()}}:{})
- }),[context.label,context.actionLabel,context.disabled,context.backOnly,context.commit,
+ }),[context.label,context.actionLabel,context.actionAppearance,context.disabled,context.backOnly,context.commit,
   context.auxiliaryAction?.label,context.auxiliaryAction?.disabled,context.auxiliaryAction?.icon,
   context.secondaryAction?.label,context.secondaryAction?.disabled,
   context.detailAction?.label,context.detailAction?.disabled,context.detailAction?.icon]);
@@ -43,7 +44,7 @@ export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin
      <button type="button" onClick={context.onBack}>戻る</button>
      {context.detailAction&&<button type="button" disabled={context.detailAction.disabled} onClick={context.detailAction.onAction}>{context.detailAction.label}</button>}
      {context.auxiliaryAction&&<button type="button" disabled={context.auxiliaryAction.disabled} onClick={context.auxiliaryAction.onAction}>{context.auxiliaryAction.label}</button>}
-     {!context.backOnly&&<button type="button" disabled={context.disabled} onClick={context.onAction}>{context.actionLabel}</button>}
+     {!context.backOnly&&<button type="button" className={context.actionAppearance==='studio'?'studio-action':undefined} disabled={context.disabled} onClick={context.onAction}>{context.actionAppearance==='studio'?<StudioActionLabel label={context.actionLabel}/>:context.actionLabel}</button>}
      {context.secondaryAction&&<button type="button" className="delete-action" disabled={context.secondaryAction.disabled} onClick={context.secondaryAction.onAction}>{context.secondaryAction.label}</button>}
     </footer>
    </section>
