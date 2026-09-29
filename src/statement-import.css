@@ -2,7 +2,7 @@
 
 .soft-orbit-glow { position: absolute; inset: 0; z-index: 3; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
 .soft-orbit-glow canvas { position: absolute; left: -30px; top: -30px; width: calc(100% + 60px); height: calc(100% + 60px); pointer-events: none; }
-.import-border-beam { position: absolute; inset: 0; z-index: 4; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
+.import-border-beam { position: absolute; inset: 0; z-index: 4; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); opacity: .7; pointer-events: none; }
 .import-border-beam * { pointer-events: none; }
 .import-setup { display: flex; flex-direction: column; gap: 20px; min-width: 0; margin: 0; padding: 10px 0 0; border: 0; }
 .import-setup:disabled { opacity: .65; }
