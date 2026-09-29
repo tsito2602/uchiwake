@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, UserRound, UsersRound, Plus, KeyRound, Settings } from 'lucide-react';
+import { UserRound, UsersRound, Plus, KeyRound, Settings } from 'lucide-react';
 import type { Space } from './spaces';
 import type { Api } from './space-api';
 import type { DockContext } from './floating-dock';
@@ -28,7 +28,13 @@ export function SpaceControls({space,spaces,disabled,api,onSelect,onSettings,onR
   onAction:()=>{if(blocked)return;if(view==='create')void create();else if(view==='join')void join();}
  };
  return <><button type="button" className="space-switcher" disabled={disabled||!!view} aria-label={`スペースを切り替え：${space.name}`} title={space.name} aria-haspopup="dialog" aria-expanded={view!==null} style={{transform:view?'scale(.5)':undefined}} onClick={()=>change('menu')}>{space.kind==='personal'?<UserRound size={23}/>:<UsersRound size={23}/>}</button>
- {view==='menu'&&<SpaceDialog title="スペース" closing={closing} onExited={()=>exitAction.current()} onClose={()=>dismiss(()=>change(null))}><div className="space-options">{spaces.map(s=><button key={s.id} aria-current={s.id===space.id?'true':undefined} onClick={()=>dismiss(()=>{change(null);onSelect(s.id);})}><span className="space-option-name">{s.name}<small>{s.kind==='personal'?'自分だけ':'共有'}</small></span>{s.id===space.id&&<Check size={17}/>} {s.kind==='personal'?<UserRound size={24}/>:<UsersRound size={24}/>}</button>)}<hr/><button onClick={event=>{setName('');enter('create',event.currentTarget);}}><span>スペースを作成</span><Plus size={24}/></button><button onClick={event=>{setPreview(null);enter('join',event.currentTarget);}}><span>招待コードで参加</span><KeyRound size={23}/></button><button onClick={()=>dismiss(()=>{change(null);onSettings();})}><span>このスペースの設定</span><Settings size={23}/></button></div></SpaceDialog>}
+ {view==='menu'&&<SpaceDialog title="スペース" closing={closing} onExited={()=>exitAction.current()} onClose={()=>dismiss(()=>change(null))}><div className="space-options">
+ {spaces.map(s=><button key={s.id} aria-current={s.id===space.id?'true':undefined} onClick={()=>dismiss(()=>{change(null);onSelect(s.id);})}><span className="space-option-name">{s.name}<small>{s.kind==='personal'?'自分だけ':'共有'}</small></span>{s.kind==='personal'?<UserRound size={24} fill={s.id===space.id?'currentColor':'none'}/>:<UsersRound size={24} fill={s.id===space.id?'currentColor':'none'}/>}</button>)}
+ <hr/>
+ <button onClick={event=>{setName('');enter('create',event.currentTarget);}}><span>スペースを作成</span><Plus size={24}/></button>
+ <button onClick={event=>{setPreview(null);enter('join',event.currentTarget);}}><span>招待コードで参加</span><KeyRound size={23}/></button>
+ <button onClick={()=>dismiss(()=>{change(null);onSettings();})}><span>このスペースの設定</span><Settings size={23}/></button>
+ </div></SpaceDialog>}
  {view&&view!=='menu'&&<SpacePanel title={view==='create'?'スペースを作成':'招待コードで参加'} icon={view==='create'?Plus:KeyRound} context={context} origin={origin} closing={closing} onExited={()=>exitAction.current()} onDockChange={onDockChange}>
  {error&&<p className="notice" role="alert">{error}</p>}
  {view==='create'&&<form onSubmit={e=>{e.preventDefault();if(!context.disabled)void create();}}><label className="field"><span>スペース名</span><input maxLength={40} value={name} onChange={e=>setName(e.target.value)} placeholder="うちの家計" disabled={blocked}/></label><p className="subtle">作成後、招待コードでメンバーを追加できます。</p></form>}
