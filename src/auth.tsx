@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { UserRound } from 'lucide-react';
 import { pathData, FIRST_STROKE_OFFSET_Y } from './brand-motion';
+import { NameSettingsForm } from './name-settings-form';
 import './login.css';
 
 export type User = { id: string; email: string; name: string; avatarUrl?: string };
@@ -82,20 +83,8 @@ export function AuthGate({ children }: { children: (user: User, logout: () => Pr
   return <main className="login"><div className="login-panel"><Logo/><h1>AIで仕分け。<br/>家計のうちわけ。</h1><div className="login-actions"><button className="google-sign-in" disabled={!session?.configured || signingIn} aria-busy={signingIn} onClick={() => { setSigningIn(true); location.assign('/api/auth/google'); }}><GoogleMark/><span>{signingIn ? 'Googleに移動しています…' : 'Googleでログイン'}</span></button>{error && <p className="login-error" role="alert">{error}</p>}{session && !session.configured && <p className="login-status">Googleログインは現在準備中です。</p>}{!session && <button className="login-retry" onClick={() => { setError(''); void loadSession(); }}>もう一度試す</button>}</div></div></main>;
 }
 export function AccountSettings({ user, signingOut, updateProfile }: Pick<AccountProps, 'user' | 'signingOut' | 'updateProfile'>) {
-  const [name, setName] = useState(user.name);
-  const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState('');
   const [imageFailed, setImageFailed] = useState(false);
-  useEffect(() => setName(user.name), [user.name]);
   useEffect(() => setImageFailed(false), [user.avatarUrl]);
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    if (saving || signingOut || !name.trim() || name.trim()===user.name) return;
-    setSaving(true); setStatus('');
-    try { await updateProfile(name.trim()); setStatus('表示名を保存しました。'); }
-    catch (error) { setStatus(error instanceof Error ? error.message : '表示名を保存できませんでした'); }
-    finally { setSaving(false); }
-  }
   return <section className="section settings-section">
     <h2 className="section-heading"><UserRound size={20} aria-hidden="true"/>アカウント</h2>
     <div className="account-details">
@@ -103,10 +92,6 @@ export function AccountSettings({ user, signingOut, updateProfile }: Pick<Accoun
       <div><p>{user.email}</p></div>
     </div>
     {!user.name ? <a className="account-reconnect" href="/api/auth/google">Googleで再ログインして名前を取得</a> : !user.avatarUrl && <a className="account-reconnect" href="/api/auth/google">再ログインしてGoogleの画像を取得</a>}
-    <form className="form account-form" onSubmit={event => void save(event)}>
-      <label className="field"><span>表示名</span><input value={name} onChange={event => { setName(event.target.value); setStatus(''); }} required maxLength={100} autoComplete="nickname" disabled={saving}/></label>
-      <button type="submit" className="settings-add-card" disabled={saving || signingOut || !name.trim() || name.trim() === user.name}>{saving ? '保存中…' : '表示名を保存'}</button>
-      <p className="account-save-status" role="status" aria-live="polite">{status}</p>
-    </form>
+    <NameSettingsForm className="account-form" label="表示名" value={user.name} maxLength={100} autoComplete="nickname" disabled={signingOut} onSave={updateProfile}/>
   </section>;
 }
