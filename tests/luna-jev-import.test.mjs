@@ -18,6 +18,20 @@ function fixture(){const f=spaceFixture();f.db.exec("INSERT INTO spaces(id,name,
 const envFor=(f,run)=>({DB:f.DB,AI_GATEWAY_ID:'test',AI:{run}});
 const signal=()=>new AbortController().signal;
 
+test('CloudflareのJev JSONをcharset付きResponseでもバイトストリームでも読み取れる',async()=>{
+ const f=fixture();try{
+  for(const bodyOnly of [false,true]){
+   const env=envFor(f,async model=>{
+    if(model!=='typesafe/jev')return new Response(stream(extraction()),{headers:{'Content-Type':'text/event-stream; charset=utf-8'}});
+    const response=new Response(JSON.stringify(decision()),{headers:{'Content-Type':'application/json; charset=utf-8'}});
+    return bodyOnly?response.body:response;
+   });
+   const result=await runLunaJev(env,'a',[file],cats,'要確認',signal(),()=>{});
+   assert.equal(result.entries[0].category,'食費');
+  }
+ }finally{f.db.close();}
+});
+
 test('Jevは分布・信頼度・根拠を独立に検証し、Amazonの店名だけなら高スコアでも自動適用しない',()=>{
  const row=extractedEntry(source,1,'要確認');
  assert.equal(jevDecision(decision(),cats.slice(0,2),row,'要確認').category,'食費');
@@ -37,6 +51,7 @@ test('合計のない原本は合計を推測せず、同日・同店・同額�
   assert.equal(result.entries.reduce((n,e)=>n+e.amount,0),200);
   assert.equal(events.filter(e=>e.type==='entry').length,2);
   assert.ok(requests.every(r=>r.options.gateway.skipCache&&!r.options.gateway.collectLog));
+  assert.ok(requests.every(r=>r.options.returnRawResponse&&r.options.signal instanceof AbortSignal));
  }finally{f.db.close();}
 });
 
@@ -44,7 +59,7 @@ test('Lunaの全行受信を待たずJevの完了を同じ行へ通知する', {
  const f=fixture();try{
   let controller,notify;const classified=new Promise(resolve=>notify=resolve);
   const upstream=new ReadableStream({start(c){controller=c;c.enqueue(delta('{"entries":['+JSON.stringify(source)));}});
-  const promise=runLunaJev(envFor(f,async model=>model==='typesafe/jev'?decision():upstream),'a',[file],cats,'要確認',signal(),event=>{if(event.type==='entry_update'&&event.entry.category==='食費')notify(event);});
+  const promise=runLunaJev(envFor(f,async model=>model==='typesafe/jev'?decision():new Response(upstream,{headers:{'Content-Type':'text/event-stream'}})),'a',[file],cats,'要確認',signal(),event=>{if(event.type==='entry_update'&&event.entry.category==='食費')notify(event);});
   const event=await classified;assert.equal(event.entry.import_meta.id,'1:1:1');
   controller.enqueue(delta('],"confirmed_total":0,"source_total":null}'));controller.enqueue(done());controller.close();
   assert.equal((await promise).entries[0].category,'食費');
@@ -140,7 +155,7 @@ test('Cloudflareを選択したAPIはOpenAIキーなしで取り込みとレポ�
  const f=fixture();try{
   const models=[];Object.assign(f.env,{AI_IMPORT_PROVIDER:'cloudflare',AI_GATEWAY_ID:'test',AI:{async run(model,input){models.push(model);
    if(model==='typesafe/jev'){const keys=Object.keys(input.questions.category.criteria);return {answers:{category:{type:'choice',choice:'食費',confidence:.99,probabilities:Object.fromEntries(keys.map(key=>[key,key==='食費'?1:0]))},sufficient:{type:'noul',noul:.99}}};}
-   return input.stream?stream(extraction()):{status:'completed',output:[{content:[{type:'output_text',text:'食費が100円です。'}]}]};
+   return input.stream?stream(extraction()):new Response(JSON.stringify({status:'completed',output:[{content:[{type:'output_text',text:'食費が100円です。'}]}]}),{headers:{'Content-Type':'application/json; charset=utf-8'}});
   }}});
   const response=await f.call('owner','/statement/analyze','POST',{mode:'live',files:[file]},'a');assert.equal(response.status,200,await response.clone().text());assert.equal((await response.json()).entries[0].category,'食費');
   f.db.exec("INSERT INTO shared_cards(id,name,active,space_id) VALUES('c','カード',1,'a'); INSERT INTO card_statements(id,card_id,due_month,title,confirmed_total,space_id) VALUES('s','c','2026-09','明細',100,'a'); INSERT INTO card_entries(id,statement_id,spent_on,title,category,amount,space_id) VALUES('e','s','2026-09-01','スーパー','食費',100,'a');");
@@ -155,5 +170,38 @@ test('再読で原本合計が変わったときは自動で帳尻を合わせ�
   let luna=0;
   const result=await runLunaJev(envFor(f,async model=>model==='typesafe/jev'?decision():stream(extraction([source],++luna===1?200:100))),'a',[file],cats,'要確認',signal(),()=>{});
   assert.equal(result.source_total.amount,200);assert.equal(result.total_alternative.amount,100);assert.equal(result.confirmed_total,200);
+ }finally{f.db.close();}
+});
+
+test('CloudflareのHTTP失敗はJSON形式エラーへ潰さず認証・利用枠・制限として通知する',async()=>{
+ const f=fixture();try{
+  for(const [status,body,code] of [[401,null,'authentication'],[403,'forbidden upstream detail','permission'],[429,'slow down','rate_limit'],[429,JSON.stringify({error:{code:'insufficient_quota',message:'private upstream detail'}}),'quota']]){
+   const env=envFor(f,async model=>model==='typesafe/jev'?new Response(body,{status}):stream(extraction()));
+   await assert.rejects(runLunaJev(env,'a',[file],cats,'要確認',signal(),()=>{}),error=>error.code===code&&!error.message.includes('upstream detail'));
+  }
+ }finally{f.db.close();}
+});
+
+test('Jevの不正JSONと不正な分布を仕分け段階のエラーとして返し、完了させない',async()=>{
+ const f=fixture();try{
+  for(const body of ['{incomplete',JSON.stringify({answers:{}})]){
+   const env=envFor(f,async model=>model==='typesafe/jev'?new Response(body):stream(extraction()));
+   const events=(await lunaJevStream(env,'a',[file],cats,'要確認',signal()).text()).trim().split('\n').map(JSON.parse);
+   assert.equal(events.at(-1).code,'classification_result');
+   assert.ok(!events.some(event=>event.type==='complete'));
+  }
+ }finally{f.db.close();}
+});
+
+test('JevのJSON本体を受信中に中止するとストリームを解放して終了する',{timeout:2000},async()=>{
+ const f=fixture();try{
+  const abort=new AbortController();let started,cancelled=false;
+  const waiting=new Promise(resolve=>started=resolve);
+  const env=envFor(f,async model=>{
+   if(model!=='typesafe/jev')return stream(extraction());
+   return new Response(new ReadableStream({pull(){started();},cancel(){cancelled=true;}}));
+  });
+  const promise=runLunaJev(env,'a',[file],cats,'要確認',abort.signal,()=>{});
+  await waiting;abort.abort();await assert.rejects(promise);assert.equal(cancelled,true);
  }finally{f.db.close();}
 });

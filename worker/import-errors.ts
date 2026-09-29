@@ -6,6 +6,8 @@ const messages={
   content_filter:'AIが明細の読み取りを中断したため、明細の受信を完了できませんでした。',
   refusal:'AIが明細の読み取りに応じなかったため、明細の受信を完了できませんでした。',
   invalid_result:'AIから受信した明細の形式を確認できませんでした。',
+  classification_result:'AIから受信した費目の仕分け結果を確認できませんでした。',
+  classification_memory:'保存された分類設定を読み込めませんでした。',
   disconnected:'AIとの接続が途中で切れたため、明細の受信を完了できませんでした。',
   incomplete:'AIが処理を完了しなかったため、明細の受信を完了できませんでした。',
   rate_limit:'AIのリクエスト制限に達しました。少し待ってからお試しください。',
