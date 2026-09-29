@@ -1,4 +1,4 @@
-import { requestJev, jevDiagnostics } from './jev';
+import { requestJev } from './jev';
 import { cloudflareRun, type AIBindings } from './ai-bindings';
 import type { EntryDraft } from '../src/domain';
 import type { StatementFile } from '../src/statement-files';
@@ -53,8 +53,8 @@ export async function runLunaJev(env:AIBindings&{DB:D1Database},space:string,fil
     if(rule)return {...base,category:rule.category,import_meta:{...base.import_meta,status:'classified',original_category:rule.category,rule_id:rule.id}};
     if(applicableRules(base,memory.rules).length)return {...base,category:reviewCategory,import_meta:{...base.import_meta,status:'review',original_category:reviewCategory,reason:'保存された自動分類ルールの費目が競合しています。今回の費目を選び、スペース設定でルールを整理してください。'}};
     try{
-    const result=await requestJev(env,entry,allowed,signal);
-    try{return jevDecision(result,allowed,base,reviewCategory);}catch{throw new ImportError('classification_result',jevDiagnostics(result,allowed));}
+    const {payload,diagnostics}=await requestJev(env,entry,allowed,signal);
+    try{return jevDecision(payload,allowed,base,reviewCategory);}catch{throw new ImportError('classification_result',diagnostics);}
     }catch(error){if(error instanceof ImportError&&error.code==='invalid_result')throw new ImportError('classification_result');throw error;}
   };
   const extract=async(recheck:string|undefined,previous?:EntryDraft[],recheckReason?:string)=>{
