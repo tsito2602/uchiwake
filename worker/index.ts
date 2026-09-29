@@ -1,3 +1,6 @@
+import { cloudflareReport, importAIEnabled, usesCloudflare } from './ai-bindings';
+import { lunaJevStream, runLunaJev } from './luna-jev-import';
+import { classificationRoutes, importMemoryWrites } from './classification-memory';
 import { spacesRoutes, membership, membersFor, settlementFor, type SpaceEnv } from './spaces';
 import { readSpacePreferences } from './space-preferences';
 import { settlementItems, settlementAmounts, defaultConfig, type SettlementConfig } from '../src/spaces';
@@ -57,13 +60,15 @@ app.use('/api/*',async(c,next)=>{
   c.set('space',space);c.set('spaceId',id);await next();
 });
 
+app.route('/api/classification',classificationRoutes);
+
 app.get('/api/state', async c => {
   const month = c.req.query('month') || '';
   if (!monthPattern.test(month)) return error('月を確認してください');
   if(c.req.query('demo')==='1'){
     if(c.env.APP_ENV!=='staging')return error('見つかりません',404);
     const members=await membersFor(c.env.DB,c.get('spaceId'));
-    return c.json({...demoState(month),space:c.get('space'),members,settlement:await settlementFor(c.env.DB,c.get('space'),month,members),ai_enabled:Boolean(c.env.OPENAI_API_KEY)});
+    return c.json({...demoState(month),space:c.get('space'),members,settlement:await settlementFor(c.env.DB,c.get('space'),month,members),ai_enabled:importAIEnabled(c.env)});
   }
   const [bills, statements, entries, cards, rentRules, categorySettings, preferences] = await Promise.all([
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC').bind(month,c.get('spaceId')).all(),
@@ -76,7 +81,7 @@ app.get('/api/state', async c => {
   ]);
   const members=await membersFor(c.env.DB,c.get('spaceId'));
   const settlement=await settlementFor(c.env.DB,c.get('space'),month,members,!!(bills.results.some(b=>preferences.rent_enabled||b.kind!=='rent')||statements.results.length||(preferences.rent_enabled&&rentRules.results.some(r=>String(r.effective_month)<=month))));
-  return c.json({ space:c.get('space'),members,settlement,month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, space_preferences:preferences, category_settings:allCategoryAppearances(categorySettings), ai_enabled: Boolean(c.env.OPENAI_API_KEY), demo_enabled: c.env.APP_ENV === 'staging' });
+  return c.json({ space:c.get('space'),members,settlement,month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, space_preferences:preferences, category_settings:allCategoryAppearances(categorySettings), ai_enabled: importAIEnabled(c.env), demo_enabled: c.env.APP_ENV === 'staging' });
 });
 
 app.post('/api/category-settings', async c => {
@@ -235,8 +240,12 @@ app.post('/api/statements', async c => {
   if(checked.some(row=>isReviewCategory(String(row.category),settings)))return error('要確認の明細が残っています。費目を選んでから保存してください');
   const total=checked.reduce((sum,row)=>sum+Number(row.amount),0);
   if (total !== Number(body.confirmed_total)) return error('カード引落額と明細行の合計が一致しません');
+  let memoryWrites:D1PreparedStatement[]=[];
+  try{memoryWrites=importMemoryWrites(c.env.DB,c.get('spaceId'),c.get('user').id,checked.map((row,index)=>({...row,category:String(row.category),amount:Number(row.amount),import_meta:entries[index]?.import_meta}))); }
+  catch(failure){return error(failure instanceof Error?failure.message:'分類ルールを確認してください');}
   const id=crypto.randomUUID();
   await c.env.DB.batch([
+    ...memoryWrites,
     c.env.DB.prepare('INSERT INTO card_statements (id,card_id,due_month,title,confirmed_total,space_id) VALUES (?,?,?,?,?,?)').bind(id,body.card_id,body.due_month,safeString(body.title),total,c.get('spaceId')),
     ...checked.map(row=>c.env.DB.prepare('INSERT INTO card_entries (id,statement_id,spent_on,title,category,amount,space_id) VALUES (?,?,?,?,?,?,?)').bind(crypto.randomUUID(),id,row.spent_on,row.title,row.category,Number(row.amount),c.get('spaceId')))
   ]);
@@ -312,6 +321,15 @@ app.post('/api/statement/analyze', async c => {
       {spent_on:'',title:'デモ：電車',amount:2200,category:'交通費'}
     ],demo:true});
   }
+  if(usesCloudflare(c.env)){
+    if(!importAIEnabled(c.env))return error('Cloudflare AIの接続設定を確認してください',503);
+    const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
+    const names=allCategoryAppearances(settings).map(item=>item.category);
+    const review=fallbackCategory(settings);
+    if(body.stream===true)return lunaJevStream(c.env,c.get('spaceId'),files,names,review,c.req.raw.signal);
+    try{return c.json(await runLunaJev(c.env,c.get('spaceId'),files,names,review,c.req.raw.signal,()=>{}));}
+    catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');logImportFailure(err,0);return error(err.message,502);}
+  }
   const model=AI_MODEL;
   if (!c.env.OPENAI_API_KEY) return error('AIの設定がまだありません',503);
   const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
@@ -374,9 +392,11 @@ app.post('/api/report/comment', async c => {
     const total = sorted.reduce((sum,item)=>sum+item.amount,0);
     return c.json({comment:`デモ表示（AI未使用）：${month}の支出合計は${total.toLocaleString('ja-JP')}円。最も多い費目は${sorted[0].category}の${sorted[0].amount.toLocaleString('ja-JP')}円です。`,demo:true});
   }
-  const key = c.env.OPENAI_API_KEY;
-  if (!key) return error('AIの設定がまだありません',503);
-  const result = await openai(key,AI_MODEL,[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }],{max_output_tokens:500});
+  if (!importAIEnabled(c.env)) return error('AIの設定がまだありません',503);
+  const content=[{type:'input_text',text:`${month}の費目別支出（円）: ${JSON.stringify(rows.results)}。事実のみ、費目の傾向を日本語で2文、80字以内で説明。助言や個人情報の推測をしない。` }];
+  let result:string|null;
+  try{result=usesCloudflare(c.env)?await cloudflareReport(c.env,content,c.req.raw.signal):await openai(c.env.OPENAI_API_KEY!,AI_MODEL,content,{max_output_tokens:500});}
+  catch{return error('コメントを作成できませんでした',502);}
   return result ? c.json({comment:result.slice(0,300)}) : error('コメントを作成できませんでした',502);
 });
 

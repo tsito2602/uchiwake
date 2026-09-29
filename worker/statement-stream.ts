@@ -23,7 +23,8 @@ export class StatementDecoder {
   private depth=0;
   private quoted=false;
   private escaped=false;
-  constructor(private categories:string[],private reviewCategory='要確認'){}
+  constructor(private categories:string[],private reviewCategory='要確認',private normalize?:(raw:unknown)=>EntryDraft){}
+  private entry(raw:unknown){return this.normalize?this.normalize(raw):normalizeEntry(raw,this.categories,this.reviewCategory);}
   append(delta:string):EntryDraft[] {
     this.text+=delta;
     if(!this.arrayStarted){
@@ -46,7 +47,7 @@ export class StatementDecoder {
       else if(char==='}'){
         this.depth--;
         if(this.depth===0){
-          const entry=normalizeEntry(JSON.parse(this.text.slice(this.objectStart,this.position+1)),this.categories,this.reviewCategory);
+          const entry=this.entry(JSON.parse(this.text.slice(this.objectStart,this.position+1)));
           this.entries.push(entry);added.push(entry);
         }
       }else if(char===']'&&this.depth===0)this.arrayEnded=true;
@@ -56,7 +57,7 @@ export class StatementDecoder {
   finish():ImportResult {
     const parsed=JSON.parse(this.text);
     if(!Array.isArray(parsed.entries)||!Number.isSafeInteger(parsed.confirmed_total))throw new ImportError('invalid_result');
-    const entries=parsed.entries.map((entry:unknown)=>normalizeEntry(entry,this.categories,this.reviewCategory));
+    const entries=parsed.entries.map((entry:unknown)=>this.entry(entry));
     if(JSON.stringify(entries)!==JSON.stringify(this.entries))throw new ImportError('invalid_result');
     const amount=parsed.confirmed_total;
     return {entries,confirmed_total:amount>0&&amount<=100_000_000?amount:0};

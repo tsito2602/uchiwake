@@ -209,3 +209,29 @@
 .import-review-group-heading h4 { display:flex; align-items:center; gap:8px; margin:0; font-size:15px; }
 .import-review-group-heading h4 span { font-size:12px; font-weight:500; color: var(--muted); }
 .import-review-group-heading p { margin:7px 0 4px; font-size:12px; color: var(--muted); line-height:1.6; }
+
+/* Review evidence stays beside the transaction it describes. */
+.import-review-reasons { padding:12px 16px; border-top:1px solid var(--line); font-size:13px; line-height:1.65; }
+.import-review-reasons ul { margin:0 0 10px; padding-left:18px; }
+.import-review-reasons p { margin:8px 0; }
+.import-candidates { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:8px 0; }
+.import-candidates > span { width:100%; color:var(--muted); font-size:12px; }
+.import-candidates button { border:1px solid var(--line); border-radius:9px; padding:7px 10px; background:var(--paper); color:var(--ink); font-size:13px; }
+.import-candidates small { margin-left:4px; color:var(--muted); }
+.import-source { margin-top:12px; color:var(--muted); font-size:12px; }
+.import-source summary { cursor:pointer; overflow-wrap:anywhere; }
+.import-source img { display:block; max-width:100%; height:auto; margin-top:10px; border-radius:10px; }
+.import-source pre { max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+.import-source blockquote { margin:10px 0; padding-left:10px; border-left:2px solid var(--line); white-space:pre-wrap; }
+.import-rule-opt-in { padding-top:12px; border-top:1px solid var(--line); font-size:13px; line-height:1.6; }
+.import-rule-opt-in input[type=checkbox] { width:16px; height:16px; vertical-align:middle; margin-right:6px; }
+.import-rule-opt-in .field { margin-top:10px; }
+.classification-rule { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+.classification-rule span { min-width:0; overflow-wrap:anywhere; }
+.classification-rule strong,.classification-rule small { display:block; }
+.classification-rule small { margin-top:5px; color:var(--muted); }
+.classification-rule button { flex:none; }
+.import-sorted-entry[data-classification=classifying] .import-category-tag { color:var(--muted); }
+.import-sorted-entry[data-classification=classified] .import-category-tag { animation:import-classified .25s ease-out; }
+@keyframes import-classified { from { opacity:.4; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .import-sorted-entry[data-classification=classified] .import-category-tag { animation:none; } }

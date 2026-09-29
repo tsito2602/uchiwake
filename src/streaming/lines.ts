@@ -32,9 +32,9 @@ export async function* streamLines(body:ReadableStream<Uint8Array>,signal?:Abort
   }
 }
 
-export async function* sseData(body:ReadableStream<Uint8Array>,signal?:AbortSignal) {
+export async function* sseData(body:ReadableStream<Uint8Array>,signal?:AbortSignal,idleMs?:number) {
   let data:string[]=[];
-  for await(const line of streamLines(body,signal)){
+  for await(const line of streamLines(body,signal,idleMs)){
     if(line===''){
       if(data.length)yield data.join('\n');
       data=[];

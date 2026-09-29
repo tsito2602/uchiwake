@@ -18,7 +18,7 @@ https://uchiwake-staging.tsito-apps.workers.dev/
 4. 設定で**基本家賃**を登録し、必要な月だけ精算画面から上書きします。カード請求額と家賃などの合計を2人で折半した金額が入金目安です。奇数円は一方が1円多く負担します。
 5. 明細画面では引落月に属するカード明細を費目別に集計します。旧レシート記録の機能と保存表は削除しました。
 
-対象は個人用カードの利用が混ざらない共有カードです。銀行明細の自動読み取り、カード会社との照合、PDF・CSV、画像原本の保存は未対応です。
+対象は個人用カードの利用が混ざらない共有カードです。銀行明細の自動読み取り、カード会社との照合、画像原本の保存は未対応です。画像・PDF・CSVの取り込みに対応しています。
 
 ## AIの費用をかけないデモ
 
@@ -34,12 +34,11 @@ https://uchiwake-staging.tsito-apps.workers.dev/
 
 ## 開発・デプロイ
 
-明細の読み取り中は Beautiful UI の Thinking / Reasoning をもとにした星形アイコンと
-光る1行テキストで、APIから届いた公開用の思考要約を表示します。
-Responses API に `reasoning: { effort: 'low', summary: 'auto' }` を指定し、
-要約の受信に合わせて更新します。要約が届くまでは「Thinking...」を表示します。
-要約の頻度・言語はモデルの応答に依存し、固定文による実況は行いません。
-明細の受信が始まると件数・利用合計の表示に切り替わります。
+AI取り込みを **Cloudflare AI binding / AI Gateway経由のLuna + Jev** に変更しました。
+Lunaが読み取り、Jevが費目を判定し、実際の処理に合わせた1行の状態表示と行ごとの仕分け結果を逐次表示します。
+合計が記載されていれば金額を照合し、記載がなければ明細の合計をユーザーが確認できます。
+修正履歴は候補表示だけに使い、「今後もこの条件で分類」を選んだルールだけを自動適用します。
+必須設定、DB移行、費用・検証手順は [AI取り込みの導入手順](docs/AI_IMPORT.md) を参照してください。
 Beautiful UI のライセンス文は `licenses/beautiful-ui-MIT.txt` にあります。
 
 ```sh
@@ -49,7 +48,10 @@ npm run db:staging
 npm run deploy:staging
 ```
 
-`OPENAI_API_KEY` は `uchiwake-staging` Worker の Secret に設定します。コードや設定には記載しません。デプロイ前に D1 の全マイグレーションを適用してください。`0004_remove_legacy_receipts.sql` は旧レシートの表を削除します。モデルはコード内で GPT-6 Luna (`gpt-6-luna`) に固定しています。画面・リクエスト・環境変数からのモデル切り替えは行いません。
+同じCloudflareアカウントにAI Gateway `uchiwake` を作成し、Unified Billingのクレジットを設定します。
+`wrangler.staging.jsonc` にAI bindingと接続先を追加済みです。Luna (`openai/gpt-6-luna`) とJev (`typesafe/jev`) を使用します。
+デプロイ前にD1のマイグレーション（追加分 `0012_import_classification.sql`）を適用してください。
+Cloudflare経由の取り込み・レポートに `OPENAI_API_KEY` は不要です。旧OpenAI直接接続への切り戻しには引き続き利用できます。
 
 ## GitHub 連携による自動デプロイ
 

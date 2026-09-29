@@ -9,7 +9,7 @@ export type CardEntry = { id: string; statement_id: string; spent_on: string; ti
 export type SharedCard = { id: string; name: string; active: boolean; color: string };
 export type RentRule = { effective_month: string; amount: number };
 export type CardStatement = { id: string; card_id: string | null; due_month: string; title: string; confirmed_total: number; created_at: string; revision?:number };
-export type EntryDraft = Pick<CardEntry, 'spent_on' | 'title' | 'category' | 'amount'>;
+export type EntryDraft = Pick<CardEntry, 'spent_on' | 'title' | 'category' | 'amount'> & {import_meta?:import('./import-policy').ImportMeta};
 export type SpacePreferences = {rent_enabled:boolean;revision:number};
 export type State = { bills: Bill[]; statements: CardStatement[]; entries: CardEntry[]; cards: SharedCard[]; category_settings:CategoryAppearance[]; rent_rules: RentRule[]; space_preferences?:SpacePreferences; ai_enabled: boolean; demo_enabled: boolean; month: string };
 export function rentForMonth(month: string, bills: Pick<Bill,'kind'|'amount'>[], rules: RentRule[]) {

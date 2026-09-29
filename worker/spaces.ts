@@ -3,7 +3,7 @@ import type { AuthBindings, AuthUser } from './auth';
 import { googleAvatar } from './profile';
 import { saveSpacePreferences } from './space-preferences';
 import { defaultConfig, validateConfig, type Member, type Space, type SettlementConfig, type SettlementSettings } from '../src/spaces';
-export type SpaceEnv = {Bindings:AuthBindings&{DB:D1Database;APP_ENV:string;OPENAI_API_KEY?:string};Variables:{user:AuthUser;space:Space;spaceId:string}};
+export type SpaceEnv = {Bindings:AuthBindings&import('./ai-bindings').AIBindings&{DB:D1Database;APP_ENV:string;OPENAI_API_KEY?:string};Variables:{user:AuthUser;space:Space;spaceId:string}};
 export const spacesRoutes=new Hono<SpaceEnv>();
 const monthPattern=/^\d{4}-(0[1-9]|1[0-2])$/;
 const fail=(error:string,status=400)=>Response.json({error},{status});

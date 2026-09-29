@@ -1,6 +1,7 @@
 import type { EntryDraft } from './domain';
 
-export type ImportResult={confirmed_total:number;entries:EntryDraft[];demo?:boolean};
+export type ImportResult={confirmed_total:number;entries:EntryDraft[];demo?:boolean;source_total?:import('./import-policy').SourceTotal|null;total_alternative?:import('./import-policy').SourceTotal};
+export type ImportEvent={type:'entry_update';entry:EntryDraft}|{type:'replace';entries:EntryDraft[]}|{type:'status';phase:'reading'|'sorting'|'checking'};
 export type ImportProgress={phase:'reading'|'sorting'|'checking';entries:EntryDraft[];count:number|null;demo:boolean;reasoning?:string;checkedCount?:number;checkedTotal?:number};
 
 export function demoImportResult(month:string):ImportResult {
@@ -35,7 +36,7 @@ export function importPause(ms:number,signal:AbortSignal):Promise<void> {
 
 // Reveal only returned data. Pending AI requests show an indeterminate state.
 export async function runStatementImport({analyze,onProgress,signal,demo,reducedMotion=false,pause=importPause}:{
-  analyze:(onEntry:(entry:EntryDraft)=>void,onReasoning:(text:string)=>void)=>Promise<ImportResult>;onProgress:(progress:ImportProgress)=>void;
+  analyze:(onEntry:(entry:EntryDraft)=>void,onReasoning:(text:string)=>void,onEvent:(event:ImportEvent)=>void)=>Promise<ImportResult>;onProgress:(progress:ImportProgress)=>void;
   signal:AbortSignal;demo:boolean;reducedMotion?:boolean;
   pause?:(ms:number,signal:AbortSignal)=>Promise<void>;
 }) {
@@ -52,6 +53,11 @@ export async function runStatementImport({analyze,onProgress,signal,demo,reduced
       signal.throwIfAborted();
       reasoning=text;
       onProgress({phase:entries.length?'sorting':'reading',entries:[...entries],count:null,demo:false,reasoning});
+    },event=>{
+      signal.throwIfAborted();
+      if(event.type==='entry_update'){const index=entries.findIndex(row=>row.import_meta?.id===event.entry.import_meta?.id);if(index>=0)entries[index]=event.entry;}
+      else if(event.type==='replace')entries.splice(0,entries.length,...event.entries);
+      onProgress({phase:event.type==='status'?event.phase:entries.length?'sorting':'reading',entries:[...entries],count:null,demo:false,reasoning});
     });
     signal.throwIfAborted();
     const total=result.entries.reduce((sum,entry)=>sum+entry.amount,0);
@@ -59,7 +65,7 @@ export async function runStatementImport({analyze,onProgress,signal,demo,reduced
     return result;
   }
   const started=Date.now();
-  const result=await analyze(()=>{},()=>{});
+  const result=await analyze(()=>{},()=>{},()=>{});
   signal.throwIfAborted();
   if(!reducedMotion)await pause(demo?2000:Math.max(0,2000-(Date.now()-started)),signal);
   const batch=1;

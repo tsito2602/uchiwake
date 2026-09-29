@@ -1,10 +1,10 @@
 import type { EntryDraft } from './domain';
-import type { ImportResult } from './statement-import-flow';
+import type { ImportResult, ImportEvent } from './statement-import-flow';
 import type { StatementFile } from './statement-files';
 import { streamLines } from './streaming/lines';
 import { abortable, idleWatch, ImportIdleError, CLIENT_IDLE_MS } from './streaming/idle';
 
-export async function receiveStatement(response:Response,onEntry:(entry:EntryDraft)=>void,signal:AbortSignal,idleMs=CLIENT_IDLE_MS,onReasoning?:(text:string)=>void):Promise<ImportResult> {
+export async function receiveStatement(response:Response,onEntry:(entry:EntryDraft)=>void,signal:AbortSignal,idleMs=CLIENT_IDLE_MS,onReasoning?:(text:string)=>void,onEvent?:(event:ImportEvent)=>void):Promise<ImportResult> {
   if(!response.ok){
     const timeout=new AbortController();
     const watch=idleWatch(()=>timeout.abort(new ImportIdleError()),idleMs);
@@ -18,13 +18,14 @@ export async function receiveStatement(response:Response,onEntry:(entry:EntryDra
     const event=JSON.parse(line);
     if(event.type==='entry')onEntry(event.entry);
     else if(event.type==='reasoning'&&typeof event.text==='string'&&event.text.trim())onReasoning?.(event.text);
+    else if(event.type==='entry_update'||event.type==='replace'||event.type==='status')onEvent?.(event);
     else if(event.type==='error')throw new Error(event.error||'明細の受信に失敗しました');
     else if(event.type==='complete')return event.result as ImportResult;
   }
   throw new Error('受信が途中で切れました。もう一度取り込んでください。');
 }
 
-export async function streamStatement(files:StatementFile[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void,spaceId?:string):Promise<ImportResult> {
+export async function streamStatement(files:StatementFile[],signal:AbortSignal,onEntry:(entry:EntryDraft)=>void,onReasoning?:(text:string)=>void,spaceId?:string,onEvent?:(event:ImportEvent)=>void):Promise<ImportResult> {
   const controller=new AbortController();
   const abort=()=>controller.abort(signal.reason);
   signal.addEventListener('abort',abort,{once:true});
@@ -34,7 +35,7 @@ export async function streamStatement(files:StatementFile[],signal:AbortSignal,o
     const response=await abortable(fetch('/api/statement/analyze',{method:'POST',headers:{'Content-Type':'application/json',...(spaceId?{'X-Space-Id':spaceId}:{})},cache:'no-store',signal:controller.signal,body:JSON.stringify({files,mode:'live',stream:true})}),controller.signal);
     watch.clear();
     if(response.status===401)window.dispatchEvent(new Event('uchiwake:session-expired'));
-    return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning);
+    return await receiveStatement(response,onEntry,controller.signal,CLIENT_IDLE_MS,onReasoning,onEvent);
   } finally {
     watch.clear();signal.removeEventListener('abort',abort);controller.abort();
   }
