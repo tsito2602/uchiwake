@@ -1,5 +1,5 @@
 import { categories, type Category, type CategoryAppearance } from './domain';
-import { defaultCardColor, validCardColor } from './card-colors';
+import { defaultCardColor, validCardColor, type PresetColor } from './card-colors';
 
 export const categoryIcons = [
   {value:'basket',label:'食料品'}, {value:'utensils',label:'食事'},
@@ -24,12 +24,12 @@ export const categoryIcons = [
   {value:'dumbbell',label:'スポーツ'}, {value:'wallet',label:'お財布'},
 ] as const;
 export type CategoryIconName = typeof categoryIcons[number]['value'];
-const defaults:Record<Category,{color:string;icon:CategoryIconName}>={
+const defaults:Record<Category,{color:PresetColor;icon:CategoryIconName}>={
   '食費':{color:'#738778',icon:'basket'},'外食費':{color:'#b78d6a',icon:'utensils'},
-  '日用品費':{color:'#8995a5',icon:'shopping'},'水道光熱費':{color:'#c0a16e',icon:'lightbulb'},
-  '通信費':{color:'#8a87a4',icon:'phone'},'交通費':{color:'#6f98a1',icon:'train'},
-  '住居費':{color:'#a28c80',icon:'home'},'医療費':{color:'#b48a96',icon:'heart'},
-  '娯楽費':{color:'#9c94b4',icon:'gamepad'},'その他':{color:'#989898',icon:'tag'},'要確認':{color:'#171717',icon:'tag'},
+  '日用品費':{color:'#4d977e',icon:'shopping'},'水道光熱費':{color:'#c0a16e',icon:'lightbulb'},
+  '通信費':{color:'#6f98a1',icon:'phone'},'交通費':{color:'#8995a5',icon:'train'},
+  '住居費':{color:'#a28c80',icon:'home'},'医療費':{color:'#a32931',icon:'heart'},
+  '娯楽費':{color:'#8a87a4',icon:'gamepad'},'その他':{color:'#989898',icon:'tag'},'要確認':{color:'#b7863a',icon:'tag'},
 };
 export const validCategoryIcon=(value:unknown):value is CategoryIconName=>categoryIcons.some(icon=>icon.value===value);
 export const normalizeCategoryName=(value:string)=>value.normalize('NFKC').trim();

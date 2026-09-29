@@ -5,6 +5,7 @@ import { CreditCard, Pencil, Trash2, X } from 'lucide-react';
 import type { DockAction } from './floating-dock';
 import { ColorSwatchPicker } from './color-swatch-picker';
 import { paletteColorLabel, defaultCardColor } from './card-colors';
+import { useTheme } from './use-theme';
 import type { SharedCard } from './domain';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 
@@ -12,6 +13,7 @@ type Props = {card?:SharedCard;view:'summary'|'edit';origin?:PanelOrigin;closing
 
 export function CardSettingsPanel({card,view,origin,closing,busy,name,active,color,onColor,actionLabel,actionDisabled,deleteAction,error,onName,onActive,onClose,onExited,onSave}:Props) {
   const panel=useRef<HTMLElement>(null);
+  const theme=useTheme();
   usePanelMorph(panel,origin,closing,onExited,onClose);
   const savedColor=card?.color??defaultCardColor;
 
@@ -23,7 +25,7 @@ export function CardSettingsPanel({card,view,origin,closing,busy,name,active,col
         <header className="card-panel-header"><span className="card-panel-icon"><CreditCard size={22} color={displayColor(view==='summary'?savedColor:color)}/></span><div><h2 tabIndex={-1} id="card-settings-title">{card?'カードの設定':'カードを追加'}</h2><span>{card?'共有カード':'新しい共有カード'}</span></div><button className="card-panel-close" aria-label="閉じる" onClick={onClose}><X size={20}/></button></header>
         <div className="card-panel-scroll">{error&&<p className="notice" role="alert">{error}</p>}{view==='summary'?<dl className="card-settings-summary">
           <div><dt>カード名</dt><dd>{card?.name}</dd></div>
-          <div><dt>アイコンのカラー</dt><dd className="card-settings-color"><i aria-hidden="true" style={{background:displayColor(savedColor)}}/>{paletteColorLabel(savedColor)}</dd></div>
+          <div><dt>アイコンのカラー</dt><dd className="card-settings-color"><i aria-hidden="true" style={{background:displayColor(savedColor)}}/>{paletteColorLabel(savedColor,theme)}</dd></div>
           <div><dt>使用状態</dt><dd>{card?.active?'使用中':'使用停止中'}</dd></div>
         </dl>:<div className="bill-panel-form"><label className="field"><span>カード名</span><input value={name} maxLength={40} placeholder="例：生活費カード" onChange={event=>onName(event.target.value)} disabled={busy} onKeyDown={event=>{if(event.key==='Enter'&&!actionDisabled)onSave();}}/></label><ColorSwatchPicker value={color} onChange={onColor} disabled={busy}/>{card&&<SettingsToggle label="使用する" checked={active} disabled={busy} onChange={onActive}/>}</div>}</div>
         <footer className="card-panel-footer panel-desktop-actions"><button disabled={actionDisabled} onClick={onSave} aria-label={actionLabel}>{view==='summary'?<Pencil size={22}/>:actionLabel}</button>{deleteAction&&<button className="delete-action" disabled={deleteAction.disabled} onClick={deleteAction.onAction} aria-label={deleteAction.label}><Trash2 size={22}/></button>}</footer>

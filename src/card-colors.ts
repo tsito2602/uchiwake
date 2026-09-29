@@ -23,7 +23,7 @@ export const allPaletteColors = [
   {value:'#738778',label:'フォレストグリーン'},
   {value:'#b78d6a',label:'バーミリオン'},
   {value:'#8995a5',label:'ロイヤルブルー'},
-  {value:'#c0a16e',label:'ゴールド'},
+  {value:'#c0a16e',label:'イエロー'},
   {value:'#8a87a4',label:'バイオレット'},
   {value:'#6f98a1',label:'ターコイズ'},
   {value:'#a28c80',label:'チェスナット'},
@@ -34,7 +34,7 @@ export const allPaletteColors = [
   {value:'#a32931',label:'レッド'},
   {value:'#d46e55',label:'コーラル'},
   {value:'#b7863a',label:'アンバー'},
-  {value:'#a38f19',label:'イエロー'},
+  {value:'#a38f19',label:'レモン'},
   {value:'#5b9837',label:'ライム'},
   {value:'#4d977e',label:'ミント'},
   {value:'#22665f',label:'ティール'},
@@ -47,7 +47,7 @@ export const allPaletteColors = [
 // Shared 6 × 4 palette, ordered by hue, with distinct lightness and chroma.
 const presets = [
   ['#a32931','レッド'], ['#d46e55','コーラル'], ['#b78d6a','オレンジ'],
-  ['#b7863a','アンバー'], ['#c0a16e','ゴールド'], ['#a38f19','イエロー'],
+  ['#b7863a','アンバー'], ['#c0a16e','イエロー'], ['#a38f19','レモン'],
   ['#5b9837','ライム'], ['#6e8b3d','オリーブ'], ['#738778','グリーン'],
   ['#4d977e','ミント'], ['#22665f','ティール'], ['#6f98a1','シアン'],
   ['#328cae','スカイブルー'], ['#8995a5','ブルー'], ['#304666','ネイビー'],
@@ -56,9 +56,11 @@ const presets = [
   ['#a28c80','ブラウン'], ['#989898','グレー'], ['#171717','ブラック'],
 ] as const;
 export const cardColors = presets.map(([value,label])=>({value,label}));
+export type PresetColor = typeof cardColors[number]['value'];
 export const categoryColors = cardColors;
 export const defaultCardColor = '#171717';
-export const paletteColorLabel = (value:string) =>
-  cardColors.find(color=>color.value===value)?.label ?? allPaletteColors.find(color=>color.value===value)?.label ?? value;
+export const paletteColorLabel = (value:string,theme:'light'|'dark'='light') =>
+  value===defaultCardColor && theme==='dark' ? 'ホワイト' :
+    cardColors.find(color=>color.value===value)?.label ?? allPaletteColors.find(color=>color.value===value)?.label ?? value;
 export const validCardColor = (value:unknown):value is string =>
   typeof value==='string' && allPaletteColors.some(color=>color.value===value);
