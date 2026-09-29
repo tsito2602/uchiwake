@@ -66,12 +66,49 @@ test('Lunaの全行受信を待たずJevの完了を同じ行へ通知する', {
  }finally{f.db.close();}
 });
 
+test('Jevが4件とも応答待ちでもLunaを最後まで受信し、確定した全件数と実際の工程を通知する',{timeout:2000},async()=>{
+ const f=fixture();try{
+  let release,readDone,started,calls=0,inFlight=0,maxFlight=0;
+  const gate=new Promise(resolve=>release=resolve),received=new Promise(resolve=>readDone=resolve),fourStarted=new Promise(resolve=>started=resolve);
+  const events=[];
+  const env=envFor(f,async model=>{
+   if(model!=='typesafe/jev')return stream(extraction(Array.from({length:9},(_,i)=>({...source,row:i+1}))));
+   calls++;maxFlight=Math.max(maxFlight,++inFlight);if(calls===4)started();
+   await gate;inFlight--;return decision();
+  });
+  const running=runLunaJev(env,'a',[file],cats,'要確認',signal(),event=>{events.push(event);if(event.type==='activity'&&event.activity.phase==='sorting'&&event.activity.count===9)readDone();});
+  await Promise.all([received,fourStarted]);
+  assert.equal(events.filter(e=>e.type==='entry').length,9);assert.equal(calls,4);
+  assert.ok(events.some(e=>e.type==='activity'&&e.activity.phase==='reading'&&e.activity.count===null));
+  assert.ok(events.some(e=>e.type==='activity'&&e.activity.text==='仕分け 0 / 9件完了'));
+  release();const result=await running;
+  assert.equal(result.entries.length,9);assert.equal(calls,9);assert.equal(maxFlight,4);
+  assert.ok(events.some(e=>e.type==='activity'&&e.activity.text==='仕分け 9 / 9件完了'));
+ }finally{f.db.close();}
+});
+
+test('仕分け待ちの行が残っていても中止後に追加のJevを呼ばず進行表示を更新しない',{timeout:2000},async()=>{
+ const f=fixture();try{
+  let release,started,calls=0;const controller=new AbortController(),events=[];
+  const gate=new Promise(resolve=>release=resolve),fourStarted=new Promise(resolve=>started=resolve);
+  const env=envFor(f,async model=>{
+   if(model!=='typesafe/jev')return stream(extraction(Array.from({length:9},(_,i)=>({...source,row:i+1}))));
+   if(++calls===4)started();await gate;return decision();
+  });
+  const running=runLunaJev(env,'a',[file],cats,'要確認',controller.signal,event=>events.push(event));
+  await fourStarted;controller.abort();await assert.rejects(running);const count=events.length;
+  release();await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(calls,4);assert.equal(events.length,count);
+ }finally{f.db.close();}
+});
+
 test('差額を再読し、参照合計が消えても差額を解消したことにしない。変更のない行はJevへ再送しない',async()=>{
  const f=fixture();try{
   let luna=0,jev=0;const events=[];
   const result=await runLunaJev(envFor(f,async model=>{if(model==='typesafe/jev'){jev++;return decision();}return stream(extraction([source],++luna===1?200:null));}),'a',[file],cats,'要確認',signal(),event=>events.push(event));
   assert.equal(luna,2);assert.equal(jev,1);assert.equal(result.source_total.amount,200);assert.equal(result.entries[0].amount,100);
   assert.ok(events.some(e=>e.type==='replace'));assert.ok(events.some(e=>e.text?.includes('差')));
+  assert.ok(events.some(e=>e.type==='activity'&&e.activity.rechecking&&e.activity.phase==='reading'&&e.activity.text.includes('差額 ¥100')));
  }finally{f.db.close();}
 });
 
@@ -147,8 +184,8 @@ test('フロントの逐次更新は追記せず同じ行を置き換え、再�
  }});
  assert.ok(progress.some(p=>p.entries.length===1&&p.entries[0].category==='食費'));
  assert.ok(progress.every(p=>p.entries.length<=1));assert.equal(result.entries.length,1);
- const events=[];const encoded=[{type:'entry_update',entry:updated},{type:'replace',entries:[]},{type:'complete',result}].map(e=>JSON.stringify(e)).join('\n');
- assert.deepEqual(await receiveStatement(new Response(encoded,{headers:{'Content-Type':'application/x-ndjson'}}),()=>{},signal(),1000,()=>{},event=>events.push(event)),result);assert.equal(events.length,2);
+ const events=[];const activity={phase:'sorting',text:'仕分け 1 / 1件完了',count:1,rechecking:false};const encoded=[{type:'entry_update',entry:updated},{type:'replace',entries:[]},{type:'activity',activity},{type:'complete',result}].map(e=>JSON.stringify(e)).join('\n');
+ assert.deepEqual(await receiveStatement(new Response(encoded,{headers:{'Content-Type':'application/x-ndjson'}}),()=>{},signal(),1000,()=>{},event=>events.push(event)),result);assert.equal(events.length,3);assert.deepEqual(events.at(-1).activity,activity);
 });
 
 test('Cloudflareを選択したAPIはOpenAIキーなしで取り込みとレポートを処理し、未設定時は直接APIへ黙って切り替えない',async()=>{

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { displayColor } from './display-color';
 import { NativeMonthPicker } from './native-month-picker';
 import { Check, ChevronDown, CreditCard, FileImage, FileText, Files, Table2, Plus, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
@@ -56,27 +57,42 @@ export function ImportEntryLine({entry,settings}:{entry:EntryDraft;settings:Cate
 export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {
   const reading=progress.phase==='reading';
   const checking=progress.phase==='checking';
-  const title=reading?'明細を読み取り中':checking?'金額を確認中':'費目ごとに仕分け中';
-  const phaseIndex=reading?0:checking?2:1;
+  const parallel=reading&&progress.entries.length>0;
+  const title=progress.activity?.rechecking?'明細を再確認中':parallel?'読み取りと仕分け中':reading?'明細を読み取り中':checking?'金額を確認中':'費目ごとに仕分け中';
   const classified=progress.entries.filter(entry=>!entry.import_meta||entry.import_meta.status==='classified'||entry.import_meta.status==='review').length;
+  const sortingDone=checking||(!reading&&progress.count!==null&&classified===progress.count);
+  const tasks=[
+    {label:'読み取り',icon:FileText,state:reading?'current':'done',fraction:reading?null:1,description:reading?`${progress.entries.length}件を受信`:'完了'},
+    {label:'仕分け',icon:Sparkles,state:sortingDone?'done':(progress.entries.length>0||!reading)?'current':'pending',fraction:sortingDone?1:progress.count===null?null:progress.count?Math.min(1,classified/progress.count):0,description:sortingDone?'完了':`${classified}件完了`}
+  ];
+  const detail=progress.activity?.text??(reading&&progress.demo?'サンプル明細を準備中…':progress.reasoning??(checking?'明細の金額を合計しています…':reading?undefined:`仕分け ${classified}件完了`));
   return <section className="import-phase-status" aria-label="取り込みの進行">
     <div className="import-phase-title" role="status" aria-live="polite"><span key={progress.phase} className="import-phase-title-content">{checking?<Check className="import-animated-check" size={20} aria-hidden="true"/>:<ScanLine size={20} aria-hidden="true"/>}<strong>{title}</strong></span>{progress.demo&&<small>デモ</small>}</div>
-    <ol className="import-steps">{['読み取り','仕分け','金額確認'].map((label,index)=>{
-      const state=index<phaseIndex?'done':index===phaseIndex?'current':'pending';
-      const indeterminate=state==='current'&&(reading||progress.count===null);
-      const fraction=state==='done'?1:state==='pending'?0:reading||progress.count===null?0:progress.count?Math.min(1,(checking?(progress.checkedCount??0):progress.entries.length)/progress.count):1;
-      return <li key={label} data-state={state} data-indeterminate={indeterminate} aria-current={state==='current'?'step':undefined}><span className="import-step-marker" aria-hidden="true">{state==='done'?<Check className="import-animated-check" size={13}/>:index+1}</span><span>{label}</span><span className="import-step-track" aria-hidden="true"><i style={{transform:`scaleX(${fraction})`}}/></span></li>;
-    })}</ol>
-    <div className="import-phase-summary">{reading?<ImportThinking text={progress.demo?'サンプル明細を準備中…':progress.reasoning}/>:<><span>{checking?'金額確認済み':'仕分け済み'} <b>{checking?(progress.checkedCount??0):classified}</b>{progress.count===null?'件':` / ${progress.count}件`}</span><span className="import-phase-total"><small>利用合計</small><strong>¥{(checking?(progress.checkedTotal??0):progress.entries.reduce((sum,entry)=>sum+entry.amount,0)).toLocaleString('ja-JP')}</strong></span></>}</div>
-    {!reading&&progress.reasoning&&<ImportThinking text={progress.reasoning}/>}
+    <ul className="import-tasks" aria-label="読み取りと仕分けの並行処理">{tasks.map(({label,icon:Icon,state,fraction,description})=><li key={label} data-state={state} data-indeterminate={state==='current'&&fraction===null}>
+      <span className="import-task-marker" aria-hidden="true">{state==='done'?<Check className="import-animated-check" size={13}/>:<Icon size={13}/>}</span><span>{label}</span><small>{state==='pending'?'待機中':description}</small>
+      <span className="import-task-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={state==='pending'?0:fraction===null?undefined:Math.round(fraction*100)} aria-valuetext={state==='pending'?'読み取れた行から開始':description}><i style={{transform:`scaleX(${fraction??0})`}}/></span>
+    </li>)}</ul>
+    <div className="import-verification" data-active={checking}><Check size={14} aria-hidden="true"/><span>金額確認</span><small>{checking?'照合中':'読み取り・仕分けの完了後'}</small></div>
+    <div className="import-live-status"><ImportThinking text={detail}/><ImportElapsed/></div>
+    {(!reading||progress.entries.length>0)&&<div className="import-phase-summary"><span>{reading?'読み取り済み':checking?'金額確認済み':'仕分け済み'} <b>{reading?progress.entries.length:checking?(progress.checkedCount??0):classified}</b>{progress.count===null?'件':` / ${progress.count}件`}</span><span className="import-phase-total"><small>利用合計</small><strong>¥{(checking?(progress.checkedTotal??0):progress.entries.reduce((sum,entry)=>sum+entry.amount,0)).toLocaleString('ja-JP')}</strong></span></div>}
   </section>;
+}
+
+function ImportElapsed() {
+  const [started]=useState(()=>Date.now());
+  const [seconds,setSeconds]=useState(0);
+  useEffect(()=>{
+    const timer=window.setInterval(()=>setSeconds(Math.max(0,Math.floor((Date.now()-started)/1000))),1000);
+    return()=>window.clearInterval(timer);
+  },[started]);
+  return <span className="import-elapsed" aria-label={`経過時間 ${seconds}秒`}>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span>;
 }
 
 export function ImportProcessing({progress,settings}:{progress:ImportProgress;settings:CategoryAppearance[]}) {
   const reading=progress.phase==='reading';
   return <div className="import-processing">
     <div className="import-sorting-list" aria-label="仕分け結果">
-      {reading?<div className="import-skeleton" aria-hidden="true">{[0,1,2].map(index=><div key={index}><i/><span/><b/></div>)}</div>:progress.entries.map((entry,index)=>{
+      {reading&&!progress.entries.length?<div className="import-skeleton" aria-hidden="true">{[0,1,2].map(index=><div key={index}><i/><span/><b/></div>)}</div>:progress.entries.map((entry,index)=>{
         return <div className="import-sorted-entry" data-import-entry="" data-classification={entry.import_meta?.status} key={entry.import_meta?.id??index}><ImportEntryLine entry={entry} settings={settings}/></div>;
       })}
     </div>

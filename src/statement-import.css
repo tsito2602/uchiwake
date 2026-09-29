@@ -88,18 +88,26 @@
 .import-phase-title-content { display: flex; gap: 8px; align-items: center; animation: import-phase-arrive .3s ease both; }
 .import-phase-title strong { font-size: 16px; font-weight: 600; }
 .import-phase-title small { color: var(--muted); font-size: 11px; }
-.import-steps { display: flex; gap: 12px; padding: 0; margin: 18px 0 14px; list-style: none; }
-.import-steps li { position: relative; display: flex; flex: 1; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 11px; transition: color .25s; }
-.import-step-marker { display: grid; place-items: center; width: 21px; height: 21px; flex: none; border-radius: 50%; background: var(--soft); color: var(--muted); font-size: 10px; transition: background .25s,color .25s,transform .3s cubic-bezier(.34,1.56,.64,1); }
-.import-step-track { display: block; flex-basis: 100%; height: 2px; margin-top: 3px; overflow: hidden; background: var(--soft); border-radius: 2px; }
-.import-step-track i { display: block; height: 100%; background: var(--brand); transform: scaleX(0); transform-origin: left; transition: transform .45s cubic-bezier(.22,1,.36,1); }
-.import-steps li[data-state="current"],.import-steps li[data-state="done"] { color: var(--ink); }
-.import-steps li[data-state="current"] .import-step-marker,.import-steps li[data-state="done"] .import-step-marker { background: var(--brand); color: var(--on-brand); }
-.import-steps li[data-indeterminate="true"] .import-step-track i { animation: import-reading-track 1.4s ease-in-out infinite; }
+.import-tasks { display: flex; gap: 16px; padding: 0; margin: 16px 0 10px; list-style: none; }
+.import-tasks li { position: relative; display: flex; flex: 1; min-width: 0; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 11px; transition: color .25s; }
+.import-tasks li > small { margin-left: auto; font-size: 10px; color: var(--muted); white-space: nowrap; }
+.import-task-marker { display: grid; place-items: center; width: 21px; height: 21px; flex: none; border-radius: 50%; background: var(--soft); color: var(--muted); transition: background .25s,color .25s; }
+.import-task-track { display: block; flex-basis: 100%; height: 2px; margin-top: 3px; overflow: hidden; background: var(--soft); border-radius: 2px; }
+.import-task-track i { display: block; height: 100%; background: var(--brand); transform: scaleX(0); transform-origin: left; transition: transform .45s cubic-bezier(.22,1,.36,1); }
+.import-tasks li[data-state="current"],.import-tasks li[data-state="done"] { color: var(--ink); }
+.import-tasks li[data-state="current"] .import-task-marker,.import-tasks li[data-state="done"] .import-task-marker { background: var(--brand); color: var(--on-brand); }
+.import-tasks li[data-indeterminate="true"] .import-task-track i { animation: import-reading-track 1.4s ease-in-out infinite; }
 @keyframes import-reading-track { from { transform: translateX(-100%) scaleX(.35); } to { transform: translateX(100%) scaleX(.35); } }
-.import-steps li[data-state="done"] .import-step-track i { transform: scaleX(1); }
+.import-tasks li[data-state="done"] .import-task-track i { transform: scaleX(1); }
+.import-verification { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; color: var(--muted); font-size: 11px; }
+.import-verification small { margin-left: auto; font-size: 10px; }
+.import-verification[data-active="true"] { color: var(--ink); }
 .import-phase-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-height: 36px; font-size: 11px; color: var(--muted); }
 .import-phase-summary b { color: var(--ink); font-weight: 600; }
+.import-live-status { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.import-live-status .import-thinking { flex: 1; }
+.import-live-status .import-thinking-text { font-size: 12px; }
+.import-elapsed { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .import-phase-total { display: flex; gap: 8px; align-items: baseline; }
 .import-phase-total small { font-size: 10px; }
 .import-phase-total strong { color: var(--ink); font-size: 19px; font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
