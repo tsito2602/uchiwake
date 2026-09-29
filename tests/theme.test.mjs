@@ -8,7 +8,7 @@ function browser({ saved = null, dark = false, blocked = false } = {}) {
   const root = { dataset: {}, style: {} };
   const meta = { setAttribute(_, value) { this.content = value; } };
   const media = { matches: dark, addEventListener(_, fn) { this.change = fn; } };
-  const window = { addEventListener: (name, fn) => events.set(name, fn), dispatchEvent: event => events.get(event.type)?.(event) };
+  const window = { history: { scrollRestoration:'auto' }, addEventListener: (name, fn) => events.set(name, fn), dispatchEvent: event => events.get(event.type)?.(event) };
   const context = { window, Event, document: { documentElement: root, getElementById: () => meta }, matchMedia: () => media,
     localStorage: { getItem() { if (blocked) throw new Error('Storage blocked'); return saved; } } };
   vm.runInNewContext(init, context);

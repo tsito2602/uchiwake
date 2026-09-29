@@ -4,7 +4,7 @@ import { Pencil, X } from 'lucide-react';
 import type { CategoryAppearance } from './domain';
 import { CategoryIcon } from './category-icon';
 import { categoryIcons } from './category-appearance';
-import { categoryColors, paletteColorLabel } from './card-colors';
+import { paletteColorLabel } from './card-colors';
 import { ColorSwatchPicker } from './color-swatch-picker';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 
@@ -18,7 +18,6 @@ export function CategorySettingsPanel({value,view,isNew,origin,closing,busy,erro
   const panel=useRef<HTMLElement>(null);
   const radioName=useId();
   usePanelMorph(panel,origin,closing,onExited,onClose);
-  const colors=categoryColors;
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
     <div className="card-panel-frame">
@@ -39,7 +38,7 @@ export function CategorySettingsPanel({value,view,isNew,origin,closing,busy,erro
             </label>)}</div></fieldset>
             <label className="card-settings-active"><span>精算に含める</span><input type="checkbox" role="switch" checked={value.include_in_settlement!==false} disabled={busy} onChange={event=>onChange({...value,include_in_settlement:event.target.checked})}/><span className="card-active-switch" aria-hidden="true"><span className="card-active-switch-thumb"/></span></label>
             <p className="subtle">オフにすると、この費目の明細は残したまま、すべての月の精算額から除外します。</p>
-            <ColorSwatchPicker value={value.color} options={colors} onChange={color=>onChange({...value,color})} disabled={busy}/>
+            <ColorSwatchPicker value={value.color} onChange={color=>onChange({...value,color})} disabled={busy}/>
           </div>}
         </div>
         <footer className="card-panel-footer panel-desktop-actions"><button disabled={actionDisabled} onClick={onAction} aria-label={actionLabel}>{view==='summary'?<Pencil size={22}/>:actionLabel}</button></footer>

@@ -25,12 +25,14 @@ if (screen && root && canvas) {
   let leaving = false;
   let disposed = false;
   let raf = 0;
+  let revealFrame = 0;
   let exitTimer = 0;
   const started = performance.now();
   function cleanup() {
     if (disposed) return;
     disposed = true;
     cancelAnimationFrame(raf);
+    cancelAnimationFrame(revealFrame);
     clearTimeout(exitTimer);
     clearTimeout(failsafe);
     screen?.remove();
@@ -42,11 +44,26 @@ if (screen && root && canvas) {
   function dismiss() {
     if (!ready || !finished || leaving || disposed) return;
     leaving = true;
-    if (reduced.matches) cleanup();
-    else {
-      screen?.classList.add('boot-leaving');
-      exitTimer = window.setTimeout(cleanup, BOOT_EXIT_DURATION);
+    // Repaint the ready page while the splash is still opaque. Cold reloads
+    // can otherwise expose stale viewport tiles until the first user scroll.
+    // Visibility preserves layout and fixed descendants' containing blocks.
+    if (root) {
+      const visibility = root.style.visibility;
+      root.style.visibility = 'hidden';
+      root.getBoundingClientRect();
+      window.scrollTo({top: 0, left: 0, behavior: 'instant'});
+      root.style.visibility = visibility;
     }
+    // Give the restored page a paint opportunity before fading its cover.
+    revealFrame = requestAnimationFrame(() => {
+      revealFrame = requestAnimationFrame(() => {
+        if (reduced.matches) cleanup();
+        else {
+          screen?.classList.add('boot-leaving');
+          exitTimer = window.setTimeout(cleanup, BOOT_EXIT_DURATION);
+        }
+      });
+    });
   }
   function onReady() { ready = true; dismiss(); }
   function onMotion() {
@@ -55,7 +72,7 @@ if (screen && root && canvas) {
     finished = true;
     elapsed = BOOT_HOLD_END;
     if (ctx && canvas) drawBrand(ctx, canvas.width, canvas.height, elapsed, theme);
-    if (leaving) cleanup(); else dismiss();
+    if (exitTimer) cleanup(); else dismiss();
   }
   // A stalled request or a failed application bundle must not lock the page.
   const failsafe = window.setTimeout(cleanup, 8000);
