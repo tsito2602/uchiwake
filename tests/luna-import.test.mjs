@@ -5,8 +5,8 @@ import app from '../dist/worker.mjs';
 import { spaceFixture } from './spaces-fixture.mjs';
 import { sessionCookie } from './auth-fixture.mjs';
 
-const {outputFiles}=await build({stdin:{contents:`export * from './src/statement-import-stream';export * from './src/statement-import-flow';export * from './worker/luna-import';export * from './worker/classification-memory';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
-const {streamStatement,runStatementImport,lunaClassifiedEntry,classificationMemoryForSpace}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {outputFiles}=await build({stdin:{contents:`export * from './src/statement-import-stream';export * from './src/statement-import-flow';export * from './worker/luna-import';export * from './worker/classification-memory';export {foodDefaultMerchant} from './src/import-policy';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
+const {streamStatement,runStatementImport,lunaClassifiedEntry,classificationMemoryForSpace,foodDefaultMerchant}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 const files=[{name:'synthetic.png',kind:'image',data:'data:image/png;base64,iVBORw0KGgo=',size:1}];
 const source=(row=1,extra={})=>({spent_on:'2026-09-01',title:'ヤオコー',amount:100,source_file:1,page:1,row,excerpt:'9/1 ヤオコー 100',context:'',amount_uncertain:false,category:'食費',basis:'merchant',...extra});
 const extraction=(entries,total=null)=>({confirmed_total:total??0,entries,source_total:total===null?null:{amount:total,file:1,page:1,label:'請求合計'}});
@@ -59,14 +59,14 @@ test('通常の画像取り込みはLuna一回で68件を分類し、要確認�
  assert.equal(f.db.prepare('SELECT count(*) n FROM card_statements').get().n,0);
 });
 
-test('専門店の業態で分類できるが、通販・コンビニは原文の購入内容が必要で推測を使わない',()=>{
+test('専門店の業態で分類できるが、通販は原文の購入内容が必要で推測を使わない',()=>{
  const cats=['食費','車','日用品費','要確認'];
  for(const [title,category] of [['ヤオコー','食費'],['オートバックス','車']]){
   const row=lunaClassifiedEntry(source(1,{title,category}),1,cats,'要確認');
   assert.equal(row.category,category);assert.equal(row.import_meta.status,'classified');
   assert.equal(row.import_meta.context,'');assert.equal(row.import_meta.confidence,undefined);assert.equal(row.import_meta.noul,undefined);
  }
- for(const title of ['Amazon','楽天市場','セブンイレブン','ファミリーマート','ローソン']){
+ for(const title of ['Amazon','楽天市場']){
   const row=lunaClassifiedEntry(source(1,{title,excerpt:`${title} 100`,context:'食品',basis:'context'}),1,cats,'要確認');
   assert.equal(row.category,'要確認');assert.ok(row.import_meta.review_causes.includes('missing_purchase_context'));
   const merchantOnly=lunaClassifiedEntry(source(1,{title}),1,cats,'要確認');assert.equal(merchantOnly.category,'要確認');
@@ -76,6 +76,61 @@ test('専門店の業態で分類できるが、通販・コンビニは原文�
  assert.equal(lunaClassifiedEntry(source(1,{basis:'unknown'}),1,cats,'要確認').category,'要確認');
  for(const extra of [{category:undefined},{category:'存在しない費目'},{basis:undefined},{basis:['merchant']},{basis:'high'}]){
   assert.throws(()=>lunaClassifiedEntry(source(1,extra),1,cats,'要確認'),error=>error.code==='classification_result');
+ }
+});
+
+test('コンビニと自販機は表記ゆれがあっても購入内容の記載なしで食費になる',async t=>{
+ const titles=['セブン－イレブン 架空店','7-ELEVEN','ｾﾌﾞﾝｲﾚﾌﾞﾝ','ファミリーマート','ファミマ','Family Mart','ローソン','LAWSON','ミニストップ','デイリーヤマザキ','NewDays','セイコーマート','コンビニ','自販機','飲料自動販売機','ｼﾞﾊﾝｷ'];
+ let calls=0;
+ const f=await setup(t,async()=>{calls++;return stream(extraction(titles.map((title,i)=>source(i+1,{title,excerpt:`${title} 100`,category:'要確認',basis:'unknown'}))));});
+ const result=await start();
+ assert.equal(calls,1);assert.equal(f.calls.length,1);assert.equal(result.entries.length,titles.length);
+ for(const row of result.entries){
+  assert.equal(row.category,'食費');assert.equal(row.import_meta.status,'classified');
+  assert.equal(row.import_meta.classification_basis,'merchant');assert.equal(row.import_meta.context,'');
+  assert.deepEqual(row.import_meta.review_causes,[]);assert.equal(row.import_meta.confidence,undefined);
+ }
+ assert.equal(result.diagnostics.classification.classified,titles.length);assert.equal(result.diagnostics.classification.review,0);
+ assert.equal(result.diagnostics.timing.extraction_requests,1);assert.equal(result.diagnostics.timing.classification_requests,0);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM classification_rules').get().n,0);
+});
+
+test('コンビニ・自販機でも原文の具体的な購入内容を優先し、不正回答を食費に置き換えない',()=>{
+ const cats=['食費','日用品費','要確認'];
+ for(const title of ['ローソン','自動販売機']){
+  const row=lunaClassifiedEntry(source(1,{title,excerpt:`${title} マスク 100`,context:'マスク',basis:'context',category:'日用品費'}),1,cats,'要確認');
+  assert.equal(row.category,'日用品費');assert.equal(row.import_meta.classification_basis,'context');
+  const unclear=lunaClassifiedEntry(source(1,{title,excerpt:`${title} 不明品 100`,context:'不明品',basis:'unknown',category:'要確認'}),1,cats,'要確認');
+  assert.equal(unclear.category,'要確認');
+  for(const extra of [{category:undefined},{category:'存在しない費目'},{basis:undefined},{basis:['merchant']}]){
+   assert.throws(()=>lunaClassifiedEntry(source(1,{title,...extra}),1,cats,'要確認'),error=>error.code==='classification_result');
+  }
+ }
+ for(const title of ['ローソン銀行ATM','セブン銀行','ローソンチケット','LAWSON TICKET','駅の券売機','乗車券自動販売機','Amazon','楽天市場','Amazon 自販機','楽天市場 コンビニ'])assert.equal(foodDefaultMerchant(title),false,title);
+});
+
+test('食費の名称を変更していても現在の費目へ分類し、旧名称を復活させない',async t=>{
+ const f=await setup(t,async(model,input)=>{
+  const allowed=input.text.format.schema.properties.entries.items.properties.category.enum;
+  assert.ok(allowed.includes('食料品'));assert.ok(!allowed.includes('食費'));
+  return stream(extraction([source(1,{title:'自販機',category:'要確認',basis:'unknown'})]));
+ });
+ f.db.prepare('INSERT INTO category_settings(space_id,category,original_category,icon,color) VALUES(?,?,?,?,?)').run('a','食料品','食費','basket','#738778');
+ const result=await start();assert.equal(result.entries[0].category,'食料品');
+});
+
+test('食費の既定分類より明示ルールを優先し、修正履歴だけでは別費目にしない',async t=>{
+ const f=await setup(t,async()=>stream(extraction([source(1,{title:'自販機',category:'要確認',basis:'unknown'}),source(2,{title:'ローソン',category:'要確認',basis:'unknown'})])));
+ f.db.exec("INSERT INTO classification_rules(id,space_id,merchant_key,context_keyword,category,created_by) VALUES('explicit','a','自販機','','日用品費','owner'); INSERT INTO classification_history(id,space_id,merchant_key,title,category,previous_category) VALUES('history','a','ローソン','ローソン','日用品費','食費');");
+ const result=await start();
+ assert.equal(result.entries[0].category,'日用品費');assert.equal(result.entries[0].import_meta.rule_id,'explicit');
+ assert.equal(result.entries[1].category,'食費');assert.deepEqual(result.entries[1].import_meta.history,['日用品費']);
+});
+
+test('店名のカナ・接頭辞・支店名を保持し、似た別名へ置換しない',()=>{
+ for(const [raw,title] of [[' スマベルク 架空店 ','スマベルク 架空店'],['ｽﾏﾍﾞﾙｸ','スマベルク'],['スモベルク','スモベルク']]){
+  const row=lunaClassifiedEntry(source(1,{title:raw,excerpt:`${raw} 100`}),1,['食費','要確認'],'要確認');
+  assert.equal(row.title,title);assert.equal(row.import_meta.source.excerpt,`${raw} 100`);
  }
 });
 
