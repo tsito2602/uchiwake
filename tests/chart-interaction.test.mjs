@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { historyIndexAt, historyLabelLeft, pieIndexAt, pieSlice } from '../src/chart-interaction.ts';
+import { historyIndexAt, historyLabelLeft, historyEndMonth, historyScrollForIndex, historyEdgeVelocity, pieIndexAt, pieSlice } from '../src/chart-interaction.ts';
 import { demoHistory } from '../worker/demo-data.ts';
 
 test('狭い画面の1Y・3Y・5Yでも隣の月へドラッグするとその月の合計を選択する',()=>{
@@ -53,4 +53,50 @@ test('左右の端や指がグラフの外に出ても金額ラベルが表示�
   }
   assert.equal(historyIndexAt(0,0,0,60),null);
   assert.equal(historyIndexAt(0,0,280,0),null);
+});
+
+test('横スクロール後も指の下の月を選び、金額ラベルを表示領域内に保つ',()=>{
+  for(const width of [140,280,472])for(const visible of [6,12,36,60]) {
+    const count=60,slot=width/visible,labelWidth=Math.min(width,184);
+    for(const first of [0,Math.floor((count-visible)/2),count-visible]) {
+      const scrollLeft=first*slot;
+      for(let i=0;i<visible;i++) {
+        const index=historyIndexAt(20+(i+.5)*slot,20,width,count,scrollLeft,visible);
+        assert.equal(index,first+i);
+        const left=historyLabelLeft(index,count,width,labelWidth,scrollLeft,visible);
+        assert.ok(left>=0&&left+labelWidth<=width);
+      }
+      assert.equal(historyIndexAt(-100,20,width,count,scrollLeft,visible),first);
+      assert.equal(historyIndexAt(width+120,20,width,count,scrollLeft,visible),first+visible-1);
+    }
+  }
+});
+
+test('月をタップしても表示中の位置を保ち、表示外の月だけスクロールで追う',()=>{
+  assert.equal(historyScrollForIndex(32,60,300,6,1500),1500);
+  assert.equal(historyScrollForIndex(29,60,300,6,1500),1450);
+  assert.equal(historyScrollForIndex(36,60,300,6,1500),1550);
+  assert.equal(historyScrollForIndex(59,60,300,6,0),2700);
+  assert.equal(historyScrollForIndex(0,60,300,6,2700),0);
+  assert.equal(historyScrollForIndex(59,60,300,60,0),0);
+});
+
+test('過去の月を選んでも新しい月を残し、5年の範囲を超えたときだけ取得期間を動かす',()=>{
+  assert.equal(historyEndMonth('2026-09'),'2026-09');
+  assert.equal(historyEndMonth('2026-04','2026-09'),'2026-09');
+  assert.equal(historyEndMonth('2021-10','2026-09'),'2026-09');
+  assert.equal(historyEndMonth('2021-09','2026-09'),'2026-08');
+  assert.equal(historyEndMonth('2026-10','2026-09'),'2026-10');
+  assert.equal(historyEndMonth('2018-12','2026-09'),'2023-11');
+});
+
+test('左右の端へ近づくほど速くスクロールし、中央では止まる',()=>{
+  assert.equal(historyEdgeVelocity(150,0,300),0);
+  assert.equal(historyEdgeVelocity(0,0,300),-220);
+  assert.equal(historyEdgeVelocity(300,0,300),220);
+  assert.ok(historyEdgeVelocity(10,0,300)<historyEdgeVelocity(30,0,300));
+  assert.ok(historyEdgeVelocity(290,0,300)>historyEdgeVelocity(270,0,300));
+  assert.equal(historyEdgeVelocity(-100,0,300),-220);
+  assert.equal(historyEdgeVelocity(400,0,300),220);
+  assert.equal(historyEdgeVelocity(0,0,0),0);
 });

@@ -1,5 +1,5 @@
 import { displayColor } from './display-color';
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChartBar, ChartPie } from 'lucide-react';
 import { categoryAppearance } from './category-appearance';
@@ -8,27 +8,36 @@ import type { Category, CategoryAppearance } from './domain';
 import './spending-charts.css';
 import { NumberTicker } from './number-ticker';
 import { CategoryPie } from './category-pie';
-import { historyIndexAt, historyLabelLeft } from './chart-interaction';
+import { historyLabelLeft, historyScrollForIndex } from './chart-interaction';
+import { createHistoryGesture } from './history-chart-gesture';
 
 export type HistoryPoint={month:string;amount:number;total:number};
 const yen=(amount:number)=>`¥${amount.toLocaleString('ja-JP')}`;
 const monthLabel=(month:string)=>`${Number(month.slice(0,4))}年${Number(month.slice(5))}月`;
 const ease=[0.22,1,0.36,1] as const;
 
-export function SettlementChart({data,month}:{data:HistoryPoint[];month:string}) {
+export function SettlementChart({data,month,visibleMonths,onSelectMonth}:{data:HistoryPoint[];month:string;visibleMonths:number;onSelectMonth:(month:string)=>void}) {
   const reduce=useReducedMotion();
   const [active,setActive]=useState<number|null>(null);
   const plot=useRef<HTMLDivElement>(null);
   const [plotWidth,setPlotWidth]=useState(0);
-  const dragging=useRef<number|null>(null);
+  const [scrollLeft,setScrollLeft]=useState(0);
   const cursor=useRef<number|null>(null);
-  const release=()=>{dragging.current=null;setActive(null);};
-  const hit=(event:PointerEvent<HTMLDivElement>)=>{
-    const bounds=event.currentTarget.getBoundingClientRect();
-    const index=historyIndexAt(event.clientX,bounds.left,bounds.width,data.length);
-    cursor.current=index;
-    setActive(index);
+  const latest=useRef({data,visibleMonths,onSelectMonth});
+  useLayoutEffect(()=>{latest.current={data,visibleMonths,onSelectMonth};});
+  const scrollTo=(left:number)=>{
+    const element=plot.current;
+    if(element){element.scrollLeft=left;setScrollLeft(element.scrollLeft);}
   };
+  const gesture=useMemo(()=>createHistoryGesture({
+    viewport:()=>{
+      const element=plot.current,bounds=element?.getBoundingClientRect();
+      return {left:bounds?.left??0,width:bounds?.width??0,scrollLeft:element?.scrollLeft??0,count:latest.current.data.length,visibleMonths:latest.current.visibleMonths};
+    },
+    scrollTo,
+    onPreview:index=>{if(index!==null)cursor.current=index;setActive(index);},
+    onSelect:index=>{const point=latest.current.data[index];if(point)latest.current.onSelectMonth(point.month);}
+  }),[]);
   useLayoutEffect(()=>{
     const element=plot.current;
     if(!element)return;
@@ -38,33 +47,52 @@ export function SettlementChart({data,month}:{data:HistoryPoint[];month:string})
     observer.observe(element);
     return()=>observer.disconnect();
   },[]);
-  useEffect(()=>{setActive(null);dragging.current=null;cursor.current=null;},[data.length,month]);
+  const position=useRef<{width:number;visibleMonths:number;firstMonth?:string}|null>(null);
+  useLayoutEffect(()=>{
+    gesture.cancel();cursor.current=null;
+    if(!plot.current||!plotWidth||!data.length)return;
+    const index=Math.max(0,data.findIndex(item=>item.month===month));
+    const previous=position.current;
+    const reset=!previous||previous.width!==plotWidth||previous.visibleMonths!==visibleMonths||previous.firstMonth!==data[0]?.month;
+    const left=reset?Math.max(0,(index+1-Math.min(data.length,visibleMonths))*plotWidth/Math.min(data.length,visibleMonths)):plot.current.scrollLeft;
+    scrollTo(historyScrollForIndex(index,data.length,plotWidth,visibleMonths,left));
+    position.current={width:plotWidth,visibleMonths,firstMonth:data[0]?.month};
+  },[plotWidth,visibleMonths,month,data.length,data[0]?.month,gesture]);
   useEffect(()=>{
-    const end=(event:globalThis.PointerEvent)=>{if(dragging.current===event.pointerId)release();};
+    const release=()=>gesture.cancel();
+    const end=(event:globalThis.PointerEvent)=>gesture.cancel(event.pointerId);
+    const hide=()=>{if(document.hidden)release();};
     window.addEventListener('blur',release);
     window.addEventListener('pointerup',end);
     window.addEventListener('pointercancel',end);
-    return()=>{window.removeEventListener('blur',release);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);};
-  },[]);
-  const maximum=Math.max(1,...data.map(item=>Math.abs(item.total)));
+    document.addEventListener('visibilitychange',hide);
+    return()=>{release();window.removeEventListener('blur',release);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);document.removeEventListener('visibilitychange',hide);};
+  },[gesture]);
+  const visibleCount=Math.min(data.length,visibleMonths);
+  const firstVisible=plotWidth?Math.floor(scrollLeft/plotWidth*visibleCount):Math.max(0,data.length-visibleCount);
+  const lastVisible=plotWidth?Math.ceil((scrollLeft+plotWidth)/plotWidth*visibleCount):data.length;
+  const maximum=Math.max(1,...data.slice(firstVisible,lastVisible).map(item=>Math.abs(item.total)));
   const slot=1000/Math.max(1,data.length);
   const index=Math.min(data.length-1,active??cursor.current??Math.max(0,data.findIndex(item=>item.month===month)));
   const point=active===null?null:data[active];
   const displayPoint=data[index];
   const labelWidth=Math.min(184,plotWidth);
-  const labelStyle={width:labelWidth,left:historyLabelLeft(index,data.length,plotWidth,labelWidth)};
+  const labelStyle={width:labelWidth,left:historyLabelLeft(index,data.length,plotWidth,labelWidth,scrollLeft,visibleMonths)};
   function keyDown(event:KeyboardEvent<HTMLDivElement>) {
     const next=event.key==='ArrowLeft'?index-1:event.key==='ArrowRight'?index+1:event.key==='Home'?0:event.key==='End'?data.length-1:null;
-    if(next!==null){event.preventDefault();cursor.current=Math.max(0,Math.min(data.length-1,next));setActive(cursor.current);}
-    if(event.key==='Escape')setActive(null);
+    if(next!==null){event.preventDefault();cursor.current=Math.max(0,Math.min(data.length-1,next));setActive(cursor.current);scrollTo(historyScrollForIndex(cursor.current,data.length,plotWidth,visibleMonths,plot.current?.scrollLeft??0));}
+    if(event.key==='Enter'||event.key===' '){event.preventDefault();if(!event.repeat&&displayPoint)onSelectMonth(displayPoint.month);}
+    if(event.key==='Escape')gesture.cancel();
   }
   return <div className="history-chart">
-    <div ref={plot} className="history-plot" role="slider" tabIndex={0} aria-label="月別の支払い合計" aria-valuemin={0} aria-valuemax={Math.max(0,data.length-1)} aria-valuenow={index} aria-valuetext={displayPoint?`${monthLabel(displayPoint.month)}、支払い合計 ${yen(displayPoint.total)}`:undefined} onKeyDown={keyDown} onKeyUp={event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key))setActive(null);}} onBlur={release}
-      onPointerDown={event=>{if(event.button!==0||!event.isPrimary)return;dragging.current=event.pointerId;event.currentTarget.setPointerCapture(event.pointerId);hit(event);}}
-      onPointerMove={event=>{if(dragging.current===event.pointerId)hit(event);}}
-      onPointerUp={event=>{if(dragging.current!==event.pointerId)return;release();if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}}
-      onPointerCancel={release} onLostPointerCapture={release}>
-      <svg viewBox="0 0 1000 160" preserveAspectRatio="none" aria-hidden="true">
+    <div ref={plot} className="history-plot" role="slider" tabIndex={0} aria-label="月別の支払い合計" aria-valuemin={0} aria-valuemax={Math.max(0,data.length-1)} aria-valuenow={Math.max(0,index)} aria-valuetext={displayPoint?`${monthLabel(displayPoint.month)}、支払い合計 ${yen(displayPoint.total)}`:undefined} onKeyDown={keyDown} onKeyUp={event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key))setActive(null);}} onBlur={()=>gesture.cancel()}
+      onPointerDown={event=>{if(event.button!==0||!event.isPrimary||!gesture.start(event))return;event.currentTarget.setPointerCapture(event.pointerId);}}
+      onPointerMove={event=>gesture.move(event)}
+      onPointerUp={event=>{gesture.end(event);if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}}
+      onPointerCancel={event=>gesture.cancel(event.pointerId)} onLostPointerCapture={event=>gesture.cancel(event.pointerId)}
+      onScroll={event=>{setScrollLeft(event.currentTarget.scrollLeft);gesture.refresh();}}
+      onContextMenu={event=>event.preventDefault()}>
+      <svg viewBox="0 0 1000 160" preserveAspectRatio="none" aria-hidden="true" style={{width:`${Math.max(1,data.length/visibleMonths)*100}%`}}>
         {point&&<motion.line x1={(index+.5)*slot} x2={(index+.5)*slot} y1="0" y2="156" stroke="var(--line)" strokeDasharray="2 4" vectorEffect="non-scaling-stroke"/>}
         {data.map((item,i)=>{
           const selected=active===i;

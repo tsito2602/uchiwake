@@ -35,6 +35,7 @@ import { CategorySettingsPanel } from './category-settings-panel';
 import { allCategoryAppearances, isReviewCategory, fallbackCategory, normalizeCategoryName, validCategoryName } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import { SettlementChart, CategoryChart, type HistoryPoint } from './spending-charts';
+import { historyEndMonth } from './chart-interaction';
 import { NumberTicker } from './number-ticker';
 import { useRouteTransition } from './kondo-route-motion';
 import { panelOrigin, type PanelOrigin } from './use-panel-morph';
@@ -150,12 +151,13 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     const controller=new AbortController();loadRequest.current=controller;
     const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
     const query=`?month=${month}${demoView?'&demo=1':''}`;
+    const historyQuery=`?month=${historyEndMonth(month,history.at(-1)?.month)}${demoView?'&demo=1':''}`;
     try {
       // Commit the month and its graph together, retaining the previous render
       // until both requests finish so existing animation nodes stay mounted.
       const [result,resultHistory]=await Promise.all([
         api<State&Partial<SpaceData>>(`/state${query}`,{signal}),
-        api<{months:HistoryPoint[]}>(`/settlement-history${query}`,{signal}).catch(()=>({months:[]}))
+        api<{months:HistoryPoint[]}>(`/settlement-history${historyQuery}`,{signal}).catch(()=>({months:[]}))
       ]);
       if(request===requestId.current){setState(result);setHistory(resultHistory.months);setNotice('');}
     }
@@ -381,7 +383,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   };
   const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setImportConfirmation(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setImportFiles([]);setEditing(null);setDemoView(enabled);};
   const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&!!draft.card_id&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount&&!isReviewCategory(e.category,state?.category_settings));
-  const chart=history.length?history.slice(-chartMonths):Array.from({length:chartMonths},(_,index)=>({month:bump(month,index-chartMonths+1),amount:0,total:0}));
+  const chart=history.length?history:Array.from({length:60},(_,index)=>({month:bump(displayedMonth,index-59),amount:0,total:0}));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
   const panelTitle=state?.cards.find(card=>card.id===(openCard?.type==='card'?openCard.id:panelStatements[0]?.card_id))?.name||panelStatements[0]?.title;
   const cardContext:DockContext|undefined=openCard?{
@@ -480,7 +482,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
             <span className="hero-secondary" hidden={personal}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
           </button>
           {!personal&&!demoView&&hasSettlementData&&<button className="allocation-breakdown-trigger" onClick={event=>setAllocationBreakdown({origin:panelOrigin(event.currentTarget)})}><UsersRound size={16}/><span>負担の内訳</span><small>{Object.keys(allocations).length}人{Object.values(roundingAdjustments).some(Boolean)&&' · 端数調整あり'}</small><ChevronRight size={15}/></button>}
-          <SettlementChart data={chart} month={displayedMonth}/>
+          <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
         </section>
         <section className="section settlement-section"><div className="settlement-list">
