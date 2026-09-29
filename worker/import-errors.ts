@@ -1,5 +1,6 @@
 // Only fixed messages/codes reach the client or logs, never upstream messages or input.
 const messages={
+  configuration:'Cloudflare AIの接続設定を確認してください。',
   timeout:'AIの読み取り応答が途絶えたため中断しました。ファイルは選択したままです。もう一度取り込んでください。',
   output_limit:'AIの出力上限に達したため、明細の受信を完了できませんでした。',
   content_filter:'AIが明細の読み取りを中断したため、明細の受信を完了できませんでした。',
@@ -8,8 +9,8 @@ const messages={
   disconnected:'AIとの接続が途中で切れたため、明細の受信を完了できませんでした。',
   incomplete:'AIが処理を完了しなかったため、明細の受信を完了できませんでした。',
   rate_limit:'AIのリクエスト制限に達しました。少し待ってからお試しください。',
-  quota:'OpenAI APIの利用枠を確認してください。残高または利用上限に達しています。',
-  authentication:'OpenAI APIキーの認証に失敗しました。キーの設定を確認してください。',
+  quota:'AIサービスの利用枠を確認してください。残高または利用上限に達しています。',
+  authentication:'AIサービスの認証に失敗しました。接続設定を確認してください。',
   permission:'このAPIキーでは選択したAIを利用できません。モデルの利用権限を確認してください。',
   upstream:'AI側でエラーが発生し、明細の受信を完了できませんでした。'
 } as const;

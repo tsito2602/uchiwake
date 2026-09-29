@@ -9,7 +9,8 @@ import { scrollImportToLatest } from '../src/import-follow-scroll.ts';
 const {outputFiles}=await build({stdin:{contents:`
   import {createElement} from 'react';
   import {renderToStaticMarkup} from 'react-dom/server';
-  import {ImportReview} from './src/statement-import-review';
+  import {ImportReview,withDraftEntries} from './src/statement-import-review';
+  export {withDraftEntries};
   import {ImportSetup,ImportProcessing,ImportPhaseStatus} from './src/statement-import-content';
   import {StatementImportPanel} from './src/statement-import-panel';
   import {FloatingDock} from './src/floating-dock';
@@ -24,7 +25,7 @@ const {outputFiles}=await build({stdin:{contents:`
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
 // Resolve external React imports from the project, not from a data URL.
 const bundle=outputFiles[0].text.replace(/from "(react(?:-dom(?:\/server)?|\/jsx-runtime)?|lucide-react|border-beam|thinking-orbs|motion\/react)"/g,(_match,name)=>`from ${JSON.stringify(import.meta.resolve(name))}`);
-const {setup,review,processing,panel,dock,defaultOrb}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
+const {setup,review,processing,panel,dock,defaultOrb,withDraftEntries}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
 const sample=demoImportResult('2026-09');
 const draft={...sample,card_id:'one',due_month:'2026-09',title:'カード明細',demo:true};
 const props={draft,cards:[{id:'one',name:'生活費カード',active:true}],settings:[],busy:false,checked:false,onChange:()=>{},onChecked:()=>{}};
@@ -74,7 +75,7 @@ test('仕分け後も同じ明細行で日付・費目・金額を表示し、�
 test('手入力で始めた空の明細は編集欄を開き、削除・金額・費目を編集できる',()=>{
   const markup=review({...props,draft:{...draft,entries:[{spent_on:'',title:'',amount:0,category:'要確認'}]}});
   for(const expected of ['type="date"','type="number"','<select','1件目を削除'])assert.ok(markup.includes(expected));
-  assert.match(markup,/<div class="import-review-item" data-expanded="true"[^>]*><button[\s\S]*?<\/button><div class="import-review-expander"[^>]*><fieldset/);
+  assert.match(markup,/<div class="import-review-item" data-expanded="true"[^>]*><button[\s\S]*?<\/button>[\s\S]*?<div class="import-review-expander"[^>]*><fieldset/);
 });
 
 test('利用合計を唯一の登録先編集入口にし、重複金額と明細名の入力をなくす',()=>{
@@ -186,10 +187,10 @@ test('Studioの発光SVG・マスク・透明度・速度を参照ページか�
  }
  });
 
-test('実取り込みは全件数が不明な間、受信件数だけを示して割合を表示しない',()=>{
+test('実取り込みは全件数が不明な間、完了した仕分け件数を示して割合を表示しない',()=>{
  const markup=processing({progress:{phase:'sorting',entries:sample.entries.slice(0,2),count:null,demo:false},settings:[]});
- assert.ok(markup.includes('明細を受信中'));
- assert.ok(markup.includes('受信済み <b>2</b>件'));
+ assert.ok(markup.includes('費目ごとに仕分け中'));
+ assert.ok(markup.includes('仕分け済み <b>2</b>件'));
  assert.match(markup,/data-state="current" data-indeterminate="true"[\s\S]*?transform:scaleX\(0\)/);
  assert.ok(!markup.includes(' / '));
 });
@@ -245,7 +246,7 @@ test('要確認を分類済みより上に分け、その他は分類済みと�
  assert.ok(markup.indexOf('aria-label="要確認"')<markup.indexOf('aria-label="分類済み"'));
  assert.ok(markup.indexOf('未解決の利用')<markup.indexOf('分類済みの利用'));
  assert.match(markup,/type="checkbox" disabled=""/);
- assert.ok(markup.includes('要確認が残っている間は保存できません'));
+ assert.ok(markup.includes('確認対象の金額：¥200'));
  const resolved=review({...props,draft:{...draft,entries:entries.map(entry=>({...entry,category:'その他'})),confirmed_total:300}});
  assert.ok(!resolved.includes('aria-label="要確認"'));
  assert.doesNotMatch(resolved,/type="checkbox" disabled=""/);
@@ -255,4 +256,25 @@ test('名称を変えた要確認も未分類としてまとめる',()=>{
  const markup=review({...props,settings:[{category:'確認待ち',original_category:'要確認',icon:'tag',color:'#171717'}],draft:{...draft,entries:[{title:'不明',spent_on:'',category:'確認待ち',amount:100}],confirmed_total:100}});
  assert.ok(markup.includes('aria-label="要確認"'));
  assert.match(markup,/type="checkbox" disabled=""/);
+});
+
+
+test('原本の合計がないときは行の修正に合計が追従し、既知の合計は書き換えない',()=>{
+ const entries=[{title:'スーパー',spent_on:'2026-09-01',category:'食費',amount:200}];
+ assert.equal(withDraftEntries({...draft,source_total:null,confirmed_total:100},entries).confirmed_total,200);
+ assert.equal(withDraftEntries({...draft,source_total:{amount:100,file:1,page:1,label:'合計'},confirmed_total:100},entries).confirmed_total,100);
+ assert.equal(withDraftEntries({...draft,source_total:null,total_manual:true,confirmed_total:100},entries).confirmed_total,100);
+ const markup=review({...props,draft:{...draft,entries,confirmed_total:200,source_total:null}});
+ assert.ok(markup.includes('原本に照合できる合計額はありません'));
+ assert.ok(!markup.includes('reconcile-error'));
+});
+
+test('未解決の金額には原本との金額差・具体的な確認理由を表示し、分類待ちを完了数にしない',()=>{
+ const entry={title:'Amazon',spent_on:'2026-09-01',category:'要確認',amount:200,import_meta:{id:'1:1:1',source:{file:1,page:1,row:1,excerpt:'Amazon 200'},context:'',amount_uncertain:false,status:'review',reason:'購入内容を確認してください。',candidates:[{category:'食費',score:.6}],history:['日用品費']}};
+ const markup=review({...props,draft:{...draft,entries:[entry],confirmed_total:300,source_total:{amount:300,file:1,page:1,label:'合計'}}});
+ assert.ok(markup.includes('記載額との差：¥100'));assert.ok(markup.includes('購入内容を確認してください。'));
+ assert.ok(markup.includes('以前の修正（今回だけ適用）'));assert.ok(markup.includes('正答率を示すものではありません'));
+ assert.ok(markup.includes('元の明細：'));assert.ok(!markup.includes('日以降'));
+ const progress=processing({settings:[],progress:{phase:'sorting',count:null,demo:false,entries:[{...entry,import_meta:{...entry.import_meta,status:'classifying'}}]}});
+ assert.ok(progress.includes('仕分け中…'));assert.ok(progress.includes('仕分け済み <b>0</b>件'));
 });
