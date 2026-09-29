@@ -40,6 +40,15 @@ export function reviewReasons(entry:EntryDraft,reviewCategory:string):string[] {
   return reasons;
 }
 
+export function jevProbabilityTotal(values:number[]) {
+  const sum=values.reduce((total,value)=>total+value,0);
+  // Preserve the 0.01 distribution tolerance. Account only for binary floating
+  // point roundoff in the non-negative sum and subtraction (e.g. 1 - 0.99).
+  // Do not round provider values to a fixed number of decimal places.
+  const roundoff=Number.EPSILON*(values.length+1)*Math.max(1,sum);
+  return {sum,valid:Number.isFinite(sum)&&Math.abs(sum-1)<=0.01+roundoff};
+}
+
 // Jev confidence measures concentration, not observed accuracy. Validate the whole
 // distribution and require evidence independently before applying its top choice.
 export function jevDecision(raw:unknown,allowed:string[],entry:EntryDraft,reviewCategory:string):EntryDraft {
@@ -49,7 +58,7 @@ export function jevDecision(raw:unknown,allowed:string[],entry:EntryDraft,review
   const probabilities=answer.probabilities as Record<string,unknown>;
   if(Object.keys(probabilities).length!==allowed.length||allowed.some(category=>typeof probabilities[category]!=='number'||!Number.isFinite(probabilities[category])||Number(probabilities[category])<0||Number(probabilities[category])>1))throw new Error('invalid Jev probabilities');
   const candidates=allowed.map(category=>({category,score:Number(probabilities[category])})).sort((a,b)=>b.score-a.score);
-  if(Math.abs(candidates.reduce((sum,item)=>sum+item.score,0)-1)>0.01||Number(probabilities[answer.choice])+0.000001<candidates[0].score)throw new Error('invalid Jev choice');
+  if(!jevProbabilityTotal(candidates.map(item=>item.score)).valid||Number(probabilities[answer.choice])+0.000001<candidates[0].score)throw new Error('invalid Jev choice');
   const causes:JevReviewCause[]=[];
   if(answer.confidence<AUTO_CLASSIFY_CONFIDENCE)causes.push('low_confidence');
   if(sufficient.noul<AUTO_CLASSIFY_EVIDENCE)causes.push('low_evidence');
