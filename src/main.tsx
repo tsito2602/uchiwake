@@ -15,6 +15,7 @@ import { AppUpdateSettings, AppInfo } from './app-update-settings';
 import { AppearanceSettings } from './appearance-settings';
 import { AuthGate, AccountSettings, type AccountProps } from './auth';
 import { streamStatement } from './statement-import-stream';
+import { readStatementFile, mergeStatementFiles, type StatementFile } from './statement-files';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles } from 'lucide-react';
@@ -114,7 +115,8 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   },[state,notice,onReady,space.id]);
   const [aiMode,setAiMode]=useState<AiMode>('demo');
   const [importMonth,setImportMonth]=useState(month);
-  const [screenshots,setScreenshots]=useState<{name:string;image:string}[]>([]);
+  const [importFiles,setImportFiles]=useState<StatementFile[]>([]);
+  const [readingFiles,setReadingFiles]=useState(false);
   const [selectedCardId,setSelectedCardId]=useState('');
   const [importPanel,setImportPanel]=useState<{origin?:PanelOrigin;closing?:boolean}|null>(null);
   const importDestination=useRef<Tab|null>(null);
@@ -204,24 +206,27 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     setBusy(true);setNotice('');
     try { await api(`/bills/${id}`,{method:'DELETE'});setEditing(current=>current?{...current,closing:true}:null);await load(); } catch(e) {setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
-  async function chooseScreenshots(files:FileList|null) {
-    if (!files?.length) return;
+  async function chooseImportFiles(files:FileList|null) {
+    if (!files?.length||busy||readingFiles) return;
     const selected=Array.from(files);
-    if (selected.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type))) {setNotice('JPEG・PNG・WebPの画像を選んでください');return;}
+    setReadingFiles(true);setNotice('');
     try {
-      const loaded=await Promise.all(selected.map(file=>new Promise<{name:string;image:string}>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve({name:file.name,image:String(reader.result)});reader.onerror=()=>reject(new Error('画像を読み込めませんでした'));reader.readAsDataURL(file);}))); 
-      setScreenshots(loaded);setDraft(null);setTotalChecked(false);setNotice('');
-    } catch(e){setNotice(String(e instanceof Error?e.message:e));}
+      const results=await Promise.allSettled(selected.map(readStatementFile));
+      const loaded=results.flatMap(result=>result.status==='fulfilled'?[result.value]:[]);
+      const errors=results.flatMap(result=>result.status==='rejected'?[result.reason instanceof Error?result.reason.message:'ファイルを読み込めませんでした']:[]);
+      if(loaded.length){setImportFiles(current=>mergeStatementFiles(current,loaded));setDraft(null);setTotalChecked(false);}
+      if(errors.length)setNotice(errors.join('\n'));
+    } finally {setReadingFiles(false);}
   }
   async function analyzeStatement() {
     const isDemo=aiMode==='demo';
-    if(busy||!selectedCardId||(isDemo?!state?.demo_enabled:!screenshots.length||!state?.ai_enabled))return;
+    if(busy||readingFiles||!selectedCardId||(isDemo?!state?.demo_enabled:!importFiles.length||!state?.ai_enabled))return;
     const controller=new AbortController();
     importRequest.current=controller;
     setBusy(true);setNotice('');
     try {
       const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:setImportProgress,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-        analyze:(onEntry,onReasoning)=>isDemo?Promise.resolve(demoImportResult(importMonth)):streamStatement(screenshots.map(item=>item.image),controller.signal,onEntry,onReasoning,space.id)});
+        analyze:(onEntry,onReasoning)=>isDemo?Promise.resolve(demoImportResult(importMonth)):streamStatement(importFiles,controller.signal,onEntry,onReasoning,space.id)});
       const sum=result.entries.reduce((a,b)=>a+b.amount,0);
       const card=state?.cards.find(item=>item.id===selectedCardId);
       setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,demo:!!result.demo});setTotalChecked(false);
@@ -331,7 +336,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     void load(); // Refresh AI availability after a deployment or secret update.
     setAiMode(state?.demo_enabled&&(demoView||!state?.ai_enabled)?'demo':'live');
     const source=document.querySelector<HTMLElement>('.dock-add')??document.activeElement;
-    setNotice('');setDraft(null);setScreenshots([]);setTotalChecked(false);
+    setNotice('');setDraft(null);setImportFiles([]);setTotalChecked(false);
     importDestination.current=null;setImportMonth(month);
     setImportPanel({origin:source instanceof HTMLElement?panelOrigin(source):undefined});
   };
@@ -362,7 +367,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     catch(error){setNotice(error instanceof Error?error.message:String(error));}
     finally{setBusy(false);}
   };
-  const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setScreenshots([]);setEditing(null);setDemoView(enabled);};
+  const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setImportFiles([]);setEditing(null);setDemoView(enabled);};
   const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&!!draft.card_id&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount&&!isReviewCategory(e.category,state?.category_settings));
   const chart=history.length?history.slice(-chartMonths):Array.from({length:chartMonths},(_,index)=>({month:bump(month,index-chartMonths+1),amount:0,total:0}));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
@@ -424,10 +429,10 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const importContext:DockContext|undefined=importPanel?{
     label:draft?'カード明細の確認':'明細の取り込み',commit:true,
     actionAppearance:importProgress?'breathing':!draft&&state?.cards.some(card=>card.active)?'studio':undefined,
-    onBack:()=>{if(importRequest.current){cancelImport();return;}if(busy)return;if(draft){setImportMonth(draft.due_month);setSelectedCardId(draft.card_id);setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
-    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'Thinking...':aiMode==='demo'?'デモで仕分ける':'取り込みを始める',
-    onAction:()=>{if(busy)return;if(draft)void saveStatement();else if(!state?.cards.some(card=>card.active))selectTab('settings');else void analyzeStatement();},
-    disabled:busy||!!((demoView||draft?.demo)&&draft)||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:(aiMode==='live'&&(!screenshots.length||!state.ai_enabled))||(aiMode==='demo'&&!state.demo_enabled)))
+    onBack:()=>{if(importRequest.current){cancelImport();return;}if(busy||readingFiles)return;if(draft){setImportMonth(draft.due_month);setSelectedCardId(draft.card_id);setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
+    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):readingFiles?'ファイルを準備中…':!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'Thinking...':aiMode==='demo'?'デモで仕分ける':'取り込みを始める',
+    onAction:()=>{if(busy||readingFiles)return;if(draft)void saveStatement();else if(!state?.cards.some(card=>card.active))selectTab('settings');else void analyzeStatement();},
+    disabled:busy||readingFiles||!!((demoView||draft?.demo)&&draft)||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:(aiMode==='live'&&(!importFiles.length||!state.ai_enabled))||(aiMode==='demo'&&!state.demo_enabled)))
   }:undefined;
   const categoryOptions=allCategoryAppearances(state?.category_settings);
   const categoryNameDuplicate=!!categorySettings&&categoryOptions.some(item=>item.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.isNew||item.category!==categorySettings.saved.category));
@@ -505,16 +510,16 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         <section className="section settings-section"><h2 className="section-heading"><Home size={20} aria-hidden="true"/>家賃</h2><SettingsToggle label="家賃を集計に含める" checked={rentEnabled} disabled={demoView||busy} onChange={enabled=>void saveRentEnabled(enabled)}/><p className="subtle">オフにすると家賃の表示と全期間の集計を無効にします。登録済みの金額は保持されます。</p>{rentEnabled&&<><p className="subtle">指定した月から毎月の精算に使います。金額が変わったら、新しい開始月を指定してください。</p><div className="rule-list">{state.rent_rules.map(rule=><button type="button" className="settings-rent-button" key={rule.effective_month} onClick={event=>{setRentStartMonth(rule.effective_month);setRentAmount(String(rule.amount));setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rule.amount},view:'fixed',initialView:'fixed',rentRuleMonth:rule.effective_month,origin:panelOrigin(event.currentTarget)});}}><Home size={21}/><span><strong>{yen(rule.amount)}</strong><small>{monthText(rule.effective_month)}から</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{setRentStartMonth(month);setRentAmount('');setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rent.amount},view:'fixed',initialView:'fixed',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 基本家賃を設定</button><p className="subtle">一時的な変更は精算画面の家賃から入力できます。</p></>}</section>
     </div></SpacePanel>}
     {allocationBreakdown&&state&&<AllocationBreakdownPanel month={displayedMonth} members={state.members??[]} allocations={allocations} adjustments={roundingAdjustments} userId={user.id} origin={allocationBreakdown.origin} onClose={()=>setAllocationBreakdown(null)} onDockChange={setBreakdownDock}/>}
-    <FloatingDock personal={personal} tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(spaceSettings||allocationBreakdown||spaceDock||allocationDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setScreenshots([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
+    <FloatingDock personal={personal} tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(spaceSettings||allocationBreakdown||spaceDock||allocationDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setImportFiles([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
     {allocationOpen&&state?.settlement&&<SettlementSettingsPanel initialScope={allocationOpen} spaceId={space.id} month={month} members={state.members??[]} settings={state.settlement} items={splitItems} api={api} onClose={()=>setAllocationOpen(null)} onSaved={load} onDockChange={setAllocationDock}/>}
     {categoryDetails&&state&&<CategoryEntriesPanel sort={categorySort} groupByCard={groupByCard} category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
     {openCard&&state&&panelTitle&&<CardStatementPanel sort={cardSort} key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} deletedEntryIds={deletedEntryIds} onToggleDeleteEntry={id=>{if(!busy&&!demoView)setDeletedEntryIds(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);}} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});setDeletedEntryIds([]);if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
-    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setScreenshots([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
+    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setDraft(null);setImportFiles([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
       <p className="space-import-target">登録先：{space.name}</p>
       {notice&&<div className="notice" role="alert">{notice}</div>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
-        {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={importMonth} onMonth={setImportMonth} images={screenshots} mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setScreenshots([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseScreenshots(files);}} onRemove={index=>setScreenshots(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
+        {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={importMonth} onMonth={setImportMonth} files={importFiles} loading={readingFiles} disabled={busy||readingFiles} mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setImportFiles([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseImportFiles(files);}} onRemove={index=>setImportFiles(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
       </>:<ImportReview draft={draft} cards={state.cards} settings={state.category_settings} busy={busy} checked={totalChecked} onChange={value=>{setDraft(value);setTotalChecked(false);}} onChecked={setTotalChecked}/>)}
     </StatementImportPanel>}
     {editing&&<BillPanel bill={editing.data} view={editing.view} onView={openFixedRent} deleteAction={billContext!.secondaryAction} origin={editing.origin} closing={editing.closing} onExited={()=>setEditing(null)} actionLabel={billContext!.actionLabel} onAction={billContext!.onAction} actionDisabled={billContext!.disabled} month={month} demo={demoView} busy={busy} rentStartMonth={rentStartMonth} rentAmount={rentAmount} onRentStartMonth={setRentStartMonth} onRentAmount={setRentAmount} onChange={data=>setEditing({...editing,data})} onClose={billContext!.onBack}/>}

@@ -4,7 +4,8 @@
 .soft-orbit-glow canvas { position: absolute; left: -30px; top: -30px; width: calc(100% + 60px); height: calc(100% + 60px); pointer-events: none; }
 .import-border-beam { position: absolute; inset: 0; z-index: 4; border-radius: inherit; overflow: hidden; clip-path: inset(0 round 28px); pointer-events: none; }
 .import-border-beam * { pointer-events: none; }
-.import-setup { display: flex; flex-direction: column; gap: 20px; padding-top: 10px; }
+.import-setup { display: flex; flex-direction: column; gap: 20px; min-width: 0; margin: 0; padding: 10px 0 0; border: 0; }
+.import-setup:disabled { opacity: .65; }
 .import-card-select { position: relative; display: flex; align-items: center; gap: 14px; padding: 17px 18px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); cursor: pointer; }
 .import-card-select > svg { flex-shrink: 0; }
 .import-card-select > svg:last-of-type { color: var(--muted); pointer-events: none; }
@@ -20,18 +21,33 @@
 .import-mode { display: flex; padding: 4px; border-radius: 16px; background: var(--soft); }
 .import-mode button { flex: 1; min-width: 0; min-height: 40px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; transition: background .2s,color .2s,box-shadow .2s; }
 .import-mode button[aria-pressed="true"] { color: var(--ink); background: var(--paper); box-shadow: 0 2px 6px #0000000a; }
-.import-upload { position: relative; display: flex; align-items: center; flex-direction: column; justify-content: center; gap: 10px; min-height: 225px; padding: 28px 16px; border: 1px dashed var(--line); border-radius: 24px; background: var(--paper); cursor: pointer; }
+.import-file-section { min-width: 0; }
+.import-upload { position: relative; display: flex; align-items: center; flex-direction: column; justify-content: center; gap: 16px; min-height: 205px; padding: 28px 16px; border: 1px dashed var(--line); border-radius: 24px; background: color-mix(in srgb, var(--paper) 65%, transparent); cursor: pointer; transition: background-color 180ms, transform 180ms; }
 .import-upload:focus-within { outline: 2px solid #777; outline-offset: 3px; }
-.import-upload-icon { margin-bottom: 10px; }
+.import-upload:active { transform: scale(.99); background: var(--soft); }
+.import-upload-icon { display: grid; place-items: center; color: var(--ink); }
 .import-upload strong { font-size: 17px; letter-spacing: -.03em; }
-.import-upload > span:not(.import-upload-icon) { color: var(--muted); font-size: 13px; }
+.import-upload-formats { display: flex; align-items: center; justify-content: center; gap: 20px; color: var(--muted); font-size: 12px; }
+.import-upload-formats > span { display: inline-flex; align-items: center; gap: 5px; }
 .import-upload small { color: var(--muted); font-size: 11px; }
 .import-upload input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
-.import-image-list { display: flex; flex-direction: column; gap: 8px; }
-.import-image-list > div { display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
-.import-image-list img { width: 40px; height: 48px; object-fit: cover; border-radius: 6px; }
-.import-image-list span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
-.import-image-list button { display: grid; place-items: center; width: 40px; height: 40px; border: 0; background: transparent; color: var(--muted); }
+.import-upload[data-compact='true'] { flex-direction: row; gap: 8px; min-height: 56px; margin-top: 12px; padding: 12px; border-radius: 16px; }
+.import-upload[data-compact='true'] strong { font-size: 13px; font-weight: 550; }
+.import-file-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.import-file-heading h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.import-file-heading > span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.import-file-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.import-file-list > li { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--paper) 65%, transparent); animation: import-file-arrive 220ms ease both; }
+.import-file-preview { display: grid; place-items: center; flex: 0 0 40px; height: 48px; color: var(--ink); }
+.import-file-preview img { width: 40px; height: 48px; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; }
+.import-file-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 5px; }
+.import-file-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+.import-file-copy small { color: var(--muted); font-size: 11px; }
+.import-file-list button { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.import-file-list button:focus-visible { outline: 2px solid var(--ink); outline-offset: -4px; }
+.import-file-list button:active { background: var(--soft); }
+.import-file-status { margin: 12px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
+@keyframes import-file-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .import-hint { color: var(--muted); font-size: 12px; text-align: center; }
 .import-manual { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
 .import-demo-sample { padding: 22px 20px; border-radius: 24px; border: 1px solid var(--line); background: var(--paper); }
@@ -160,6 +176,8 @@
 @keyframes import-breathe { from { opacity: .4; } to { opacity: 1; } }
 @media(max-width:620px) { .statement-import-frame { min-height: 0; } }
 @media(prefers-reduced-motion:reduce) {
+  .import-file-list > li { animation: none; }
+  .import-upload { transition: none; }
   .import-sorted-entry,.import-category-tag,.import-skeleton > div { animation: none !important; }
   .import-thinking-text { animation: none !important; background: none; color: var(--muted); }
   .import-phase-status *,.import-review-item,.import-edit-hint,.import-edit-hint svg,.import-complete-symbol,.import-animated-check path,.import-review-confirm * { animation: none !important; transition: none !important; }

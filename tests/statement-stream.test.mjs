@@ -4,8 +4,8 @@ import {strict as assert} from 'node:assert';
 import {build} from 'esbuild';
 import app from './space-mock-app.mjs';
 import {runStatementImport} from '../src/statement-import-flow.ts';
-const {outputFiles}=await build({stdin:{contents:`export {receiveStatement} from './src/statement-import-stream';export {StatementDecoder,statementStream} from './worker/statement-stream';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
-const {receiveStatement,StatementDecoder,statementStream}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {outputFiles}=await build({stdin:{contents:`export {receiveStatement,streamStatement} from './src/statement-import-stream';export {StatementDecoder,statementStream} from './worker/statement-stream';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
+const {receiveStatement,streamStatement,StatementDecoder,statementStream}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 const entry={title:'スーパー「日本」 } ] \\"',spent_on:'2026-09-01',category:'食費',amount:1500};
 const second={title:'返金',spent_on:'',category:'食費',amount:-200};
 const result={confirmed_total:1300,entries:[entry,second]};
@@ -257,6 +257,47 @@ test('枚数・容量制限を外しても空選択・非対応形式・不正�
     for(const images of [[],['data:image/gif;base64,R0lGODlh'],['data:image/png;base64,aGVsbG8='],['data:image/png;base64,iVBORw==='],['data:image/png;base64,iVBORw==AA'],['data:image/png;base64,iVBORw0KGgoA!'],['data:image/webp;base64,UklGRgAAAAAAAAAA']]){
       assert.equal((await app.fetch(request({images}),env)).status,400);
     }
+  }finally{globalThis.fetch=original;}
+});
+
+test('画像・PDF・1000行を超えるCSVを同じ入口から送信し、全内容をAIへ渡して結果を受信する',async()=>{
+  const original=globalThis.fetch;
+  const csv='利用日,店名,金額\r\n'+Array.from({length:1201},(_,i)=>`2026-09-01,"店舗${i},支店",1500`).join('\r\n');
+  const pdf='data:application/pdf;base64,'+Buffer.from('%PDF-1.7\n1 0 obj << /Type /Pages /Count 2 >> endobj\n%%EOF').toString('base64');
+  const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X9sAAAAASUVORK5CYII=';
+  const files=[{kind:'image',name:'明細.png',data:image,size:68},{kind:'pdf',name:'明細.pdf',data:pdf,size:60},{kind:'csv',name:'明細.csv',data:csv,size:Buffer.byteLength(csv)}];
+  let calls=0;
+  globalThis.fetch=async(url,options)=>{
+    if(url==='/api/statement/analyze'){
+      const sent=JSON.parse(options.body);assert.deepEqual(sent.files,files);assert.equal(sent.images,undefined);
+      const headers=new Headers(options.headers);headers.set('Cookie',auth);headers.set('Origin','https://example.test');
+      assert.equal(headers.get('X-Space-Id'),'legacy');
+      return app.fetch(new Request('https://example.test/api/statement/analyze',{...options,headers}),env);
+    }
+    calls++;assert.equal(url,'https://api.openai.com/v1/responses');
+    const sent=JSON.parse(options.body),parts=sent.input[0].content;
+    assert.equal(sent.model,'gpt-6-luna');assert.equal(sent.store,false);
+    assert.equal(parts.find(p=>p.type==='input_image').image_url,image);
+    assert.deepEqual(parts.find(p=>p.type==='input_file'),{type:'input_file',filename:'明細.pdf',file_data:pdf});
+    const csvPart=JSON.parse(parts.filter(p=>p.type==='input_text')[1].text);
+    assert.equal(csvPart.csv,csv);assert.ok(csvPart.csv.includes('店舗1200'));
+    assert.ok(parts[0].text.includes('同日・同店・同額というだけで別の利用を重複扱いにしない'));
+    return new Response(delta(JSON.stringify(result))+done);
+  };
+  try{
+    const entries=[];
+    assert.deepEqual(await streamStatement(files,new AbortController().signal,e=>entries.push(e),undefined,'legacy'),result);
+    assert.deepEqual(entries,result.entries);assert.equal(calls,1);
+  }finally{globalThis.fetch=original;}
+});
+
+test('不正・空・曖昧なファイル入力はAIへの送信前に拒否する',async()=>{
+  const original=globalThis.fetch;
+  globalThis.fetch=async()=>assert.fail('invalid files must not call AI');
+  const valid={kind:'csv',name:'明細.csv',data:'店,100',size:7};
+  try{
+    for(const files of [[],[null],[{...valid,data:''}],[{...valid,data:'\u0000binary'}],[{...valid,kind:'pdf',data:'data:application/pdf;base64,aGVsbG8='}],[{...valid,kind:'image',data:'https://example.test/a.png'}],[{...valid,size:0}],[{...valid,kind:'html'}]])assert.equal((await app.fetch(request({images:undefined,files}),env)).status,400);
+    assert.equal((await app.fetch(request({files:[valid]}),env)).status,400);
   }finally{globalThis.fetch=original;}
 });
 

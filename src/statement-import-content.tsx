@@ -1,36 +1,48 @@
 import { displayColor } from './display-color';
 import { NativeMonthPicker } from './native-month-picker';
-import { Camera, Check, ChevronDown, CreditCard, FileImage, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
+import { Check, ChevronDown, CreditCard, FileImage, FileText, Files, Table2, Plus, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
 import type { CategoryAppearance, SharedCard, EntryDraft } from './domain';
 import { categoryAppearance } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import type { ImportProgress } from './statement-import-flow';
 import { ImportThinking } from './import-thinking';
+import { statementFileAccept, statementFileSize, type StatementFile } from './statement-files';
 
-export function ImportSetup({cards,cardId,month,images,mode,demoEnabled,liveEnabled,demoView=false,onCard,onMonth,onMode,onFiles,onRemove,onManual}:{
-  cards:SharedCard[];cardId:string;month:string;images:{name:string;image:string}[];
+export function ImportSetup({cards,cardId,month,files,mode,demoEnabled,liveEnabled,demoView=false,loading=false,disabled=false,onCard,onMonth,onMode,onFiles,onRemove,onManual}:{
+  cards:SharedCard[];cardId:string;month:string;files:StatementFile[];loading?:boolean;disabled?:boolean;
   mode:'demo'|'live';demoEnabled:boolean;liveEnabled:boolean;demoView?:boolean;onMonth:(month:string)=>void;
   onCard:(id:string)=>void;onMode:(mode:'demo'|'live')=>void;onFiles:(files:FileList|null)=>void;onRemove:(index:number)=>void;onManual:()=>void;
 }) {
   const card=cards.find(item=>item.id===cardId);
-  return <div className="import-setup">
+  return <fieldset className="import-setup" disabled={disabled} aria-busy={loading}>
     <label className="import-card-select"><CreditCard size={24} color={displayColor(card?.color)} aria-hidden="true"/><span className="import-card-copy" aria-hidden="true"><span>取り込むカード</span><strong>{card?.name}</strong></span><ChevronDown size={18} aria-hidden="true"/><select aria-label="取り込むカード" value={cardId} onChange={event=>onCard(event.target.value)}>{cards.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <div className="import-month"><span>引落月</span><NativeMonthPicker value={month} onChange={onMonth} label="引落年月を選択"/></div>
-    {demoEnabled&&<div className="import-mode" role="group" aria-label="読み取り方法"><button aria-pressed={mode==='live'} onClick={()=>onMode('live')}>画像を読み取る</button><button aria-pressed={mode==='demo'} onClick={()=>onMode('demo')}>デモで試す</button></div>}
+    {demoEnabled&&<div className="import-mode" role="group" aria-label="読み取り方法"><button aria-pressed={mode==='live'} onClick={()=>onMode('live')}>明細を読み取る</button><button aria-pressed={mode==='demo'} onClick={()=>onMode('demo')}>デモで試す</button></div>}
     {mode==='live'&&!liveEnabled&&<p className="import-hint" role="status">AIの接続設定を確認できません。Cloudflareの実行環境にOPENAI_API_KEYを設定し、画面を再読み込みしてください。</p>}
-    {mode==='live'&&liveEnabled&&demoView&&<p className="import-hint">実際のAIで画像を読み取ります。デモ表示中のため、結果は保存されません。</p>}
+    {mode==='live'&&liveEnabled&&demoView&&<p className="import-hint">実際のAIで明細を読み取ります。デモ表示中のため、結果は保存されません。</p>}
     {mode==='demo'?<div className="import-demo-sample">
       <span className="import-demo-badge"><Sparkles size={14}/> デモ</span>
-      <h3>仕分けを体験</h3><p>画像を用意せず、サンプル明細で試せます。</p>
+      <h3>仕分けを体験</h3><p>ファイルを用意せず、サンプル明細で試せます。</p>
       <div className="import-sample-paper" aria-hidden="true"><ReceiptLines/></div>
       <small>サンプル15件 · 実データは変更されません</small>
     </div>:<>
-      <label className="import-upload"><span className="import-upload-icon"><Camera size={30}/></span><strong>{images.length?'画像を選び直す':'明細の画像を選ぶ'}</strong><span>スクリーンショットをまとめて選択</span><small>JPEG・PNG・WebP</small><input aria-label="明細の画像" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={event=>{onFiles(event.target.files);event.target.value='';}}/></label>
-      {images.length>0&&<div className="import-image-list">{images.map((item,index)=><div key={`${index}-${item.name}`}><img src={item.image} alt={`明細画像 ${index+1}`}/><span>{item.name}</span><button onClick={()=>onRemove(index)} aria-label={`明細画像 ${index+1}を外す`}><X size={16}/></button></div>)}</div>}
-      <p className="import-hint">店名・日付・金額から、費目ごとにまとめます。</p>
+      <div className="import-file-section">
+        {files.length>0&&<><div className="import-file-heading"><h3>取り込む明細</h3><span>{files.length}ファイル</span></div><ul className="import-file-list" aria-label="選択した明細ファイル">{files.map((item,index)=><li key={`${index}-${item.name}`}>
+          <span className="import-file-preview" data-kind={item.kind} aria-hidden="true">{item.kind==='image'?<img src={item.data} alt=""/>:item.kind==='pdf'?<FileText size={25}/>:<Table2 size={25}/>}</span>
+          <span className="import-file-copy"><strong>{item.name}</strong><small>{item.kind==='image'?'画像':item.kind.toUpperCase()}<span aria-hidden="true"> · </span>{statementFileSize(item.size)}</small></span>
+          <button type="button" onClick={()=>onRemove(index)} aria-label={`${item.name}を外す`}><X size={17}/></button>
+        </li>)}</ul></>}
+        <label className="import-upload" data-compact={files.length>0}>
+          <span className="import-upload-icon" aria-hidden="true">{files.length?<Plus size={22}/>:<Files size={32}/>}</span>
+          <strong>{loading?'ファイルを準備中…':files.length?'明細ファイルを追加':'明細ファイルを選ぶ'}</strong>
+          {!files.length&&<><span className="import-upload-formats" aria-hidden="true"><span><FileImage size={15}/>画像</span><span><FileText size={15}/>PDF</span><span><Table2 size={15}/>CSV</span></span><small>同じカード・引落月の明細をまとめて選択</small></>}
+          <input aria-label={files.length?'明細ファイルを追加':'明細ファイルを選ぶ'} type="file" multiple accept={statementFileAccept} onChange={event=>{onFiles(event.target.files);event.target.value='';}}/>
+        </label>
+        {loading&&<p className="import-file-status" role="status">選択したファイルを準備しています</p>}
+      </div>
     </>}
     <button className="import-manual" onClick={onManual}><Pencil size={17}/> 手入力で登録</button>
-  </div>;
+  </fieldset>;
 }
 
 function ReceiptLines(){return <><FileImage size={22}/><div><span>スーパー</span><strong>¥3,980</strong></div><div><span>日用品</span><strong>¥1,760</strong></div><div><span>カフェ</span><strong>¥1,100</strong></div></>;}

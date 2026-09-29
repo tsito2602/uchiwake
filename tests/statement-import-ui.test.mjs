@@ -195,7 +195,7 @@ test('実取り込みは全件数が不明な間、受信件数だけを示し�
 });
 
 test('取り込みで引落月を選択でき、モデル選択は表示しない',()=>{
- const setupProps={cards:props.cards,cardId:'one',month:'2026-11',onMonth:()=>{},images:[],mode:'live',demoEnabled:true,liveEnabled:true,onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
+ const setupProps={cards:props.cards,cardId:'one',month:'2026-11',onMonth:()=>{},files:[],mode:'live',demoEnabled:true,liveEnabled:true,onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
  const markup=setup(setupProps);
  assert.match(markup,/<input type="month" aria-label="引落年月を選択" value="2026-11"/);
  assert.match(markup,/<label class="import-card-select">[\s\S]*<select aria-label="取り込むカード"/);
@@ -206,17 +206,37 @@ test('取り込みで引落月を選択でき、モデル選択は表示しな�
  }
 });
 
-test('デモ表示から画像読み取りを選べ、AI未設定時には無効理由を表示する',()=>{
- const props={cards:[{id:'one',name:'生活費カード',active:true}],cardId:'one',month:'2026-09',images:[],mode:'live',demoEnabled:true,demoView:true,liveEnabled:true,onMonth:()=>{},onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
+test('ファイル選択は一箇所にまとめ、追加後は種類・名前・削除操作を表示する',()=>{
+ const props={cards:[{id:'one',name:'カード',active:true}],cardId:'one',month:'2026-09',files:[],mode:'live',demoEnabled:false,liveEnabled:true,onMonth(){},onCard(){},onMode(){},onFiles(){},onRemove(){},onManual(){}};
+ const empty=setup(props);
+ assert.equal((empty.match(/type="file"/g)||[]).length,1);
+ assert.match(empty,/multiple="" accept="[^"]*\.pdf[^"]*\.csv/);
+ assert.ok(empty.includes('明細ファイルを選ぶ'));
+ assert.ok(!empty.includes('画像の選択'));
+ const files=[{kind:'image',name:'画像.png',size:1200,data:'data:image/png;base64,iVBORw0KGgo='},{kind:'pdf',name:'明細.pdf',size:2048,data:'pdf'},{kind:'csv',name:'明細.csv',size:3000,data:'店,100'}];
+ const selected=setup({...props,files});
+ assert.equal((selected.match(/type="file"/g)||[]).length,1);
+ assert.ok(selected.includes('3ファイル'));
+ assert.ok(selected.includes('明細ファイルを追加'));
+ for(const file of files)assert.ok(selected.includes(`aria-label="${file.name}を外す"`));
+ assert.ok(selected.includes('lucide-file-text'));assert.ok(selected.includes('lucide-table2'));
+ assert.ok(selected.includes('PDF'));assert.ok(selected.includes('CSV'));assert.ok(selected.includes('2 KB'));
+ const loading=setup({...props,files,loading:true,disabled:true});
+ assert.match(loading,/<fieldset class="import-setup" disabled="" aria-busy="true">/);
+ assert.ok(loading.includes('ファイルを準備中…'));
+});
+
+test('デモ表示から明細読み取りを選べ、AI未設定時には無効理由を表示する',()=>{
+ const props={cards:[{id:'one',name:'生活費カード',active:true}],cardId:'one',month:'2026-09',files:[],mode:'live',demoEnabled:true,demoView:true,liveEnabled:true,onMonth:()=>{},onCard:()=>{},onMode:()=>{},onFiles:()=>{},onRemove:()=>{},onManual:()=>{}};
  const ready=setup(props);
- assert.match(ready,/<button aria-pressed="true">画像を読み取る<\/button>/);
- assert.ok(ready.includes('実際のAIで画像を読み取ります'));
+ assert.match(ready,/<button aria-pressed="true">明細を読み取る<\/button>/);
+ assert.ok(ready.includes('実際のAIで明細を読み取ります'));
  assert.ok(ready.includes('結果は保存されません'));
  assert.ok(!ready.includes('使用するAI'));
  const missing=setup({...props,liveEnabled:false});
- assert.match(missing,/<button aria-pressed="true">画像を読み取る<\/button>/);
+ assert.match(missing,/<button aria-pressed="true">明細を読み取る<\/button>/);
  assert.ok(missing.includes('AIの接続設定を確認できません'));
- assert.ok(!missing.includes('実際のAIで画像を読み取ります'));
+ assert.ok(!missing.includes('実際のAIで明細を読み取ります'));
 });
 
 test('要確認を分類済みより上に分け、その他は分類済みとして確認できる',()=>{

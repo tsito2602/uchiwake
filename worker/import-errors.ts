@@ -1,9 +1,9 @@
 // Only fixed messages/codes reach the client or logs, never upstream messages or input.
 const messages={
-  timeout:'AIの読み取り応答が途絶えたため中断しました。画像は選択したままです。もう一度取り込んでください。',
+  timeout:'AIの読み取り応答が途絶えたため中断しました。ファイルは選択したままです。もう一度取り込んでください。',
   output_limit:'AIの出力上限に達したため、明細の受信を完了できませんでした。',
-  content_filter:'AIが画像の読み取りを中断したため、明細の受信を完了できませんでした。',
-  refusal:'AIが画像の読み取りに応じなかったため、明細の受信を完了できませんでした。',
+  content_filter:'AIが明細の読み取りを中断したため、明細の受信を完了できませんでした。',
+  refusal:'AIが明細の読み取りに応じなかったため、明細の受信を完了できませんでした。',
   invalid_result:'AIから受信した明細の形式を確認できませんでした。',
   disconnected:'AIとの接続が途中で切れたため、明細の受信を完了できませんでした。',
   incomplete:'AIが処理を完了しなかったため、明細の受信を完了できませんでした。',

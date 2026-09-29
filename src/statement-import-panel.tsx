@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
-import { Camera, X } from 'lucide-react';
+import { Files, X } from 'lucide-react';
 import { BorderBeam } from 'border-beam';
 import { SoftOrbitGlow } from './soft-orbit-glow';
 import { StudioActionLabel } from './studio-action-label';
@@ -35,7 +35,7 @@ export function StatementImportPanel({reviewing,processing,progress,origin,closi
       {processing&&<SoftOrbitGlow/>}
       {processing&&<div className="import-border-beam" aria-hidden="true"><BorderBeam size="md" theme="light" colorVariant="colorful" borderRadius={28} style={{position:'absolute',inset:0}}><div style={{height:'100%',borderRadius:28}}/></BorderBeam></div>}
       <div ref={panel} className="card-panel statement-import-panel" style={{borderRadius:28}} role="dialog" aria-modal="true" aria-labelledby="import-panel-title">
-        <header className="card-panel-header"><span className="card-panel-icon"><Camera size={22}/></span><div><h2 id="import-panel-title" tabIndex={-1}>{processing?'明細を仕分ける':reviewing?'明細を確認':'明細を取り込む'}</h2></div><button className="card-panel-close" aria-label={processing?'取り込みを中止':'戻る'} onClick={context.onBack}><X size={20}/></button></header>
+        <header className="card-panel-header"><span className="card-panel-icon"><Files size={22}/></span><div><h2 id="import-panel-title" tabIndex={-1}>{processing?'明細を仕分ける':reviewing?'明細を確認':'明細を取り込む'}</h2></div><button className="card-panel-close" aria-label={processing?'取り込みを中止':'戻る'} onClick={context.onBack}><X size={20}/></button></header>
         {processing&&progress&&<ImportPhaseStatus progress={progress}/>}
         <div className="card-panel-scroll">{children}</div>
         <footer className="card-panel-footer panel-desktop-actions"><button className={context.actionAppearance==='studio'?'studio-action':context.actionAppearance==='breathing'?'breathing-action':undefined} disabled={context.disabled} onClick={context.onAction}>{context.actionAppearance==='studio'?<StudioActionLabel label={context.actionLabel}/>:context.actionAppearance==='breathing'?<ImportProcessingLabel label={context.actionLabel}/>:context.actionLabel}</button></footer>
