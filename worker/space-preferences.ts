@@ -3,14 +3,14 @@ import type { SpacePreferences } from '../src/domain';
 // Additive and idempotent, so GitHub auto-deploys also work before migration 0011.
 export const spacePreferencesSchema=`CREATE TABLE IF NOT EXISTS space_preferences (
  space_id TEXT PRIMARY KEY REFERENCES spaces(id),
- rent_enabled INTEGER NOT NULL DEFAULT 1 CHECK(rent_enabled IN (0,1)),
+ rent_enabled INTEGER NOT NULL DEFAULT 0 CHECK(rent_enabled IN (0,1)),
  revision INTEGER NOT NULL DEFAULT 0
 )`;
 
 export async function readSpacePreferences(db:D1Database,spaceId:string):Promise<SpacePreferences> {
  await db.prepare(spacePreferencesSchema).run();
  const row=await db.prepare('SELECT rent_enabled,revision FROM space_preferences WHERE space_id=?').bind(spaceId).first<{rent_enabled:number;revision:number}>();
- return {rent_enabled:row?!!row.rent_enabled:true,revision:row?.revision??0};
+ return {rent_enabled:row?!!row.rent_enabled:false,revision:row?.revision??0};
 }
 
 export async function saveSpacePreferences(db:D1Database,spaceId:string,enabled:boolean,revision:number):Promise<boolean> {

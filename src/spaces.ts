@@ -41,7 +41,7 @@ export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'e
   const item=items.get(key)??{key,label:s.title,amount:0};
   item.amount+=personal?s.confirmed_total:statementSettlementAmount(s,state.entries,state.category_settings);items.set(key,item);
  }
- if(state.space_preferences?.rent_enabled!==false)items.set('rent',{key:'rent',label:'家賃',amount:rentForMonth(state.month,state.bills,state.rent_rules).amount});
+ if(state.space_preferences?.rent_enabled===true)items.set('rent',{key:'rent',label:'家賃',amount:rentForMonth(state.month,state.bills,state.rent_rules).amount});
  for(const b of state.bills.filter(b=>b.kind!=='card'&&b.kind!=='rent'))items.set(`bill:${b.id}`,{key:`bill:${b.id}`,label:b.title,amount:b.amount});
  return [...items.values()];
 }

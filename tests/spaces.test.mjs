@@ -34,6 +34,44 @@ test('個人・複数共有の作成と、既存データの安全な所有者�
  }finally{f.db.close();}
 });
 
+test('個人・共有とも家賃は初期状態でオフになり、保存済みのオンは変更しない',async()=>{
+ const f=spaceFixture();try{
+  const shared=await create(f);
+  for(const id of ['personal:owner',shared.id]){
+   let state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,id));
+   assert.deepEqual(state.space_preferences,{rent_enabled:false,revision:0});
+   assert.equal(settlementItems(state).some(item=>item.key==='rent'),false);
+   await json(await f.call('owner',`/spaces/${id}/preferences`,'PUT',{rent_enabled:true,revision:0}));
+   state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,id));
+   assert.deepEqual(state.space_preferences,{rent_enabled:true,revision:1});
+  }
+  const sharedAgain=await json(await f.call('owner','/state?month=2026-09','GET',undefined,shared.id));
+  assert.equal(sharedAgain.space_preferences.rent_enabled,true);
+  const {space_preferences,...missing}=sharedAgain;
+  assert.equal(settlementItems(missing).some(item=>item.key==='rent'),false);
+ }finally{f.db.close();}
+});
+
+test('削除の直前に別メンバーが保存しても、項目も明細合計も上書きしない',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);
+  const card=await json(await f.call('owner','/cards','POST',{name:'カード'},space.id),201);
+  const statement=await json(await f.call('owner','/statements','POST',{card_id:card.id,due_month:'2026-09',title:'明細',confirmed_total:3000,entries:[{spent_on:'',title:'スーパー',category:'食費',amount:2000},{spent_on:'',title:'カフェ',category:'外食費',amount:1000}]},space.id),201);
+  const entries=f.db.prepare('SELECT id,category,amount FROM card_entries WHERE statement_id=? ORDER BY amount DESC').all(statement.id);
+  const batch=f.DB.batch;
+  f.DB.batch=async statements=>{
+   f.db.prepare('UPDATE card_entries SET amount=2500 WHERE id=?').run(entries[0].id);
+   f.db.prepare('UPDATE card_statements SET confirmed_total=3500,revision=1 WHERE id=?').run(statement.id);
+   return batch(statements);
+  };
+  assert.equal((await f.call('owner',`/statements/${statement.id}/entries`,'PUT',{revision:0,entries:[{...entries[0],amount:1500}],deleted_ids:[entries[1].id]},space.id)).status,409);
+  const state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space.id));
+  assert.equal(state.entries.length,2);
+  assert.equal(state.entries.reduce((sum,entry)=>sum+entry.amount,0),3500);
+  assert.equal(state.statements[0].confirmed_total,3500);
+ }finally{f.db.close();}
+});
+
 test('招待は確認後に参加でき、3人以上に対応し、再利用・権限外招待を拒否する',async()=>{
  const f=spaceFixture();try{
   const space=await create(f),code=await invite(f,space,'b');await invite(f,space,'c');
@@ -92,6 +130,7 @@ test('別スペースのカード・明細・家賃・費目を読み書きで�
 test('対象者・個別割合・月のスナップショット・競合を保存する',async()=>{
  const f=spaceFixture();try{
   const space=await create(f);await invite(f,space,'b');await invite(f,space,'c');
+  await json(await f.call('owner',`/spaces/${space.id}/preferences`,'PUT',{rent_enabled:true,revision:0}));
   await json(await f.call('owner','/bills','POST',{due_month:'2026-09',title:'家賃',kind:'rent',amount:100001},space.id),201);
   let state=await json(await f.call('b','/state?month=2026-09','GET',undefined,space.id));
   const split=config(percent(['owner',6000],['b',4000]));
@@ -153,8 +192,9 @@ test('家賃をオフにすると基本・個別家賃を集計から外し、�
   const card=await json(await f.call('owner','/cards','POST',{name:'生活費'},space.id),201);
   await json(await f.call('owner','/statements','POST',{card_id:card.id,due_month:'2026-09',title:'明細',confirmed_total:2000,entries:[{spent_on:'',title:'買い物',category:'食費',amount:2000}]},space.id),201);
   const read=async()=>json(await f.call('b','/state?month=2026-09','GET',undefined,space.id));
-  const before=await read();assert.deepEqual(before.space_preferences,{rent_enabled:true,revision:0});
-  for(const [enabled,revision,total] of [[false,0,5000],[true,1,125000]]){
+  const before=await read();assert.deepEqual(before.space_preferences,{rent_enabled:false,revision:0});
+  assert.equal(settlementItems(before).reduce((n,i)=>n+i.amount,0),5000);
+  for(const [enabled,revision,total] of [[true,0,125000],[false,1,5000],[true,2,125000]]){
    await json(await f.call('b',`/spaces/${space.id}/preferences`,'PUT',{rent_enabled:enabled,revision}));
    const state=await read(),items=settlementItems(state);
    assert.equal(items.some(i=>i.key==='rent'),enabled);
@@ -165,7 +205,7 @@ test('家賃をオフにすると基本・個別家賃を集計から外し、�
    assert.deepEqual(months.at(-1),{month:'2026-09',total,amount:total/2});
    assert.equal(months.at(-2).total,enabled?100000:0);
    const personal=await json(await f.call('owner','/state?month=2026-09','GET',undefined,'personal:owner'));
-   assert.equal(personal.space_preferences.rent_enabled,true);
+   assert.equal(personal.space_preferences.rent_enabled,false);
   }
  }finally{f.db.close();}
 });
@@ -186,20 +226,22 @@ test('家賃の設定はスペースのメンバーだけが変更でき、古�
  }finally{f.db.close();}
 });
 
-test('個人の家賃も無効にでき、既存DBは新しい設定表を自動作成して従来どおり有効から始める',async()=>{
+test('個人の家賃は設定表のない既存DBでも初期状態は無効で、有効化した設定は保持する',async()=>{
  const f=spaceFixture();try{
   await f.call('owner','/spaces');const space='personal:owner';
   f.db.exec('DROP TABLE space_preferences');
   await json(await f.call('owner','/rent-rules/2026-09','PUT',{amount:80000},space));
   const state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space));
-  assert.deepEqual(state.space_preferences,{rent_enabled:true,revision:0});
-  await json(await f.call('owner',`/spaces/${space}/preferences`,'PUT',{rent_enabled:false,revision:0}));
+  assert.deepEqual(state.space_preferences,{rent_enabled:false,revision:0});
+  assert.equal(settlementItems(state,true).reduce((n,i)=>n+i.amount,0),0);
+  await json(await f.call('owner',`/spaces/${space}/preferences`,'PUT',{rent_enabled:true,revision:0}));
   const next=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space));
-  assert.equal(settlementItems(next,true).reduce((n,i)=>n+i.amount,0),0);
-  const history=await json(await f.call('owner','/settlement-history?month=2026-09','GET',undefined,space));assert.equal(history.months.at(-1).total,0);
+  assert.deepEqual(next.space_preferences,{rent_enabled:true,revision:1});
+  assert.equal(settlementItems(next,true).reduce((n,i)=>n+i.amount,0),80000);
+  const history=await json(await f.call('owner','/settlement-history?month=2026-09','GET',undefined,space));assert.equal(history.months.at(-1).total,80000);
   const demo=await json(await f.call('owner','/state?month=2026-09&demo=1','GET',undefined,space));
   assert.equal(settlementItems(demo,true).some(i=>i.key==='rent'),true);
-  assert.equal(f.db.prepare('SELECT rent_enabled FROM space_preferences WHERE space_id=?').get(space).rent_enabled,0);
+  assert.equal(f.db.prepare('SELECT rent_enabled FROM space_preferences WHERE space_id=?').get(space).rent_enabled,1);
  }finally{f.db.close();}
 });
 

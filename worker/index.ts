@@ -281,8 +281,10 @@ app.put('/api/card-entries/:id/category', async c => {
 
 app.put('/api/statements/:id/entries', async c => {
   const id=c.req.param('id');
-  const body=await c.req.json().catch(()=>null) as {entries?:unknown;revision?:unknown}|null;
-  if(!Array.isArray(body?.entries)||!body.entries.length)return error('明細を確認してください');
+  const body=await c.req.json().catch(()=>null) as {entries?:unknown;deleted_ids?:unknown;revision?:unknown}|null;
+  if(!Array.isArray(body?.entries))return error('明細を確認してください');
+  const deletedIds=body.deleted_ids===undefined?[]:body.deleted_ids;
+  if(!Array.isArray(deletedIds)||deletedIds.some(id=>typeof id!=='string')||(!body.entries.length&&!deletedIds.length))return error('削除する項目を確認してください');
   if(!Number.isSafeInteger(body.revision)||Number(body.revision)<0)return error('明細を開き直してください');
   const allowedCategories=await categoryNames(c.env.DB,c.get('spaceId'));
   const rows:{id:string;category:string;amount:number}[]=[];
@@ -293,17 +295,23 @@ app.put('/api/statements/:id/entries', async c => {
     rows.push({id:row.id,category:row.category as string,amount:Number(row.amount)});
   }
   const total=rows.reduce((sum,row)=>sum+row.amount,0);
-  if(!validAmount(total))return error('明細の合計は1円以上、1億円以下にしてください');
+  if(rows.length&&!validAmount(total))return error('明細の合計は1円以上、1億円以下にしてください');
+  const statement=await c.env.DB.prepare('SELECT revision FROM card_statements WHERE id=? AND space_id=?').bind(id,c.get('spaceId')).first<{revision:number}>();
+  if(!statement)return error('対象が見つかりません',404);
+  if(statement.revision!==body.revision)return c.json({error:'ほかのメンバーが変更しました。明細を開き直してください'},409);
   const existing=await c.env.DB.prepare('SELECT id FROM card_entries WHERE statement_id=? AND space_id = ?').bind(id,c.get('spaceId')).all<{id:string}>();
   if(!existing.results.length)return error('対象が見つかりません',404);
-  const ids=new Set(rows.map(row=>row.id));
-  if(ids.size!==rows.length||existing.results.length!==rows.length||existing.results.some(row=>!ids.has(row.id)))return error('明細が一致しません。開き直してください');
+  const ids=new Set([...rows.map(row=>row.id),...deletedIds]);
+  if(ids.size!==rows.length+deletedIds.length||existing.results.length!==ids.size||existing.results.some(row=>!ids.has(row.id)))return error('明細が一致しません。開き直してください');
   const results=await c.env.DB.batch([
     ...rows.map(row=>c.env.DB.prepare('UPDATE card_entries SET category=?,amount=? WHERE id=? AND statement_id=? AND space_id = ? AND EXISTS(SELECT 1 FROM card_statements WHERE id=? AND revision=?)').bind(row.category,row.amount,row.id,id,c.get('spaceId'),id,body.revision)),
-    c.env.DB.prepare('UPDATE card_statements SET confirmed_total=?,revision=revision+1 WHERE id=? AND space_id = ? AND revision=?').bind(total,id,c.get('spaceId'),body.revision)
+    ...deletedIds.map(entryId=>c.env.DB.prepare('DELETE FROM card_entries WHERE id=? AND statement_id=? AND space_id=? AND EXISTS(SELECT 1 FROM card_statements WHERE id=? AND revision=?)').bind(entryId,id,c.get('spaceId'),id,body.revision)),
+    rows.length
+      ? c.env.DB.prepare('UPDATE card_statements SET confirmed_total=?,revision=revision+1 WHERE id=? AND space_id = ? AND revision=?').bind(total,id,c.get('spaceId'),body.revision)
+      : c.env.DB.prepare('DELETE FROM card_statements WHERE id=? AND space_id=? AND revision=?').bind(id,c.get('spaceId'),body.revision)
   ]);
   if(!results.at(-1)?.meta.changes)return c.json({error:'ほかのメンバーが変更しました。明細を開き直してください'},409);
-  return c.json({ok:true,confirmed_total:total});
+  return c.json({ok:true,confirmed_total:total,deleted:!rows.length});
 });
 
 app.post('/api/statement/analyze', async c => {

@@ -445,6 +445,39 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .entry-amount-editor > span { color: var(--muted); font-size: 15px; }
 .entry-amount-editor input { width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font-size: 16px; text-align: right; }
 .entry-amount-editor input[aria-invalid="true"] { border-color: #d92d20; }
+.statement-editor { padding-top: 15px; }
+.statement-edit-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 14px; }
+.statement-edit-summary > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.statement-edit-summary > div > span { color: var(--muted); font-size: 12px; }
+.statement-edit-summary strong { font-size: clamp(28px, 7vw, 36px); font-weight: 730; letter-spacing: -.045em; line-height: 1.2; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.statement-edit-summary > span { flex: none; padding: 6px 10px; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 12px; }
+.statement-edit-hint { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.statement-edit-group + .statement-edit-group { margin-top: 22px; }
+.statement-edit-group > .statement-edit-hint { margin: 10px 0 0; }
+.statement-edit-list { display: grid; gap: 12px; }
+.statement-edit-item { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: color-mix(in srgb, var(--paper) 70%, transparent); }
+.statement-edit-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.statement-edit-heading > div { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; padding-top: 4px; }
+.statement-edit-heading strong { font-size: 14px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.statement-edit-heading small { color: var(--muted); font-size: 11px; }
+.statement-edit-heading button { display: flex; flex: none; align-items: center; justify-content: center; gap: 5px; min-width: 44px; min-height: 44px; margin: -4px -4px 0 0; padding: 8px; border: 0; border-radius: 12px; background: transparent; color: var(--danger); cursor: pointer; }
+.statement-edit-heading button:hover { background: var(--soft); }
+.statement-edit-heading button:disabled { opacity: .4; cursor: default; }
+.statement-edit-heading .entry-restore { color: var(--ink); font-size: 12px; font-weight: 600; }
+.statement-edit-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.statement-edit-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.statement-edit-field > span:first-child { color: var(--muted); font-size: 11px; }
+.statement-edit-field > .entry-amount-editor { flex: auto; position: relative; }
+.statement-edit-field .entry-amount-editor > span { position: absolute; left: 11px; pointer-events: none; }
+.statement-edit-field .entry-amount-editor input { padding-left: 27px; font-variant-numeric: tabular-nums; }
+.statement-edit-field select { width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font-size: 16px; }
+.statement-edit-item[data-deleted="true"] { background: transparent; border-style: dashed; }
+.statement-edit-item[data-deleted="true"] .statement-edit-heading { margin-bottom: 3px; }
+.statement-edit-item[data-deleted="true"] .statement-edit-heading strong { color: var(--muted); text-decoration: line-through; }
+.statement-entry-deleted { margin: 0; color: var(--muted); font-size: 12px; }
+.statement-entry-error { margin: 9px 0 0; color: var(--danger); font-size: 12px; line-height: 1.6; }
+.statement-editor .entry-amount-editor input[aria-invalid="true"] { border-color: var(--danger); }
+@media (max-width: 360px) { .statement-edit-fields { grid-template-columns: minmax(0, 1fr); } }
 .card-settings-active { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
 .card-settings-active input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .card-active-switch { display: block; position: relative; width: 52px; height: 30px; flex: none; border-radius: 999px; background: #d9d9dd; transition: background-color 220ms ease, opacity 160ms ease; }

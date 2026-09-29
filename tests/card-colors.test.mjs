@@ -193,6 +193,64 @@ test('不正な金額・重複ID・別明細の行・行の不足は保存しな
   } finally {db.close();}
 });
 
+test('項目の削除と費目・金額変更を一括保存し、全項目を削除した明細は残さない',async()=>{
+  const {db,call}=fixture();
+  try {
+    seedStatement(db);
+    const response=await call('/statements/statement/entries','PUT',{revision:0,entries:[{id:'first',category:'日用品費',amount:2500}],deleted_ids:['second']});
+    assert.equal(response.status,200);
+    assert.deepEqual(await response.json(),{ok:true,confirmed_total:2500,deleted:false});
+    let state=await (await call('/state?month=2026-09')).json();
+    assert.equal(state.entries.length,1);
+    assert.equal(state.entries[0].category,'日用品費');
+    assert.equal(state.entries[0].amount,2500);
+    assert.equal(state.statements[0].confirmed_total,2500);
+    assert.equal(state.statements[0].revision,1);
+    const history=await (await call('/settlement-history?month=2026-09')).json();
+    assert.equal(history.months.at(-1).total,2500);
+    assert.equal((await call('/statements/statement/entries','PUT',{revision:1,entries:[],deleted_ids:['first']})).status,200);
+    state=await (await call('/state?month=2026-09')).json();
+    assert.equal(state.entries.length,0);assert.equal(state.statements.length,0);
+  } finally {db.close();}
+});
+
+test('削除IDの重複・別明細・別スペース・編集との重複・不正な合計を拒否する',async()=>{
+  const {db,call}=fixture();
+  try {
+    seedStatement(db);
+    db.exec("INSERT INTO card_statements(id,due_month,title,confirmed_total) VALUES ('other','2026-09','別明細',900)");
+    db.exec("INSERT INTO card_entries(id,statement_id,title,category,amount) VALUES ('other-entry','other','他の利用','食費',900)");
+    const first={id:'first',category:'食費',amount:2000};
+    for(const deleted_ids of [['second','second'],['first'],['other-entry'],['missing'],[42],'second',null]){
+      assert.equal((await call('/statements/statement/entries','PUT',{revision:0,entries:[first],deleted_ids})).status,400);
+    }
+    for(const entries of [[],[{...first,amount:-1}],[{...first,amount:0}],[{...first,amount:100_000_001}]]){
+      assert.equal((await call('/statements/statement/entries','PUT',{revision:0,entries,deleted_ids:['second']})).status,400);
+    }
+    db.exec("INSERT INTO spaces(id,name,kind,owner_id) VALUES ('private','個人','personal','other'); UPDATE card_statements SET space_id='private' WHERE id='other'; UPDATE card_entries SET space_id='private' WHERE id='other-entry'");
+    assert.equal((await call('/statements/other/entries','PUT',{revision:0,entries:[],deleted_ids:['other-entry']})).status,404);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM card_entries').get().n,3);
+    assert.equal(db.prepare("SELECT confirmed_total FROM card_statements WHERE id='statement'").get().confirmed_total,3000);
+  } finally {db.close();}
+});
+
+test('削除を含む保存は古い版を拒否し、DBエラー時は削除も金額も巻き戻す',async()=>{
+  const {db,call}=fixture();
+  try {
+    seedStatement(db);
+    const edit={revision:0,entries:[{id:'first',category:'日用品費',amount:2500}],deleted_ids:['second']};
+    db.exec("UPDATE card_statements SET revision=1 WHERE id='statement'");
+    assert.equal((await call('/statements/statement/entries','PUT',edit)).status,409);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM card_entries').get().n,2);
+    db.exec("CREATE TRIGGER fail_statement_update BEFORE UPDATE ON card_statements BEGIN SELECT RAISE(ABORT,'test transaction rollback'); END");
+    const original=console.error;console.error=()=>{};
+    try {assert.equal((await call('/statements/statement/entries','PUT',{...edit,revision:1})).status,500);} finally {console.error=original;}
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM card_entries').get().n,2);
+    assert.equal(db.prepare("SELECT amount FROM card_entries WHERE id='first'").get().amount,2000);
+    assert.equal(db.prepare("SELECT confirmed_total FROM card_statements WHERE id='statement'").get().confirmed_total,3000);
+  } finally {db.close();}
+});
+
 test('費目名の変更は全月の明細へ反映し、元の標準費目を再出現させない',async()=>{
  const {db,call}=fixture();
  try {
@@ -236,6 +294,7 @@ test('精算除外は返金込みの対象費目だけを全月の履歴から�
   db.exec("INSERT INTO card_entries (id,statement_id,title,category,amount) VALUES ('refund','statement','返金','外食費',-200)");
   db.exec("UPDATE card_statements SET confirmed_total=2800 WHERE id='statement'");
   db.exec("INSERT INTO rent_rules (space_id,effective_month,amount) VALUES ('legacy','2026-08',100000)");
+  assert.equal((await call('/spaces/legacy/preferences','PUT',{rent_enabled:true,revision:0})).status,200);
   const setting={icon:'utensils',color:'#b78d6a',include_in_settlement:false};
   assert.equal((await call('/category-settings/'+encodeURIComponent('外食費'),'PUT',setting)).status,200);
   const getHistory=async()=> (await (await call('/settlement-history?month=2026-09')).json()).months.at(-1);

@@ -42,7 +42,7 @@ export function demoState(month:string,anchor=demoAnchor()):State {
       cardRows.forEach((row,rowIndex)=>entries.push({id:`${statementId}-${rowIndex}`,statement_id:statementId,spent_on:`${month}-${String(5+rowIndex*8).padStart(2,'0')}`,title:row.title,category:row.category,amount:row.amount}));
     });
   }
-  return {month,bills,statements,entries,cards,category_settings:[],rent_rules:[{effective_month:demoMonths(anchor)[0],amount:126000}],ai_enabled:false,demo_enabled:true};
+  return {month,bills,statements,entries,cards,category_settings:[],rent_rules:[{effective_month:demoMonths(anchor)[0],amount:126000}],space_preferences:{rent_enabled:true,revision:0},ai_enabled:false,demo_enabled:true};
 }
 
 export function demoHistory(month:string,anchor=demoAnchor()) {
