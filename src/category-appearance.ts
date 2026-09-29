@@ -1,5 +1,5 @@
 import { categories, type Category, type CategoryAppearance } from './domain';
-import { defaultCardColor, categoryColors } from './card-colors';
+import { defaultCardColor, validCardColor } from './card-colors';
 
 export const categoryIcons = [
   {value:'basket',label:'食料品'}, {value:'utensils',label:'食事'},
@@ -35,7 +35,7 @@ export const validCategoryIcon=(value:unknown):value is CategoryIconName=>catego
 export const normalizeCategoryName=(value:string)=>value.normalize('NFKC').trim();
 export const validCategoryName=(value:unknown):value is string=>typeof value==='string'&&normalizeCategoryName(value).length>0&&normalizeCategoryName(value).length<=30&&!/[\u0000-\u001f\u007f]/.test(value);
 const categoryDefault=(category:Category)=>Object.hasOwn(defaults,category)?defaults[category]:{color:defaultCardColor,icon:'tag' as const};
-export const validCategoryColor=(_category:Category,value:unknown)=>categoryColors.some(color=>color.value===value);
+export const validCategoryColor=(_category:Category,value:unknown)=>validCardColor(value);
 export const defaultCategoryAppearance=(category:Category):CategoryAppearance=>({category,...categoryDefault(category)});
 export function categoryAppearance(category:Category,settings:CategoryAppearance[]=[]):CategoryAppearance {
   return settings.find(item=>item.category===category)??defaultCategoryAppearance(category);

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
-import { cardColors, categoryColors } from '../src/card-colors.ts';
+import { cardColors, categoryColors, allPaletteColors } from '../src/card-colors.ts';
 import app from '../dist/worker.mjs';
 
 function fixture() {
@@ -29,13 +29,16 @@ function fixture() {
   return {db,call};
 }
 
-test('既存カードは黒で維持され、プリセット全18色の変更が保存・再取得できる',async()=>{
+test('新しい共通12色と旧色を保存でき、既存カードの色を維持する',async()=>{
   const {db,call}=fixture();
   try {
     const getCard=async()=>((await (await call('/state?month=2026-09')).json()).cards[0]);
     assert.equal((await getCard()).color,'#171717');
-    assert.equal(cardColors.length,18);
-    for(const {value} of cardColors){
+    assert.equal(cardColors.length,12);
+    assert.deepEqual(categoryColors,cardColors);
+    assert.equal(new Set(cardColors.map(color=>color.value)).size,12);
+    assert.equal(allPaletteColors.length,28);
+    for(const {value} of allPaletteColors){
       assert.equal((await call('/cards/existing','PUT',{name:'生活費',active:true,color:value})).status,200);
       assert.equal((await getCard()).color,value);
     }
@@ -77,8 +80,8 @@ test('費目は初期表示を維持し、全アイコン・プリセットの�
     assert.equal(before.category_settings.length,11);
     assert.deepEqual(before.category_settings.find(item=>item.category==='食費'),{category:'食費',icon:'basket',color:'#738778'});
     const icons=['basket','utensils','shopping','lightbulb','phone','train','home','heart','gamepad','tag','coffee','book','shirt','plane','gift','paw','car','bike','bus','fuel','parking','hotel','map','beach','water','flame','wifi','laptop','sofa','wrench','scissors','sparkles','pill','stethoscope','baby','graduation','music','film','dumbbell','wallet'];
-    for(let index=0;index<Math.max(categoryColors.length,icons.length);index++){
-      const value={icon:icons[index%icons.length],color:categoryColors[index%categoryColors.length].value};
+    for(let index=0;index<Math.max(allPaletteColors.length,icons.length);index++){
+      const value={icon:icons[index%icons.length],color:allPaletteColors[index%allPaletteColors.length].value};
       assert.equal((await call('/category-settings/'+encodeURIComponent('食費'),'PUT',value)).status,200);
       const state=await (await call('/state?month=2026-10')).json();
       assert.deepEqual(state.category_settings.find(item=>item.category==='食費'),{category:'食費',...value});
