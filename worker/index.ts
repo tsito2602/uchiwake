@@ -1,6 +1,6 @@
 import { cloudflareReport, importAIEnabled, usesCloudflare } from './ai-bindings';
 import { testJevConnection } from './jev';
-import { lunaJevStream, runLunaJev } from './luna-jev-import';
+import { lunaJevStream, runLunaJev, lunaExtractStream, importStream, classifyEntry, extractedEntry } from './luna-jev-import';
 import { classificationRoutes, importMemoryWrites } from './classification-memory';
 import { spacesRoutes, membership, membersFor, settlementFor, type SpaceEnv } from './spaces';
 import { readSpacePreferences } from './space-preferences';
@@ -319,8 +319,26 @@ app.post('/api/statement/test-jev',async c=>{
   catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');return c.json({ok:false,code:err.code,message:err.message,...(err.diagnostics?{diagnostics:err.diagnostics}:{})});}
 });
 
+// Each classification has its own Worker invocation. Do not accumulate one
+// upstream request per row within the long-lived extraction invocation.
+app.post('/api/statement/classify',async c=>{
+  if(!usesCloudflare(c.env)||!importAIEnabled(c.env))return error('Cloudflare AIの接続設定を確認してください',503);
+  const body=await c.req.json().catch(()=>null);
+  const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
+  const review=fallbackCategory(settings);
+  const allowed=allCategoryAppearances(settings).map(item=>item.category).filter(name=>name!==review);
+  let entry;
+  try{
+    const row=body?.entry,meta=row?.import_meta,source=meta?.source;
+    // Reconstruct only source fields; never trust client-supplied classification,
+    // confidence, history, explicit-rule IDs or rule-learning flags.
+    entry=extractedEntry({spent_on:row?.spent_on,title:row?.title,amount:row?.amount,source_file:source?.file,page:source?.page,row:source?.row,excerpt:source?.excerpt,context:meta?.context,amount_uncertain:meta?.amount_uncertain},Number.MAX_SAFE_INTEGER,review);
+  }catch{return error('仕分ける明細の形式を確認してください');}
+  return importStream(c.req.raw.signal,async(signal,send)=>({confirmed_total:0,entries:[await classifyEntry(c.env,c.get('spaceId'),entry,allowed,review,signal,attempt=>send({type:'retry',attempt}))]}));
+});
+
 app.post('/api/statement/analyze', async c => {
-  const body=await c.req.json().catch(()=>null) as {files?:unknown;images?:unknown;mode?:unknown;stream?:boolean}|null;
+  const body=await c.req.json().catch(()=>null) as {files?:unknown;images?:unknown;mode?:unknown;stream?:boolean;pipeline?:unknown;recheck?:unknown}|null;
   const files=body&&readStatementFiles(body);
   if (!body || (body.mode !== 'demo' && body.mode !== 'live') || !files) return error('画像（JPEG・PNG・WebP）・PDF・CSVの明細ファイルを選んでください');
   if (body.mode === 'demo') {
@@ -336,6 +354,10 @@ app.post('/api/statement/analyze', async c => {
     const settings=await readCategorySettings(c.env.DB,c.get('spaceId'));
     const names=allCategoryAppearances(settings).map(item=>item.category);
     const review=fallbackCategory(settings);
+    if(body.pipeline==='split'){
+      if(body.stream!==true||(body.recheck!==undefined&&typeof body.recheck!=='string'))return error('読み取りの形式を確認してください');
+      return lunaExtractStream(c.env,files,names,review,body.recheck as string|undefined,c.req.raw.signal);
+    }
     if(body.stream===true)return lunaJevStream(c.env,c.get('spaceId'),files,names,review,c.req.raw.signal);
     try{return c.json(await runLunaJev(c.env,c.get('spaceId'),files,names,review,c.req.raw.signal,()=>{}));}
     catch(failure){const err=failure instanceof ImportError?failure:new ImportError('upstream');logImportFailure(err,0);return c.json({error:err.message,code:err.code,...(err.diagnostics?{diagnostics:err.diagnostics}:{})},502);}
