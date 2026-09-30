@@ -141,3 +141,43 @@ test('SQL exports load even when child tables precede their parents', () => {
   const value=loadDump("CREATE TABLE child(parent TEXT REFERENCES parent(id)); INSERT INTO child VALUES('p'); CREATE TABLE parent(id TEXT PRIMARY KEY); INSERT INTO parent VALUES('p');");
   assert.deepEqual(value.prepare('PRAGMA foreign_key_check').all(),[]); value.close();
 });
+
+function legacyPreferences(value, defaultValue = 1, constraint = 'CHECK(rent_enabled IN (0,1))') {
+  value.exec(`ALTER TABLE space_preferences RENAME TO old_space_preferences;
+    CREATE TABLE space_preferences (
+      space_id TEXT PRIMARY KEY REFERENCES spaces(id),
+      rent_enabled INTEGER NOT NULL DEFAULT ${defaultValue} ${constraint},
+      revision INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO space_preferences SELECT * FROM old_space_preferences;
+    DROP TABLE old_space_preferences;`);
+}
+test('accepts the historical source default without changing rent settings or the current target default', () => {
+  const source = populated(), target = db(); bootstrap(target);
+  source.exec("INSERT INTO space_preferences(space_id,rent_enabled,revision) VALUES('personal:owner',0,4)");
+  legacyPreferences(source);
+  assert.throws(() => validateDatabase(source), /space_preferences/);
+  assert.deepEqual(validateDatabase(source, {allowLegacyRentDefault:true}), {legacyRentDefault:true});
+  const before = fingerprint(source);
+  apply(target, makeTransferSql(source,target,'bookmark'));
+  assert.equal(fingerprint(target),before);
+  assert.equal(fingerprint(source),before);
+  assert.equal(source.prepare('PRAGMA table_info(space_preferences)').all().find(c => c.name==='rent_enabled').dflt_value,'1');
+  assert.equal(target.prepare('PRAGMA table_info(space_preferences)').all().find(c => c.name==='rent_enabled').dflt_value,'0');
+  assert.deepEqual(target.prepare('SELECT * FROM space_preferences ORDER BY space_id').all(),source.prepare('SELECT * FROM space_preferences ORDER BY space_id').all());
+  validateDatabase(target);
+  source.close(); target.close();
+});
+test('legacy compatibility is source-only and rejects any other schema drift', () => {
+  const source = populated(), target = db(); bootstrap(target); legacyPreferences(target);
+  assert.throws(() => makeTransferSql(source,target,'bookmark'), /space_preferences/);
+  for (const [defaultValue,constraint] of [[2,'CHECK(rent_enabled IN (0,1))'],[1,'']]) {
+    const invalid = db(); legacyPreferences(invalid,defaultValue,constraint);
+    assert.throws(() => validateDatabase(invalid,{allowLegacyRentDefault:true}), /space_preferences/);
+    invalid.close();
+  }
+  legacyPreferences(source);
+  source.exec('DROP INDEX bills_due_month');
+  assert.throws(() => validateDatabase(source,{allowLegacyRentDefault:true}), /bills/);
+  source.close(); target.close();
+});
