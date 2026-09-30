@@ -1,7 +1,7 @@
 import { EntryGroupTabs, EntrySortControls } from './entry-sort-controls';
 import type { EntrySort } from './entry-sort';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type CSSProperties } from 'react';
-import { Copy, RefreshCw, UserRoundPlus, Calculator, Check, ChevronLeft, ChevronRight, Pencil, Plus, ReceiptText, Settings, Trash2 } from 'lucide-react';
+import { Copy, Shuffle, RefreshCw, UserRoundPlus, Calculator, Check, ChevronLeft, ChevronRight, Pencil, Plus, ReceiptText, Settings, Trash2 } from 'lucide-react';
 import { FluidDockSurface, type FluidDockHandle } from './kondo-fluid-dock';
 import { FuseAddMenu, type AddOption } from './fuse-add-menu';
 import { DockContent } from './kondo-dock-content';
@@ -19,13 +19,13 @@ export const dockTabs = [
   { key: 'settings', label: '設定', icon: Settings }
 ] as const;
 
-export type DockAction = {icon?:'invite'|'copy'|'refresh';label:string;onAction:()=>void;disabled?:boolean;commit?:boolean};
-export type DockContext = { contentKey?:string; detailAction?:DockAction; entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
+export type DockAction = {icon?:'invite'|'copy'|'refresh'|'shuffle';label:string;onAction:()=>void;disabled?:boolean;commit?:boolean};
+export type DockContext = { contentKey?:string; detailAction?:DockAction; entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'|'shuffle'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
 type DockAdd = {label:string;options:AddOption[];disabled?:boolean};
 type Props = {personal?:boolean;tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext;panelActive?:boolean;month:string;onMonthChange:(month:string)=>void;onPrevMonth:()=>void;onNextMonth:()=>void};
 
 function DockActionIcon({action,fallback}:{action:DockAction;fallback:'settings'|'details'}) {
- const Icon=action.icon==='invite'?UserRoundPlus:action.icon==='copy'?Copy:action.icon==='refresh'?RefreshCw:fallback==='details'?ReceiptText:Settings;
+ const Icon=action.icon==='shuffle'?Shuffle:action.icon==='invite'?UserRoundPlus:action.icon==='copy'?Copy:action.icon==='refresh'?RefreshCw:fallback==='details'?ReceiptText:Settings;
  return <Icon size={22} aria-hidden="true"/>;
 }
 
@@ -104,7 +104,7 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
           {context.entryControls&&<div className="context-island context-entry-sorts"><EntrySortControls value={context.entryControls.sort} onChange={context.entryControls.onSort}/></div>}
           {context.auxiliaryAction&&<div className="context-island context-auxiliary"><button aria-label={context.auxiliaryAction.label} onClick={context.auxiliaryAction.onAction} disabled={context.auxiliaryAction.disabled}>{context.rentActions?<><Pencil size={18} aria-hidden="true"/><span>基本家賃</span></>:<DockActionIcon action={context.auxiliaryAction} fallback="settings"/>}</button></div>}
           {!context.backOnly&&<div data-commit={context.commit||undefined} className={`context-island context-primary${context.compact?' context-compact':''}${context.secondaryAction&&!separateSecondary?' context-action-group':''}`}>
-            <button className={`context-action${context.actionAppearance==='studio'?' studio-action':context.actionAppearance==='breathing'?' breathing-action':''}`} aria-label={context.actionLabel} onClick={context.onAction} disabled={context.disabled}>{context.actionIcon==='edit'?<><Pencil size={context.rentActions?18:22} aria-hidden="true"/>{context.rentActions&&<span>この月の家賃</span>}</>:context.actionIcon==='details'?<ReceiptText size={22} aria-hidden="true"/>:context.actionIcon==='done'?<Check size={22} aria-hidden="true"/>:context.actionAppearance==='studio'?<StudioActionLabel label={context.actionLabel}/>:context.actionAppearance==='breathing'?<ImportProcessingLabel label={context.actionLabel}/>:context.actionLabel}</button>
+            <button className={`context-action${context.actionAppearance==='studio'?' studio-action':context.actionAppearance==='breathing'?' breathing-action':''}`} aria-label={context.actionLabel} onClick={context.onAction} disabled={context.disabled}>{context.actionIcon==='shuffle'?<><Shuffle size={20} aria-hidden="true"/><span>{context.actionLabel}</span></>:context.actionIcon==='edit'?<><Pencil size={context.rentActions?18:22} aria-hidden="true"/>{context.rentActions&&<span>この月の家賃</span>}</>:context.actionIcon==='details'?<ReceiptText size={22} aria-hidden="true"/>:context.actionIcon==='done'?<Check size={22} aria-hidden="true"/>:context.actionAppearance==='studio'?<StudioActionLabel label={context.actionLabel}/>:context.actionAppearance==='breathing'?<ImportProcessingLabel label={context.actionLabel}/>:context.actionLabel}</button>
             {context.secondaryAction&&!separateSecondary&&<button className="context-action context-delete-action" aria-label={context.secondaryAction.label} onClick={context.secondaryAction.onAction} disabled={context.secondaryAction.disabled}><Trash2 size={22} aria-hidden="true"/></button>}
           </div>}
           {context.secondaryAction&&separateSecondary&&<div className="context-island context-delete"><button aria-label={context.secondaryAction.label} onClick={context.secondaryAction.onAction} disabled={context.secondaryAction.disabled}><Trash2 size={22} aria-hidden="true"/></button></div>}
