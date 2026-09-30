@@ -253,9 +253,16 @@
 
 /* Keep the registration target clear of the header and fixed progress area. */
 .statement-import-panel .space-import-target { margin: 18px 0 14px; }
-.import-original-files { margin-top: 20px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; }
-.import-original-files h4 { display: flex; justify-content: space-between; gap: 12px; margin: 0; font-size: 13px; font-weight: 600; }
-.import-original-files h4 span { color: var(--muted); font-size: 12px; font-weight: 400; }
-.import-original-files summary { min-height: 44px; align-content: center; color: var(--ink); }
-.import-original-files summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+.import-original-files { margin-top: 20px; padding: 0 14px; border: 1px solid var(--line); border-radius: 16px; }
+.import-source-toggle { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 10px 0; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 13px; cursor: pointer; }
+.import-source-toggle > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-source-toggle > small { flex: none; color: var(--muted); font-size: 12px; }
+.import-source-toggle > svg { flex: none; color: var(--muted); transition: transform .24s ease; }
+.import-source-toggle[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.import-source-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 4px; }
+.import-source-expander { overflow: hidden; }
+.import-source-file-list { max-height: 55dvh; overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 8px; }
+.import-source-file-list > .import-source-accordion { border-top: 1px solid var(--line); }
+.import-source-content { margin-top: 0; padding-bottom: 12px; }
 .import-original-files a { display: inline-block; padding: 12px 0; color: var(--ink); }
+@media(prefers-reduced-motion:reduce) { .import-source-toggle > svg { transition: none; } }
