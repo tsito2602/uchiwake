@@ -144,12 +144,19 @@ spacesRoutes.put('/:id/settlement',async c=>{
  const members=await membersFor(c.env.DB,space.id);
  // Former members remain available for historical allocations; new defaults require active members.
  if(!validateConfig(body.config,new Set(members.filter(m=>body.scope==='month'||m.active).map(m=>m.user_id))))return fail('対象者と割合を確認してください。割合は合計100％にしてください');
- const result=await c.env.DB.prepare(`INSERT INTO settlement_rules(space_id,month,scope,config,revision)
- SELECT ?,?,?,?,1 WHERE ?=0 ON CONFLICT(space_id,month,scope) DO NOTHING`).bind(space.id,body.month,body.scope,JSON.stringify(body.config),body.revision).run();
- if(!result.meta.changes){
-  const updated=await c.env.DB.prepare(`UPDATE settlement_rules SET config=?,revision=revision+1 WHERE space_id=? AND month=? AND scope=? AND revision=?`).bind(JSON.stringify(body.config),space.id,body.month,body.scope,body.revision).run();
-  if(!updated.meta.changes)return fail('ほかのメンバーが変更しました。開き直して確認してください',409);
- }
+ // Keep the revision check and propagation in one transaction. A stale save must
+ // never change monthly snapshots or later defaults.
+ const config=JSON.stringify(body.config);
+ const anchor=c.env.DB.prepare(`INSERT INTO settlement_rules(space_id,month,scope,config,revision)
+ SELECT ?,?,?,?,1 WHERE ?=0 OR EXISTS (
+  SELECT 1 FROM settlement_rules WHERE space_id=? AND month=? AND scope=? AND revision=?
+ ) ON CONFLICT(space_id,month,scope) DO UPDATE SET config=excluded.config,revision=settlement_rules.revision+1
+ WHERE settlement_rules.revision=?`).bind(space.id,body.month,body.scope,config,body.revision,space.id,body.month,body.scope,body.revision,body.revision);
+ const statements=[anchor];
+ if(body.scope==='default')statements.push(c.env.DB.prepare(`UPDATE settlement_rules SET config=?,revision=revision+1
+ WHERE changes()=1 AND space_id=? AND month>=? AND NOT (scope='default' AND month=?)`).bind(config,space.id,body.month,body.month));
+ const [result]=await c.env.DB.batch(statements);
+ if(!result.meta.changes)return fail('ほかのメンバーが変更しました。開き直して確認してください',409);
  return c.json({ok:true});
 });
 spacesRoutes.get('/:id/defaults',async c=>{

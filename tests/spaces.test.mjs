@@ -335,3 +335,44 @@ test('端数の対象者と調整額を計算結果から取得し、均等・�
  assert.deepEqual(settlementDetails(items,{...config(equal('a','b')),uniform:false}),{amounts:{a:102,b:100},adjustments:{a:2}});
  assert.deepEqual(settlementDetails(items,config(equal('a','b'))),{amounts:{a:101,b:101},adjustments:{}});
 });
+
+test('招待後の「この月以降」は保存済みの月と将来の設定に反映し、開始月より前は保つ',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);
+  for(const month of ['2026-07','2026-08','2026-09']){
+   await json(await f.call('owner','/bills','POST',{due_month:month,title:'光熱費',kind:'utilities',amount:10000},space.id),201);
+   await json(await f.call('owner',`/state?month=${month}`,'GET',undefined,space.id));
+  }
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-10',scope:'default',revision:0,config:config(equal('owner'))}));
+  await invite(f,space,'b');
+  const split=config(percent(['owner',6000],['b',4000]));
+  await json(await f.call('b',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-08',scope:'default',revision:0,config:split}));
+  for(const month of ['2026-08','2026-09','2026-10','2026-11']){
+   const state=await json(await f.call('b',`/state?month=${month}`,'GET',undefined,space.id));assert.deepEqual(state.settlement.config,split);
+  }
+  const july=await json(await f.call('b','/state?month=2026-07','GET',undefined,space.id));assert.deepEqual(july.settlement.config,config(equal('owner')));
+  const history=await json(await f.call('b','/settlement-history?month=2026-09','GET',undefined,space.id));assert.deepEqual(history.months.slice(-3).map(m=>m.amount),[0,4000,4000]);
+  const before=f.db.prepare('SELECT * FROM settlement_rules ORDER BY space_id,month,scope').all();
+  assert.equal((await f.call('b',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-08',scope:'default',revision:0,config:config(equal('b'))})).status,409);
+  assert.deepEqual(f.db.prepare('SELECT * FROM settlement_rules ORDER BY space_id,month,scope').all(),before);
+  // Propagation also invalidates an editor that read the old monthly snapshot.
+  assert.equal((await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-09',scope:'month',revision:1,config:config(equal('owner'))})).status,409);
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-08',scope:'default',revision:1,config:config(equal('owner','b'))}));
+  const updated=await json(await f.call('b','/state?month=2026-09','GET',undefined,space.id));assert.deepEqual(updated.settlement.config,config(equal('owner','b')));
+ }finally{f.db.close();}
+});
+
+test('過去の月だけの負担変更は前後の月と別スペースに影響しない',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);await invite(f,space,'b');const other=await create(f);
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2025-01',scope:'default',revision:0,config:config(equal('owner','b'))}));
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2025-06',scope:'month',revision:0,config:config(percent(['owner',3000],['b',7000]))}));
+  for(const month of ['2025-05','2025-07']){
+   const state=await json(await f.call('b',`/state?month=${month}`,'GET',undefined,space.id));assert.deepEqual(state.settlement.config,config(equal('owner','b')));
+  }
+  const june=await json(await f.call('b','/state?month=2025-06','GET',undefined,space.id));assert.equal(june.settlement.config.common.shares[1].weight,7000);
+  const otherState=await json(await f.call('owner','/state?month=2025-06','GET',undefined,other.id));assert.deepEqual(otherState.settlement.config,config(equal('owner')));
+  assert.equal((await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2024-01',scope:'default',revision:99,config:config(equal('owner'))})).status,409);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM settlement_rules WHERE space_id=? AND month='2024-01'").get(space.id).n,0);
+ }finally{f.db.close();}
+});
