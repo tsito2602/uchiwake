@@ -29,7 +29,7 @@ export function SpaceManagementSettings({space,userId,members,disabled,api,onRef
  const canShare=typeof navigator.share==='function';
  const dismiss=()=>{if(!blocked)setClosing(true);};
  const run=async(action:()=>Promise<void>)=>{if(blocked)return;setBusy(true);setError('');try{await action();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}};
- const inviteText=invite?`「うちわけ」の「${space.name}」に招待します。\n招待コード：${invite.code}\nアプリを開き、右上のスペースアイコン →「招待コードで参加」で入力してください。\n48時間以内・1人用です。`:'';
+ const inviteText=invite?`「うちわけ」の「${space.name}」に招待します。\n招待コード：${invite.code}\nアプリを開き、右上のスペースアイコン →「招待コードで参加」で入力してください。\n48時間以内・1人用です。\n\n${window.location.origin}/`:'';
  const copy=()=>void run(async()=>{await navigator.clipboard.writeText(inviteText);setCopied(true);});
  const issueInvite=()=>void run(async()=>{setInvite(await api(`/spaces/${space.id}/invites`,{method:'POST',body:'{}'}));setCopied(false);setView('invite');setClosing(false);});
  const saveName=async(name:string)=>{setBusy(true);try{await api(`/spaces/${space.id}/name`,{method:'PUT',body:JSON.stringify({name})});await onRefresh();}finally{setBusy(false);}};
