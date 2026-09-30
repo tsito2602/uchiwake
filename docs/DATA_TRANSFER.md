@@ -1,6 +1,6 @@
 # Staging → production の一回限りのデータ移行
 
-Cloudflare Workers Builds の本番用トークンを使い、D1 `uchiwake-staging` から `uchiwake` へアプリの15テーブルをコピーします。元のD1は変更しません。初回移行の間だけ、本番デプロイコマンドにこの処理を組み込みます。成功確認後にその呼び出しを取り除き、通常運用に戻します。
+Cloudflare Workers Builds の本番用トークンを使い、D1 `uchiwake-staging` から `uchiwake` へアプリの15テーブルをコピーする、一回限りの移行処理です。元のD1は変更しません。通常の本番デプロイからは切り離してあり、明示的に呼び出した場合だけ動作します。
 
 ## 実行前提
 
@@ -19,13 +19,13 @@ Cloudflare Workers Builds の本番用トークンを使い、D1 `uchiwake-stagi
 npm run db:promote:staging
 ```
 
-初回移行中は `npm run deploy:production` または `npm run deploy:production:initial` が移行処理を呼び出すため、mainのビルドだけで実行されます。呼び出しを取り除いた後に手動で実行する場合は次のコマンドを使用します。
+明示的に移行してからデプロイする場合は、次のコマンドを使用します。
 
 ```sh
 npm run db:promote:staging -- --apply && npm run deploy:production
 ```
 
-`DATA_TRANSFER_COMPLETE` と件数・一致したSHA-256がビルドログに表示されたら成功です。その後、本番デプロイスクリプトから移行処理の呼び出しを取り除きます。
+`DATA_TRANSFER_COMPLETE` と件数・一致したSHA-256がビルドログに表示されたら成功です。通常のビルド設定は `npm run deploy:production` を使用します。
 
 同じ処理を再実行しても本番の完了記録を検出してスキップします。完了後の本番データを再びステージングで上書きしません。
 
