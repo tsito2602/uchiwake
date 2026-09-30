@@ -53,12 +53,33 @@ function schema(db) {
       .map(row => ({...row, sql: normal(row.sql)}))
   }));
 }
-export function validateDatabase(db) {
+export function validateDatabase(db, {allowLegacyRentDefault = false} = {}) {
   const names = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all()
     .map(row => row.name).filter(name => !name.startsWith('sqlite_') && !name.startsWith('_cf_') && name !== 'd1_migrations' && name !== MARKER);
   if (!same(names, [...TABLES].sort())) fail('Unexpected application tables. Review the schema before transferring data.');
   const expected = freshDatabase();
-  try { if (!same(schema(db), schema(expected))) fail('Database schema differs from the main migrations.'); }
+  let legacyRentDefault = false;
+  try {
+    const actualSchema = schema(db), expectedSchema = schema(expected);
+    if (!same(actualSchema, expectedSchema)) {
+      // Migration 0011 originally used DEFAULT 1 (b71c255). It was edited to
+      // DEFAULT 0 in e846233, which does not alter an already-created D1 table.
+      // This source-only compatibility case changes no stored values or target schema.
+      const legacySchema = structuredClone(expectedSchema);
+      const preferences = legacySchema.find(table => table.table === 'space_preferences');
+      preferences.columns.find(column => column.name === 'rent_enabled').dflt_value = '1';
+      const definition = preferences.objects.find(object => object.type === 'table');
+      definition.sql = definition.sql.replace('rent_enabledintegernotnulldefault0check', 'rent_enabledintegernotnulldefault1check');
+      legacyRentDefault = allowLegacyRentDefault && same(actualSchema, legacySchema);
+      if (!legacyRentDefault) {
+        const differences = actualSchema.flatMap((table, index) => {
+          const parts = ['columns','relations','objects'].filter(part => !same(table[part], expectedSchema[index][part]));
+          return parts.length ? [`${table.table} (${parts.join(', ')})`] : [];
+        });
+        fail(`Database schema differs from the main migrations: ${differences.join('; ')}.`);
+      }
+    }
+  }
   finally { expected.close(); }
   if (!exists(db, 'd1_migrations') || !same(db.prepare('SELECT name FROM d1_migrations ORDER BY name').all().map(row => row.name), migrations())) {
     fail('The database must have exactly the current main migrations applied.');
@@ -71,6 +92,7 @@ export function validateDatabase(db) {
   }
   if (db.prepare('SELECT 1 FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE e.space_id<>s.space_id LIMIT 1').get()
     || db.prepare('SELECT 1 FROM card_statements s JOIN shared_cards c ON c.id=s.card_id WHERE s.space_id<>c.space_id LIMIT 1').get()) fail('A card or entry belongs to a different space.');
+  return {legacyRentDefault};
 }
 export function completedTransfer(db) {
   if (!exists(db, MARKER)) return false;
@@ -119,7 +141,7 @@ function assertSnapshot(db, tables) {
   });
 }
 export function makeTransferSql(source, target, bookmark) {
-  validateDatabase(source); validateDatabase(target); assertBootstrap(target, source);
+  validateDatabase(source, {allowLegacyRentDefault:true}); validateDatabase(target); assertBootstrap(target, source);
   if (completedTransfer(target)) fail('This transfer already completed.');
   const statements = [
     `CREATE TABLE ${q(GUARD)}(ok INTEGER NOT NULL CHECK(ok=1));`,
@@ -176,7 +198,9 @@ export async function runTransfer({apply = false} = {}) {
     if (previous) { console.log(`DATA_TRANSFER_ALREADY_COMPLETED source_digest=${previous.source_digest}`); return; }
     validateDatabase(target);
     const source = exportDatabase('source', 'uchiwake-staging');
-    validateDatabase(source); assertBootstrap(target, source);
+    const compatibility = validateDatabase(source, {allowLegacyRentDefault:true});
+    if (compatibility.legacyRentDefault) console.log('Source schema: known legacy rent_enabled DEFAULT 1. Stored values will be copied explicitly; production keeps DEFAULT 0.');
+    assertBootstrap(target, source);
     console.log(JSON.stringify({event:'DATA_TRANSFER_PLAN',source:SOURCE_ID,target:TARGET_ID,source_counts:counts(source),target_counts:counts(target),source_digest:fingerprint(source)}));
     if (!apply) { console.log('Read-only check completed. Use --apply to import this data.'); return; }
     const bookmark = JSON.parse(run('Production recovery bookmark', ['d1','time-travel','info','uchiwake','--config',configs.target,'--json'])).bookmark;
