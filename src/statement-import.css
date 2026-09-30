@@ -250,3 +250,12 @@
 .import-sorted-entry[data-classification=classified] .import-category-tag { animation:import-classified .25s ease-out; }
 @keyframes import-classified { from { opacity:.4; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:reduce) { .import-sorted-entry[data-classification=classified] .import-category-tag { animation:none; } }
+
+/* Keep the registration target clear of the header and fixed progress area. */
+.statement-import-panel .space-import-target { margin: 18px 0 14px; }
+.import-original-files { margin-top: 20px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; }
+.import-original-files h4 { display: flex; justify-content: space-between; gap: 12px; margin: 0; font-size: 13px; font-weight: 600; }
+.import-original-files h4 span { color: var(--muted); font-size: 12px; font-weight: 400; }
+.import-original-files summary { min-height: 44px; align-content: center; color: var(--ink); }
+.import-original-files summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+.import-original-files a { display: inline-block; padding: 12px 0; color: var(--ink); }

@@ -1,5 +1,5 @@
 import { broadMerchant, validRule, reviewReasons, rowTotal, type SourceTotal } from './import-policy';
-import { ImportSourcePreview } from './import-source';
+import { ImportSourcePreview, ImportOriginalFiles } from './import-source';
 import type { StatementFile } from './statement-files';
 import { useId, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -35,6 +35,7 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
   return <div className="import-processing import-review">
     <div className="import-processing-symbol import-complete-symbol" aria-hidden="true"><Check className="import-animated-check" size={30}/></div>
     <div className="import-processing-heading"><h3>仕分け結果</h3><p>{card?.name} · {Number(draft.due_month.slice(0,4))}年{Number(draft.due_month.slice(5))}月{draft.demo?' · デモ':''}</p></div>
+    <ImportOriginalFiles files={files}/>
     <div className="import-review-list-heading"><span>{draft.entries.length}件の明細</span><span className="import-edit-hint"><Pencil size={14} aria-hidden="true"/>タップして編集</span></div>
     <div className="import-sorting-list import-review-list" aria-label="仕分け結果">
       {groups.filter(group=>group.rows.length>0).map(group=><section className="import-review-group" key={group.label} aria-label={group.label}>
