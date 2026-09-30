@@ -19,7 +19,7 @@
 .boot-symbol { position: relative; width: 176px; height: 142px; }
 .boot-symbol canvas, .boot-symbol img { position: absolute; left: -82px; top: -101px; width: 340px; height: 269.086px; }
 #boot-still { visibility: hidden; }
-.boot-name { display: block; width: 177px; height: 30.8px; margin: 0; overflow: visible; }
+.boot-name { display: block; width: auto; height: 30px; margin: 0; overflow: visible; }
 .boot-name [data-letter] { opacity: 0; }
 .boot-running .boot-name [data-letter] {
   animation: boot-letter 256ms cubic-bezier(.22, 1, .36, 1) both;
