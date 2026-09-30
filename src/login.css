@@ -1,0 +1,32 @@
+/* Layout adapted from tsito2602/kondo (MIT; licenses/kondo-MIT.txt). */
+.login { min-height: 100svh; display: grid; place-items: center; padding: max(32px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); color: var(--ink); background: var(--canvas); }
+.login-panel { display: flex; flex-direction: column; align-items: center; gap: 24px; width: min(100%, 360px); text-align: center; }
+.login-brand { display: flex; width: 100%; min-height: 52px; justify-content: center; align-items: center; gap: 8px; font-size: 28px; font-weight: 700; letter-spacing: -.035em; }
+/* Fit the visible mark, excluding the launch SVG’s transparent padding. */
+.login-brand-icon { display: block; flex: none; width: auto; height: 25px; aspect-ratio: 661 / 849; }
+.login-brand-icon .ink { fill: #000000; }
+.login-brand-icon .mid { fill: #9c978f; }
+.login-brand-icon .pale { fill: #cbc5bb; }
+.login-panel h1 { margin: 0; font-size: clamp(24px, 6.5vw, 30px); font-weight: 600; letter-spacing: -.04em; line-height: 1.6; }
+.login-actions { display: flex; flex-direction: column; align-items: center; width: 100%; margin-top: 8px; gap: 12px; }
+.google-sign-in { display: flex; align-items: center; justify-content: center; position: relative; gap: 12px; width: min(280px, 100%); min-height: 44px; padding: 10px 16px; border: 1px solid #747775; border-radius: 999px; background: #fff; color: #1f1f1f; font-size: 14px; font-weight: 500; letter-spacing: .25px; transition: background .16s, box-shadow .16s; }
+.google-sign-in svg { flex: 0 0 20px; }
+.google-sign-in:hover:not(:disabled) { background: #f7f8f8; box-shadow: 0 1px 3px #0002; }
+.google-sign-in:disabled { cursor: default; opacity: .65; }
+.login-status, .login-error { margin: 0; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; color: var(--muted); }
+.login-error { color: #ad3528; }
+.login-retry { border: 0; background: none; padding: 10px; font-size: 13px; color: var(--ink); text-decoration: underline; }
+.account-details { display: flex; align-items: center; gap: 12px; margin: 22px 0 12px; min-width: 0; }
+.account-details > div { min-width: 0; }
+.account-details strong { font-size: 14px; }
+.account-details p { margin: 5px 0 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.account-avatar { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--soft); font-size: 17px; }
+.auth-notice { position: fixed; z-index: 100; top: max(16px, env(safe-area-inset-top)); left: 16px; right: 16px; max-width: 600px; margin: auto; padding: 16px; border-radius: 12px; background: var(--paper); color: var(--ink); box-shadow: 0 4px 24px #0002; font-size: 13px; }
+.auth-notice button { float: right; border: 0; background: none; color: inherit; font-size: 20px; }
+
+:root[data-brand-theme='dark'] .google-sign-in { background: #131314; color: #e3e3e3; border-color: #8e918f; }
+:root[data-brand-theme='dark'] .google-sign-in:hover:not(:disabled) { background: #242426; }
+:root[data-brand-theme='dark'] .login-error { color: #ffa599; }
+:root[data-brand-theme='dark'] .login-brand-icon .ink { fill: #f5f1e9; }
+:root[data-brand-theme='dark'] .login-brand-icon .mid { fill: #b6b0a6; }
+:root[data-brand-theme='dark'] .login-brand-icon .pale { fill: #817b72; }

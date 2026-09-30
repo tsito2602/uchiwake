@@ -1,0 +1,61 @@
+/* Settings use Kondo's card and appearance controls in the existing page. */
+.settings-page { display: flex; flex-direction: column; gap: 20px; max-width: 760px; margin: 0 auto; }
+.settings-page .settings-section { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 24px; border: 1px solid var(--line); border-radius: 22px; background: var(--content-card); box-shadow: none; }
+.settings-page .section-heading, .settings-page h2 { font-size: 15px; font-weight: 650; }
+.settings-page .section-heading > svg { width: 18px; height: 18px; }
+.settings-page .subtle { margin: -8px 0 0; color: var(--muted); font-size: 12px; }
+.settings-page .account-details, .settings-page .card-settings-list, .settings-page .rule-list, .settings-page .mode-options { margin: 0; }
+.settings-page .account-avatar { background: var(--paper); }
+.settings-page .settings-card-button, .settings-page .settings-rent-button { min-height: 62px; padding: 12px 0; }
+.settings-page .settings-card-button:last-child, .settings-page .settings-rent-button:last-child { border-bottom: 0; }
+.settings-page .settings-add-card { margin: 0; border-radius: 999px; background: var(--paper); font-size: 13px; }
+.settings-page .settings-add-card:active { background: var(--soft); }
+.settings-page .category-settings-list .settings-card-button:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
+.settings-page .settings-logout { color: var(--danger); }
+.settings-page .category-settings-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.settings-page .category-settings-list .settings-card-button { gap: 6px; min-height: 54px; }
+.settings-page .category-settings-list .settings-card-button > svg:first-child { flex-basis: 21px; width: 21px; }
+.settings-page .category-settings-list .settings-card-button strong { font-size: 14px; }
+.appearance-control { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; padding: 4px; border-radius: 22px; background: var(--appearance-track); }
+.appearance-control button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 72px; padding: 10px 2px; border: 0; border-radius: 16px; color: var(--muted); background: transparent; font-size: 12px; transition: background .18s, color .18s, box-shadow .18s; }
+.appearance-control button[aria-pressed='true'] { color: var(--ink); background: var(--paper); box-shadow: 0 1px 4px #0000000d; }
+.appearance-control button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media(max-width:359px) { .settings-page .settings-section { padding: 20px; } }
+@media(prefers-reduced-motion:reduce) { .appearance-control button { transition: none; } }
+.app-version { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; font-size: 13px; }
+.app-version > span:first-child { color: var(--muted); }
+.app-version > span:last-child { display: flex; align-items: baseline; gap: 8px; }
+.app-update-settings .app-update-status { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.app-update-status:empty { display: none; }
+
+.settings-app-info { margin-top: 14px; padding: 12px 0 28px; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+.settings-app-info .settings-app-mark { width: 58px; height: 58px; margin-bottom: 8px; }
+.settings-app-info strong { font-size: 16px; letter-spacing: -.035em; }
+.settings-app-info small { font-size: 11px; color: var(--muted); }
+.account-avatar { width: 36px; height: 36px; flex-basis: 36px; object-fit: cover; }
+.account-reconnect, .name-save-status, .palette-hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.name-save-status { margin-top: 12px; }
+.name-save-status:empty { display: none; }
+.name-save-status[role='alert'] { color: var(--danger); }
+.account-form { margin-top: 18px; }
+.name-settings-form { gap: 0; }
+.name-settings-form .field input { font-size: 16px; }
+.name-save-reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transform: translateY(-6px); transition: grid-template-rows 240ms var(--ease-flow), opacity 240ms var(--ease-flow), transform 240ms var(--ease-flow); }
+.name-save-reveal[data-visible='true'] { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
+.name-save-reveal > div { min-height: 0; overflow: hidden; }
+.name-save-action { padding: 15px 5px 5px; }
+.name-save-reveal { margin: 0 -5px; }
+@media (prefers-reduced-motion: reduce) { .name-save-reveal { transition: none; transform: none; } }
+.palette-hint { margin: 0 0 12px; }
+:root[data-brand-theme='dark'] .swatch-check { color: #171717; }
+
+.settings-group-heading { padding: 4px 4px 0; }
+.settings-group-heading > small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.settings-group-heading h2 { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.settings-group-heading h2 svg { flex-shrink: 0; }
+.settings-common-heading { margin-top: 24px; }
+.settings-page .settings-space-delete { color: var(--danger); }
+.space-management-settings .space-member { font-size: 14px; }
+.space-management-settings .space-members { margin-top: -8px; }
+
+.space-settings-content { padding: 0 0 4px; }

@@ -1,0 +1,46 @@
+.context-dock.context-entries { gap: 8px; }
+.context-entry-groups { flex: 1; min-width: 0; }
+.context-entry-sorts { flex: 0 0 96px; margin-left: auto; }
+.context-detail { flex: 0 0 var(--dock-height); }
+.context-entries .context-primary.context-compact { margin-left: 0; }
+.context-entries .category-entries-modes { height: 100%; padding: 4px; background: transparent; }
+.context-entries .category-entries-modes::before { top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 2); background: var(--soft); box-shadow: none; }
+.context-entries .category-entries-modes button { min-width: 0; min-height: 44px; padding: 0 5px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--muted); }
+.context-entries .category-entries-modes button[aria-pressed='true'] { color: var(--ink); }
+.context-entries .entry-sort-controls { height: 100%; padding: 4px; gap: 0; }
+.context-entries .entry-sort-button { flex: 1; flex-direction: column-reverse; gap: 2px; width: 44px; height: 48px; padding: 3px 0; font-size: 9px; font-weight: 500; color: var(--muted); }
+.context-entries .entry-sort-button[aria-pressed='true'] { background: var(--soft); color: var(--ink); }
+.context-entries button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media (max-width: 359px) {
+  .context-dock.context-entries { gap: 6px; }
+  .context-entries .context-back, .context-entries .context-edit, .context-entries .context-detail { flex-basis: 52px; }
+  .context-entries .context-primary.context-compact { width: 52px; }
+  .context-entries .context-primary.context-action-group { width: 104px; }
+}
+@media (min-width: 760px) {
+  .floating-nav-host.has-entry-controls { position: fixed; z-index: 70; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; width: min(560px,calc(100% - 48px)); pointer-events: none; }
+  .has-entry-controls .kondo-floating-dock { position: relative; isolation: isolate; width: 100%; height: var(--dock-height); pointer-events: auto; }
+  .has-entry-controls .thumb-dock-material { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+  .has-entry-controls .thumb-dock-material > .safari-glass, .has-entry-controls .thumb-dock-material > svg { position: absolute; inset: -12px; width: calc(100% + 24px); height: calc(var(--dock-height) + 24px); }
+  .has-entry-controls .safari-glass { clip-path: inset(50%); -webkit-backdrop-filter: blur(24px) saturate(1.18); backdrop-filter: blur(24px) saturate(1.18); }
+  .has-entry-controls .thumb-dock-material > svg { overflow: visible; }
+  .has-entry-controls .thumb-dock-content { position: relative; height: var(--dock-height); }
+  .has-entry-controls .thumb-dock-content[data-outgoing] { position: absolute; inset: 0; pointer-events: none; }
+  .has-entry-controls .context-dock { display: flex; align-items: center; width: 100%; height: var(--dock-height); }
+  .has-entry-controls .context-island { position: relative; height: var(--dock-height); border-radius: 999px; }
+  .has-entry-controls .context-back, .has-entry-controls .context-edit { flex: 0 0 var(--dock-height); }
+  .has-entry-controls .context-primary { display: flex; flex: 0 0 var(--dock-height); margin-left: auto; }
+  .has-entry-controls .context-action-group { flex-basis: calc(var(--dock-height) * 2); }
+  .has-entry-controls .context-island > button { display: flex; align-items: center; justify-content: center; flex: 1; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--ink); }
+  .has-entry-controls .context-island > .context-delete-action { color: var(--danger); }
+  body:has(.has-entry-controls) .card-panel-backdrop { padding-bottom: 96px; }
+  body:has(.has-entry-controls) .card-panel { max-height: min(calc(100dvh - 116px),850px); }
+}
+
+/* Selection fills share the contour's clock and finish fading on its last frame. */
+.thumb-dock .category-entries-modes::before { opacity: var(--dock-selection-reveal,1); transition: transform 300ms cubic-bezier(.22,1,.36,1); }
+.thumb-dock .dock-selection { opacity: var(--dock-selection-reveal,1); transition: transform 420ms cubic-bezier(.16,1,.3,1), background 240ms; }
+.thumb-dock .entry-sort-button[aria-pressed='true'] { background: color-mix(in srgb,var(--soft) calc(var(--dock-selection-reveal,1) * 100%),transparent); transition: color 220ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .thumb-dock .category-entries-modes::before, .thumb-dock .dock-selection { transition: none; }
+}

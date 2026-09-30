@@ -22,6 +22,7 @@ export function animateDockPress(
     ],
     {
       duration: pressed ? 320 : 900,
+      fill: pressed ? "forwards" : "none",
       easing: pressed
         ? "cubic-bezier(0.16, 1, 0.3, 1)"
         : "cubic-bezier(0.22, 0.72, 0.18, 1)",

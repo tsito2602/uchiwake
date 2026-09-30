@@ -1,28 +1,36 @@
 {
   "name": "uchiwake",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build && node scripts/embed-assets.mjs",
+    "dev": "node scripts/build-brand.mjs && vite --host 0.0.0.0",
+    "build": "node scripts/build-brand.mjs && vite build && node scripts/build-icon-appearance-check.mjs && node scripts/embed-assets.mjs",
     "bundle:worker": "npm run build && esbuild worker/index.ts --bundle --format=esm --platform=browser --target=es2022 --minify --outfile=dist/worker.mjs",
     "typecheck": "tsc --noEmit",
     "check": "npm run bundle:worker && npm run typecheck && node --test tests/*.test.mjs",
     "deploy:staging": "npm run check && wrangler deploy --config wrangler.staging.jsonc",
-    "db:staging": "wrangler d1 migrations apply uchiwake-staging --remote --config wrangler.staging.jsonc"
+    "db:staging": "wrangler d1 migrations apply uchiwake-staging --remote --config wrangler.staging.jsonc",
+    "config:production": "node scripts/production-config.mjs",
+    "db:production": "npm run config:production && wrangler d1 migrations apply uchiwake --remote --config .wrangler.production.generated.jsonc",
+    "deploy:production": "npm run check && npm run config:production && wrangler deploy --config .wrangler.production.generated.jsonc --keep-vars"
   },
   "dependencies": {
+    "border-beam": "^1.4.1",
     "hono": "^4.12.0",
+    "jose": "^6.2.12",
     "lucide-react": "^0.468.0",
+    "motion": "^13.4.4",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "thinking-orbs": "^0.3.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260925.1",
     "@types/react": "~19.2.2",
     "@types/react-dom": "~19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "sharp": "^0.35.5",
     "typescript": "~6.0.3",
     "vite": "^7.1.0",
     "wrangler": "^4.135.0"
