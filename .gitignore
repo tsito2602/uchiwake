@@ -11,3 +11,4 @@ dist/
 worker/generated-assets.ts
 
 public/theme-init.js
+.wrangler.production.generated.jsonc
