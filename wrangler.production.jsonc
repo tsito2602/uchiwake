@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
-  "d1_databases": [{ "binding": "DB", "database_name": "uchiwake", "migrations_dir": "migrations" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "uchiwake", "database_id": "268a3dcd-71e8-4de4-935e-2c77aec9e2e5", "migrations_dir": "migrations" }],
   "ai": { "binding": "AI" },
   "vars": { "APP_ENV": "production", "AI_IMPORT_PROVIDER": "cloudflare", "AI_GATEWAY_ID": "uchiwake" },
   "observability": { "enabled": true, "head_sampling_rate": 1 }

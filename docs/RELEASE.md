@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Worker | `uchiwake` | `uchiwake-staging` |
 | URL | `https://uchiwake.tsito-apps.workers.dev/` | `https://uchiwake-staging.tsito-apps.workers.dev/` |
-| D1 | 新規の `uchiwake` | 既存の `uchiwake-staging` |
+| D1 | `uchiwake`（UUID: `268a3dcd-71e8-4de4-935e-2c77aec9e2e5`） | 既存の `uchiwake-staging` |
 | APP_ENV | `production` | `staging` |
 | Google OAuth・セッション鍵 | 本番用を新規設定 | 既存設定 |
 | デモ・AI診断・アイコン比較ページ | 無効 | 有効 |
@@ -19,15 +19,15 @@
 
 ## 初回作成
 
-1. Cloudflareの対象アカウントを確認し、D1 `uchiwake` を新規作成します。
+1. 本番D1は作成済みで、ユーザーから上記UUIDが提供されています。再作成せず、Cloudflareの対象アカウントとD1名・UUIDの一致を確認します。
 
    ```sh
    npx wrangler whoami
-   npx wrangler d1 create uchiwake --location apac
+   npx wrangler d1 info uchiwake
    ```
 
-2. 作成結果のUUIDをシェルまたはWorkers Buildsの **ビルド変数** `D1_DATABASE_ID` に設定します。`npx wrangler d1 info uchiwake` のUUIDと一致することを確認します。
-   `npm run config:production` はそのIDを使って `.wrangler.production.generated.jsonc` を生成します。未設定・不正なID・既存ステージングのIDでは停止します。
+2. UUIDは `wrangler.production.jsonc` に設定済みです。追加のビルド変数 `D1_DATABASE_ID` は不要です。
+   `npm run config:production` は確定済みのIDを使って `.wrangler.production.generated.jsonc` を生成します。既存のビルド設定に `D1_DATABASE_ID` がある場合は同じUUIDだけを許可し、不正なID・既存ステージング・別DBの指定では停止します。
    生成ファイルはコミットしません。`wrangler.production.jsonc` はテンプレートなので、デプロイは必ず生成後の設定を使用します。
 
 3. ビルド・型チェック・テストを実行し、本番D1だけに全マイグレーションを適用します。
@@ -64,12 +64,17 @@
 | 項目 | 設定 |
 | --- | --- |
 | ルート | `/` |
-| ビルド | `npm ci && npm run check && npm run config:production` |
-| デプロイ | `npx wrangler deploy --config .wrangler.production.generated.jsonc --keep-vars` |
-| ビルド変数 | `NODE_VERSION=24`、`D1_DATABASE_ID=本番D1のUUID` |
+| ビルド | `npm ci` |
+| 初回デプロイ | `npm run deploy:production:initial` |
+| 2回目以降のデプロイ | `npm run deploy:production` |
+| ビルド変数 | `NODE_VERSION=24` |
 | 監視対象パス | `*` |
+| 非本番ブランチのビルド | 無効（stagingは既存Workerを使用） |
 
-DB移行は自動デプロイに含めず、必要な変更があるときだけ事前に適用します。
+初回コマンドはビルド・型チェック・テスト成功後に、確定済みの本番D1へ全マイグレーションを適用し、成功した場合だけデプロイします。ローカルPCでの実行は不要です。
+初回成功後はデプロイコマンドを `npm run deploy:production` に変更します。以降の通常デプロイにはDB移行を含めず、スキーマ変更が必要な場合だけ事前に適用します。
+Workers BuildsのAPIトークンにはWorkerのデプロイ権限に加えて、初回DB移行用の対象アカウントの **D1: Edit** 権限が必要です。
+Cloudflareが自動作成するビルド用トークンの既定権限にはD1が含まれないため、初回ビルド前に権限を設定してください（[公式設定ドキュメント](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#api-token)）。
 `APP_ENV=production`、AI binding、AI Gateway設定は本番テンプレートで指定します。
 認証用の4項目はビルド変数ではなくWorkerの実行時設定です。
 
