@@ -11,11 +11,11 @@ async function json(response,status=200){assert.equal(response.status,status,awa
 async function create(f,user='owner'){await json(await f.call(user,'/spaces'));return (await json(await f.call(user,'/spaces','POST',{name:'ふたりの家計'}),201)).space;}
 async function invite(f,space,user){const {code}=await json(await f.call('owner',`/spaces/${space.id}/invites`,'POST',{}),201);const preview=await json(await f.call(user,'/spaces/invite-preview','POST',{code}));await json(await f.call(user,'/spaces/join','POST',{code,space_id:preview.space_id}));return code;}
 
-test('均等・割合・返金の端数配分は常に合計に一致する',()=>{
- assert.deepEqual(allocate(100,equal('a','b','c')),{a:34,b:33,c:33});
- assert.deepEqual(allocate(101,percent(['a',5000],['b',3000],['c',2000])),{a:51,b:30,c:20});
- assert.deepEqual(allocate(-101,percent(['a',5000],['b',3000],['c',2000])),{a:-51,b:-30,c:-20});
- for(let n=-200;n<200;n++)assert.equal(Object.values(allocate(n,equal('a','b','c'))).reduce((a,b)=>a+b,0),n);
+test('均等・割合・返金の端数は自動配分せず整数部分だけを負担する',()=>{
+ assert.deepEqual(allocate(100,equal('a','b','c')),{a:33,b:33,c:33});
+ assert.deepEqual(allocate(101,percent(['a',5000],['b',3000],['c',2000])),{a:50,b:30,c:20});
+ assert.deepEqual(allocate(-101,percent(['a',5000],['b',3000],['c',2000])),{a:-50,b:-30,c:-20});
+ for(let n=-200;n<200;n++){const d=settlementDetails([{key:'rent',amount:n}],config(equal('a','b','c')));assert.equal(Object.values(d.amounts).reduce((a,b)=>a+b,0)+d.unassigned,n);}
  const c=config(equal('a','b'),{rent:percent(['a',6000],['b',4000]),'card:c':equal('a','b','c')});
  assert.deepEqual(settlementAmounts([{key:'rent',amount:100000},{key:'card:c',amount:3000}],c),{a:61000,b:41000,c:1000});
  assert.deepEqual(settlementAmounts([{key:'rent',amount:100000},{key:'card:c',amount:3000}],{...c,uniform:true}),{a:51500,b:51500});
@@ -323,17 +323,25 @@ test('個人・共有のスペース名は作成者だけが変更でき、再�
 });
 
 
-test('端数の対象者と調整額を計算結果から取得し、均等・割合・返金を説明できる',()=>{
- const detail=(amount,split)=>settlementDetails([{key:'rent',amount}],config(split));
- assert.deepEqual(detail(1001,equal('b','a')),{amounts:{b:500,a:501},adjustments:{a:1}});
+test('端数は未選択を維持し、明示した一人にだけ加減算する',()=>{
+ const detail=(amount,split,user)=>settlementDetails([{key:'rent',amount}],{...config(split),roundingUserId:user});
+ assert.deepEqual(detail(1001,equal('b','a')),{amounts:{b:500,a:500},adjustments:{},remainder:1,unassigned:1});
+ assert.deepEqual(detail(1001,equal('b','a'),'b'),{amounts:{b:501,a:500},adjustments:{b:1},remainder:1,unassigned:0});
+ assert.deepEqual(detail(1001,equal('b','a'),null),detail(1001,equal('b','a')));
+ assert.equal(detail(1001,equal('b','a'),'outsider').unassigned,1);
  assert.deepEqual(detail(1000,equal('a','b')).adjustments,{});
- assert.deepEqual(detail(1001,equal('c','b','a')).adjustments,{a:1,b:1});
- assert.deepEqual(detail(101,percent(['a',5000],['b',3000],['c',2000])).adjustments,{a:1});
- assert.deepEqual(detail(-1001,equal('a','b')),{amounts:{a:-501,b:-500},adjustments:{a:-1}});
+ assert.equal(detail(1001,equal('c','b','a')).unassigned,2);
+ assert.deepEqual(detail(101,percent(['a',5000],['b',3000],['c',2000]),'c').amounts,{a:50,b:30,c:21});
+ assert.deepEqual(detail(-1001,equal('a','b'),'b'),{amounts:{a:-500,b:-501},adjustments:{b:-1},remainder:-1,unassigned:0});
  assert.deepEqual(detail(0,equal('a','b')).adjustments,{});
  const items=[{key:'rent',amount:101},{key:'card:c',amount:101}];
- assert.deepEqual(settlementDetails(items,{...config(equal('a','b')),uniform:false}),{amounts:{a:102,b:100},adjustments:{a:2}});
- assert.deepEqual(settlementDetails(items,config(equal('a','b'))),{amounts:{a:101,b:101},adjustments:{}});
+ assert.deepEqual(settlementDetails(items,{...config(equal('a','b')),uniform:false}),{amounts:{a:100,b:100},adjustments:{},remainder:2,unassigned:2});
+ assert.deepEqual(settlementDetails(items,{...config(equal('a','b')),uniform:false,roundingUserId:'b'}),{amounts:{a:100,b:102},adjustments:{b:2},remainder:2,unassigned:0});
+ assert.deepEqual(settlementDetails(items,config(equal('a','b'))),{amounts:{a:101,b:101},adjustments:{},remainder:0,unassigned:0});
+ for(let n=-200;n<200;n++)for(const who of [null,'a','b','c']){
+  const d=detail(n,percent(['a',3333],['b',3333],['c',3334]),who);
+  assert.equal(Object.values(d.amounts).reduce((sum,value)=>sum+value,0)+d.unassigned,n);
+ }
 });
 
 test('招待後の「この月以降」は保存済みの月と将来の設定に反映し、開始月より前は保つ',async()=>{
@@ -374,5 +382,62 @@ test('過去の月だけの負担変更は前後の月と別スペースに影�
   const otherState=await json(await f.call('owner','/state?month=2025-06','GET',undefined,other.id));assert.deepEqual(otherState.settlement.config,config(equal('owner')));
   assert.equal((await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2024-01',scope:'default',revision:99,config:config(equal('owner'))})).status,409);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM settlement_rules WHERE space_id=? AND month='2024-01'").get(space.id).n,0);
+ }finally{f.db.close();}
+});
+
+test('端数の選択・解除を月別に共有し、履歴にも反映する。割合の変更では選択を流用しない',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);await invite(f,space,'b');
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-08',scope:'default',revision:0,config:config(equal('owner','b'))}));
+  for(const month of ['2026-08','2026-09'])await json(await f.call('owner','/bills','POST',{due_month:month,title:'水道',kind:'utilities',amount:1001},space.id),201);
+  const read=(user,month='2026-09')=>f.call(user,`/state?month=${month}`,'GET',undefined,space.id).then(json);
+  const save=(user,user_id,revision,month='2026-09')=>f.call(user,`/spaces/${space.id}/rounding`,'PUT',{month,user_id,revision});
+  let state=await read('owner');const revision=state.settlement.revision;
+  assert.equal(settlementDetails(settlementItems(state),state.settlement.config).unassigned,1);
+  await json(await save('b','b',revision));
+  state=await read('owner');
+  assert.equal(state.settlement.config.roundingUserId,'b');
+  assert.equal(settlementAmounts(settlementItems(state),state.settlement.config).b,501);
+  const history=await json(await f.call('b','/settlement-history?month=2026-09','GET',undefined,space.id));
+  assert.equal(history.months.at(-1).amount,501);
+  assert.equal(history.months.at(-2).amount,500);
+  await json(await save('owner','owner',revision),409);
+  await json(await save('outsider','outsider',state.settlement.revision),404);
+  await json(await save('owner','outsider',state.settlement.revision),400);
+  // Updating proportions preserves each month's independent selection, not the submitted field.
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-09',scope:'month',revision:state.settlement.revision,config:{...config(equal('owner','b')),roundingUserId:'owner'}}));
+  assert.equal((await read('owner')).settlement.config.roundingUserId,'b');
+  await read('owner','2026-08');
+  const defaults=await json(await f.call('owner',`/spaces/${space.id}/defaults?month=2026-08`));
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-08',scope:'default',revision:defaults.revision,config:{...config(equal('owner','b')),roundingUserId:'owner'}}));
+  state=await read('owner');assert.equal(state.settlement.config.roundingUserId,'b');
+  assert.equal((await read('owner','2026-08')).settlement.config.roundingUserId??null,null);
+  assert.equal((await read('owner','2026-10')).settlement.config.roundingUserId??null,null);
+  await json(await save('b',null,state.settlement.revision));
+  state=await read('owner');assert.equal(state.settlement.config.roundingUserId,null);
+  assert.equal(settlementDetails(settlementItems(state),state.settlement.config).unassigned,1);
+  const cleared=await json(await f.call('b','/settlement-history?month=2026-09','GET',undefined,space.id));
+  assert.equal(cleared.months.at(-1).amount,500);
+  state=await read('owner','2026-08');await json(await save('owner','owner',state.settlement.revision,'2026-08'));
+  assert.equal((await read('b','2026-08')).settlement.config.roundingUserId,'owner');
+  assert.equal((await read('b')).settlement.config.roundingUserId,null);
+ }finally{f.db.close();}
+});
+
+test('端数の保存直前に別メンバーが設定を変えたら更新を拒否する',async()=>{
+ const f=spaceFixture();try{
+  const space=await create(f);await invite(f,space,'b');
+  await json(await f.call('owner',`/spaces/${space.id}/settlement`,'PUT',{month:'2026-09',scope:'month',revision:0,config:config(equal('owner','b'))}));
+  const state=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space.id));
+  const prepare=f.DB.prepare;let raced=false;
+  f.DB.prepare=sql=>{
+   if(!raced&&sql.includes("config=json_set(config,'$.roundingUserId',?)")){
+    raced=true;f.db.prepare("UPDATE settlement_rules SET revision=revision+1 WHERE space_id=? AND scope='month'").run(space.id);
+   }
+   return prepare(sql);
+  };
+  await json(await f.call('owner',`/spaces/${space.id}/rounding`,'PUT',{month:'2026-09',user_id:'b',revision:state.settlement.revision}),409);
+  const after=await json(await f.call('owner','/state?month=2026-09','GET',undefined,space.id));
+  assert.equal(after.settlement.config.roundingUserId??null,null);
  }finally{f.db.close();}
 });

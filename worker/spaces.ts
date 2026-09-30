@@ -146,18 +146,36 @@ spacesRoutes.put('/:id/settlement',async c=>{
  if(!validateConfig(body.config,new Set(members.filter(m=>body.scope==='month'||m.active).map(m=>m.user_id))))return fail('対象者と割合を確認してください。割合は合計100％にしてください');
  // Keep the revision check and propagation in one transaction. A stale save must
  // never change monthly snapshots or later defaults.
- const config=JSON.stringify(body.config);
+ // Rounding is an explicit monthly choice, edited only through /rounding.
+ const {roundingUserId:_rounding,...splitConfig}=body.config;
+ const config=JSON.stringify(splitConfig);
  const anchor=c.env.DB.prepare(`INSERT INTO settlement_rules(space_id,month,scope,config,revision)
  SELECT ?,?,?,?,1 WHERE ?=0 OR EXISTS (
   SELECT 1 FROM settlement_rules WHERE space_id=? AND month=? AND scope=? AND revision=?
- ) ON CONFLICT(space_id,month,scope) DO UPDATE SET config=excluded.config,revision=settlement_rules.revision+1
+ ) ON CONFLICT(space_id,month,scope) DO UPDATE SET config=CASE WHEN excluded.scope='month' AND json_type(settlement_rules.config,'$.roundingUserId') IS NOT NULL
+ THEN json_set(excluded.config,'$.roundingUserId',json_extract(settlement_rules.config,'$.roundingUserId')) ELSE excluded.config END,revision=settlement_rules.revision+1
  WHERE settlement_rules.revision=?`).bind(space.id,body.month,body.scope,config,body.revision,space.id,body.month,body.scope,body.revision,body.revision);
  const statements=[anchor];
- if(body.scope==='default')statements.push(c.env.DB.prepare(`UPDATE settlement_rules SET config=?,revision=revision+1
- WHERE changes()=1 AND space_id=? AND month>=? AND NOT (scope='default' AND month=?)`).bind(config,space.id,body.month,body.month));
+ if(body.scope==='default')statements.push(c.env.DB.prepare(`UPDATE settlement_rules SET config=CASE WHEN scope='month' AND json_type(config,'$.roundingUserId') IS NOT NULL
+ THEN json_set(?,'$.roundingUserId',json_extract(config,'$.roundingUserId')) ELSE ? END,revision=revision+1
+ WHERE changes()=1 AND space_id=? AND month>=? AND NOT (scope='default' AND month=?)`).bind(config,config,space.id,body.month,body.month));
  const [result]=await c.env.DB.batch(statements);
  if(!result.meta.changes)return fail('ほかのメンバーが変更しました。開き直して確認してください',409);
  return c.json({ok:true});
+});
+spacesRoutes.put('/:id/rounding',async c=>{
+ const space=c.get('space'),body=await c.req.json().catch(()=>null);
+ if(space.kind!=='shared'||!monthPattern.test(body?.month)||!Number.isSafeInteger(body?.revision)||body.revision<1
+  ||!(body.user_id===null||typeof body.user_id==='string'))return fail('端数の負担者を確認してください');
+ const members=await membersFor(c.env.DB,space.id);
+ const setting=await settlementFor(c.env.DB,space,body.month,members);
+ if(setting.scope!=='month'||setting.month!==body.month||setting.revision!==body.revision)return fail('ほかのメンバーが変更しました。開き直して確認してください',409);
+ const splits=setting.config.uniform?[setting.config.common]:[setting.config.common,...Object.values(setting.config.items)];
+ if(body.user_id!==null&&(!members.some(m=>m.user_id===body.user_id)||!splits.some(split=>split.shares.some(s=>s.user_id===body.user_id))))return fail('負担の対象メンバーから選択してください');
+ const result=await c.env.DB.prepare(`UPDATE settlement_rules SET config=json_set(config,'$.roundingUserId',?),revision=revision+1
+ WHERE space_id=? AND month=? AND scope='month' AND revision=?`).bind(body.user_id,space.id,body.month,body.revision).run();
+ if(!result.meta.changes)return fail('ほかのメンバーが変更しました。開き直して確認してください',409);
+ return c.json({ok:true,revision:body.revision+1});
 });
 spacesRoutes.get('/:id/defaults',async c=>{
  const month=c.req.query('month')||'';if(!monthPattern.test(month))return fail('月を確認してください');

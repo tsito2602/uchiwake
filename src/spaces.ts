@@ -2,7 +2,7 @@ import { rentForMonth, statementSettlementAmount, type State } from './domain';
 export type Space = {id:string;name:string;kind:'personal'|'shared';owner_id:string};
 export type Member = {user_id:string;name:string;active:boolean;avatarUrl?:string};
 export type Split = {mode:'equal'|'percent';shares:{user_id:string;weight:number}[]};
-export type SettlementConfig = {uniform:boolean;common:Split;items:Record<string,Split>};
+export type SettlementConfig = {uniform:boolean;common:Split;items:Record<string,Split>;roundingUserId?:string|null};
 export type SettlementItem = {key:string;label:string;amount:number;color?:string};
 export type SettlementSettings = {config:SettlementConfig;revision:number;scope:'default'|'month';month:string};
 export type SpaceData = {space:Space;members:Member[];settlement:SettlementSettings};
@@ -35,11 +35,9 @@ function allocationDetails(amount:number,split:Split) {
  const sum=weights.reduce((n,w)=>n+w,0);
  if(!sum||weights.some(w=>!Number.isSafeInteger(w)||w<=0))throw new Error('負担割合を確認してください');
  const sign=amount<0?-1:1, total=BigInt(Math.abs(amount)), denominator=BigInt(sum);
- const rows=split.shares.map((s,i)=>({id:s.user_id,amount:Number(total*BigInt(weights[i])/denominator),remainder:total*BigInt(weights[i])%denominator}));
+ const rows=split.shares.map((s,i)=>({id:s.user_id,amount:Number(total*BigInt(weights[i])/denominator)}));
  const remainder=Math.abs(amount)-rows.reduce((n,r)=>n+r.amount,0);
- const adjustments:Record<string,number>={};
- [...rows].sort((a,b)=>a.remainder===b.remainder?a.id.localeCompare(b.id):a.remainder>b.remainder?-1:1).slice(0,remainder).forEach(r=>{r.amount++;adjustments[r.id]=sign;});
- return {amounts:Object.fromEntries(rows.map(r=>[r.id,sign*r.amount])),adjustments};
+ return {amounts:Object.fromEntries(rows.map(r=>[r.id,sign*r.amount||0])),remainder:sign*remainder||0};
 }
 export function allocate(amount:number,split:Split):Record<string,number> {return allocationDetails(amount,split).amounts;}
 export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'entries'|'bills'|'rent_rules'|'category_settings'|'space_preferences'>,personal=false) {
@@ -56,13 +54,17 @@ export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'e
 }
 export function settlementDetails(items:{key:string;amount:number}[],config:SettlementConfig) {
  const amounts:Record<string,number>={},adjustments:Record<string,number>={};
+ let remainder=0;
  const add=(amount:number,split:Split)=>{
   const detail=allocationDetails(amount,split);
   for(const [id,value] of Object.entries(detail.amounts))amounts[id]=(amounts[id]??0)+value;
-  for(const [id,value] of Object.entries(detail.adjustments))adjustments[id]=(adjustments[id]??0)+value;
+  remainder+=detail.remainder;
  };
  if(config.uniform)add(items.reduce((n,i)=>n+i.amount,0),config.common);
  else for(const item of items)add(item.amount,config.items[item.key]??config.common);
- return {amounts,adjustments};
+ const selected=config.roundingUserId;
+ const assigned=!!selected&&Object.hasOwn(amounts,selected);
+ if(assigned&&remainder){amounts[selected]+=remainder;adjustments[selected]=remainder;}
+ return {amounts,adjustments,remainder,unassigned:assigned?0:remainder};
 }
 export function settlementAmounts(items:{key:string;amount:number}[],config:SettlementConfig) {return settlementDetails(items,config).amounts;}

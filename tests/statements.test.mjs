@@ -75,7 +75,7 @@ test('精算の棒グラフは固定家賃と月ごとの上書きを二重計�
   assert.equal(response.status,200);
   const {months}=await response.json();
   assert.equal(months.length,60);
-  assert.deepEqual(months.slice(-2),[{month:'2026-08',amount:50000,total:100000},{month:'2026-09',amount:80001,total:160001}]);
+  assert.deepEqual(months.slice(-2),[{month:'2026-08',amount:50000,total:100000},{month:'2026-09',amount:80000,total:160001}]);
 });
 
 
