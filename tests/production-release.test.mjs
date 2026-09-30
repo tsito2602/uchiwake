@@ -4,13 +4,14 @@ import { readFileSync } from 'node:fs';
 import { productionConfig } from '../scripts/production-config.mjs';
 import { spaceFixture } from './spaces-fixture.mjs';
 
-test('production configuration rejects a missing, malformed, or staging database ID', () => {
+test('production configuration uses the confirmed database and rejects invalid or mismatched overrides', () => {
   const staging = JSON.parse(readFileSync(new URL('../wrangler.staging.jsonc', import.meta.url), 'utf8'));
-  for (const id of [undefined, '', 'uchiwake', staging.d1_databases[0].database_id.toUpperCase()]) {
+  for (const id of ['', 'uchiwake', staging.d1_databases[0].database_id.toUpperCase(), '00000000-0000-4000-8000-000000000001']) {
     assert.throws(() => productionConfig(id));
   }
-  const id = '00000000-0000-4000-8000-000000000001';
-  const config = productionConfig(id);
+  const id = '268a3dcd-71e8-4de4-935e-2c77aec9e2e5';
+  const config = productionConfig();
+  assert.deepEqual(productionConfig(id.toUpperCase()), config);
   assert.equal(config.name, 'uchiwake');
   assert.equal(config.vars.APP_ENV, 'production');
   assert.equal(config.d1_databases[0].database_name, 'uchiwake');
