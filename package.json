@@ -13,8 +13,9 @@
     "db:staging": "wrangler d1 migrations apply uchiwake-staging --remote --config wrangler.staging.jsonc",
     "config:production": "node scripts/production-config.mjs",
     "db:production": "npm run config:production && wrangler d1 migrations apply uchiwake --remote --config .wrangler.production.generated.jsonc",
-    "deploy:production": "npm run check && npm run config:production && wrangler deploy --config .wrangler.production.generated.jsonc --keep-vars",
-    "deploy:production:initial": "npm run check && npm run db:production && wrangler deploy --config .wrangler.production.generated.jsonc --keep-vars"
+    "db:promote:staging": "node scripts/promote-staging-data.mjs",
+    "deploy:production": "npm run check && npm run db:promote:staging -- --apply && npm run config:production && wrangler deploy --config .wrangler.production.generated.jsonc --keep-vars",
+    "deploy:production:initial": "npm run check && npm run db:production && npm run db:promote:staging -- --apply && wrangler deploy --config .wrangler.production.generated.jsonc --keep-vars"
   },
   "dependencies": {
     "border-beam": "^1.4.1",
