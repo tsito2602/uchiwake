@@ -5,20 +5,18 @@ export function panelEditor(focused:Element|null):HTMLElement|null {
   return focused;
 }
 
-export function dockKeyboardInset(layoutHeight:number,viewport:Pick<VisualViewport,'height'|'offsetTop'|'scale'>|null,focused:Element|null) {
-  if(!viewport||Math.abs(viewport.scale-1)>.01)return 0;
-  const editable=panelEditor(focused);
-  if(!editable||editable.matches('select')||layoutHeight-viewport.height<120)return 0;
-  return Math.max(0,layoutHeight-viewport.height-Math.max(0,viewport.offsetTop));
-}
-
 export function revealPanelField(focused:Element|null) {
   const editor=panelEditor(focused);
   const scroll=editor?.closest<HTMLElement>('.card-panel');
   if(!editor||!scroll)return;
   const bounds=scroll.getBoundingClientRect();
   const header=scroll.querySelector<HTMLElement>(':scope > .card-panel-header');
-  const top=Math.max(bounds.top,header?.getBoundingClientRect().bottom??bounds.top)+12,bottom=bounds.bottom-12;
+  const viewport=editor.ownerDocument.defaultView?.visualViewport;
+  if(viewport&&Math.abs(viewport.scale-1)>=.01)return;
+  const dock=editor.ownerDocument.querySelector<HTMLElement>('.floating-nav-host');
+  const dockTop=dock?.getClientRects().length?dock.getBoundingClientRect().top-16:bounds.bottom;
+  const top=Math.max(bounds.top,header?.getBoundingClientRect().bottom??bounds.top,viewport?.offsetTop??bounds.top)+12;
+  const bottom=Math.min(bounds.bottom,dockTop,viewport?viewport.offsetTop+viewport.height:bounds.bottom)-12;
   if(bottom<=top)return;
   const input=editor.getBoundingClientRect();
   const field=editor.closest('.field')?.getBoundingClientRect();

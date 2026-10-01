@@ -1,24 +1,25 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { dockKeyboardInset, panelEditor, revealPanelField } from '../src/panel-focus.ts';
+import { panelEditor, revealPanelField } from '../src/panel-focus.ts';
 
 class Field {
-  constructor({kind='input',excluded=false,inert=false,top=300,bottom=344,labelTop=280,headerBottom=100}={}) {Object.assign(this,{kind,excluded,inert,top,bottom,labelTop});this.scroll={scrollTop:0,getBoundingClientRect:()=>({top:100,bottom:400}),querySelector:()=>({getBoundingClientRect:()=>({bottom:headerBottom})})};}
+  constructor({kind='input',excluded=false,inert=false,top=300,bottom=344,labelTop=280,headerBottom=100,panelBottom=400,viewport=null,dockTop=null,dockVisible=true}={}) {
+    Object.assign(this,{kind,excluded,inert,top,bottom,labelTop});
+    this.scroll={scrollTop:0,getBoundingClientRect:()=>({top:100,bottom:panelBottom}),querySelector:()=>({getBoundingClientRect:()=>({bottom:headerBottom})})};
+    this.ownerDocument={defaultView:{visualViewport:viewport},querySelector:()=>dockTop===null?null:{getClientRects:()=>dockVisible?[{}]:[],getBoundingClientRect:()=>({top:dockTop})}};
+  }
   matches(selector) {if(selector==='select')return this.kind==='select';if(selector.startsWith(':disabled'))return this.excluded;return ['input','textarea','select'].includes(this.kind);}
   closest(selector) {if(selector==='[inert]')return this.inert?{}:null;if(selector==='.card-panel')return this.scroll;if(selector==='.field')return {getBoundingClientRect:()=>({top:this.labelTop})};return null;}
   getBoundingClientRect(){return {top:this.top,bottom:this.bottom};}
 }
 globalThis.HTMLElement=Field;
 
-test('フォーム入力のときだけキーボード分を持ち上げ、ピンチ・小さい変動・選択ピッカーは除外する',()=>{
+test('操作可能なパネル内の入力欄だけをスクロール対象にする',()=>{
   const field=new Field();
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:20,scale:1},field),280);
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:-10,scale:1},field),300);
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:0,scale:1.5},field),0);
-  assert.equal(dockKeyboardInset(800,{height:720,offsetTop:0,scale:1},field),0);
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:0,scale:1},new Field({kind:'select'})),0);
+  assert.equal(panelEditor(field),field);
   assert.equal(panelEditor(new Field({excluded:true})),null);
   assert.equal(panelEditor(new Field({inert:true})),null);
+  assert.equal(panelEditor(null),null);
 });
 
 test('入力欄が見えていれば動かず、隠れた欄とラベルだけパネル内で表示する',()=>{
@@ -34,4 +35,21 @@ test('固定ヘッダーに隠れた入力欄とラベルを、パネル自体�
  revealPanelField(hidden);assert.equal(hidden.scroll.scrollTop,-50);
  const visible=new Field({top:220,bottom:264,labelTop:200,headerBottom:188});
  revealPanelField(visible);assert.equal(visible.scroll.scrollTop,0);
+});
+
+test('ボトムナビが元の位置にあっても入力欄とラベルをキーボードより上に出す',()=>{
+ const options={panelBottom:760,viewport:{height:470,offsetTop:0,scale:1},dockTop:780};
+ const below=new Field({...options,top:600,bottom:644,labelTop:580});
+ revealPanelField(below);assert.equal(below.scroll.scrollTop,186);
+ const visible=new Field({...options,top:400,bottom:444,labelTop:380});
+ revealPanelField(visible);assert.equal(visible.scroll.scrollTop,0);
+ const hiddenDock=new Field({...options,top:450,bottom:494,labelTop:430,dockVisible:false});
+ revealPanelField(hiddenDock);assert.equal(hiddenDock.scroll.scrollTop,36);
+});
+
+test('キーボードを閉じた後やピンチズーム中には不要なスクロールをしない',()=>{
+ const field=new Field({panelBottom:760,top:600,bottom:644,labelTop:580,viewport:{height:844,offsetTop:0,scale:1},dockTop:780});
+ revealPanelField(field);assert.equal(field.scroll.scrollTop,0);
+ field.ownerDocument.defaultView.visualViewport={height:422,offsetTop:0,scale:2};
+ revealPanelField(field);assert.equal(field.scroll.scrollTop,0);
 });

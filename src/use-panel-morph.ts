@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { animatePanel, animatePanelSurroundings, cancelPanel, reversePanel, type PanelOrigin } from './kondo-panel-motion';
-import { revealPanelField } from './panel-focus';
+import { trackPanelViewport } from './panel-viewport';
 import { lockOverlayBackground } from './overlay-lock';
 import { registerPanel } from './panel-stack';
 export type { PanelOrigin } from './kondo-panel-motion';
@@ -33,18 +33,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const parentFilter=parentContent?.style.filter;
     shell.style.setProperty('--panel-depth',String(currentLayer.parents.length));
     shell.dataset.panelNested=String(!currentLayer.ownsBackground);
-    const viewport=window.visualViewport;
-    let revealFrame=0;
-    const reveal=()=>{cancelAnimationFrame(revealFrame);revealFrame=requestAnimationFrame(()=>{if(node.contains(document.activeElement))revealPanelField(document.activeElement);});};
-    const updateViewport=()=>{
-      shell.style.setProperty('--panel-viewport-top',`${viewport?.offsetTop||0}px`);
-      shell.style.setProperty('--panel-viewport-height',`${viewport?.height||window.innerHeight}px`);
-      reveal();
-    };
-    updateViewport();
-    viewport?.addEventListener('resize',updateViewport);
-    viewport?.addEventListener('scroll',updateViewport);
-    node.addEventListener('focusin',reveal);
+    const releaseViewport=trackPanelViewport(node,shell);
     const main=document.querySelector<HTMLElement>('main.shell');
     const unlockBackground=lockOverlayBackground([...(main?[main]:[]),...currentLayer.parents]);
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -57,9 +46,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       if(parentContent)parentContent.style.filter='blur(6px)';
     }
     return()=>{
-      viewport?.removeEventListener('resize',updateViewport);
-      viewport?.removeEventListener('scroll',updateViewport);
-      node.removeEventListener('focusin',reveal);cancelAnimationFrame(revealFrame);
+      releaseViewport();
       if(motion.current)cancelPanel(motion.current);
       companions.current.forEach(animation=>animation.cancel());
       if(reduced&&parentContent)parentContent.style.filter=parentFilter||'';
