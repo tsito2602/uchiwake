@@ -7,7 +7,6 @@ import { FuseAddMenu, type AddOption } from './fuse-add-menu';
 import { DockContent } from './kondo-dock-content';
 import { NativeMonthPicker } from './native-month-picker';
 import { PanelBackButton } from './panel-back-button';
-import { dockKeyboardInset } from './panel-focus';
 import { StudioActionLabel } from './studio-action-label';
 import { ImportProcessingLabel } from './import-processing-label';
 import { dockTabAt } from './dock-tab-hit';
@@ -45,17 +44,6 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
   const selected=Math.max(0,dockTabs.findIndex(item=>item.key===tab));
   useLayoutEffect(()=>{morph.current?.measure();},[context,showMonth]);
   useEffect(()=>{if(context||add?.disabled)setMenuPhase('closed');},[!!context,add?.disabled]);
-  useEffect(()=>{
-    const viewport=window.visualViewport;
-    const update=()=>{
-      const inset=dockKeyboardInset(window.innerHeight,viewport,document.activeElement);
-      document.documentElement.style.setProperty('--dock-keyboard-inset',`${inset}px`);
-    };
-    const schedule=()=>window.requestAnimationFrame(update);
-    viewport?.addEventListener('resize',update);viewport?.addEventListener('scroll',update);
-    window.addEventListener('focusin',schedule);window.addEventListener('focusout',schedule);
-    return()=>{viewport?.removeEventListener('resize',update);viewport?.removeEventListener('scroll',update);window.removeEventListener('focusin',schedule);window.removeEventListener('focusout',schedule);document.documentElement.style.removeProperty('--dock-keyboard-inset');};
-  },[]);
   function hit(event:PointerEvent<HTMLElement>) {
     // Scope to the captured nav, excluding calendar controls and outgoing copies.
     const buttons=event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-dock-index]');

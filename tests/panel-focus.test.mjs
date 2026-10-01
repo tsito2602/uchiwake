@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { dockKeyboardInset, panelEditor, revealPanelField } from '../src/panel-focus.ts';
+import { panelEditor, revealPanelField } from '../src/panel-focus.ts';
 
 class Field {
   constructor({kind='input',excluded=false,inert=false,top=300,bottom=344,labelTop=280,headerBottom=100,panelBottom=400,viewport=null,dockTop=null,dockVisible=true}={}) {
@@ -14,15 +14,12 @@ class Field {
 }
 globalThis.HTMLElement=Field;
 
-test('フォーム入力のときだけキーボード分を持ち上げ、ピンチ・小さい変動・選択ピッカーは除外する',()=>{
+test('操作可能なパネル内の入力欄だけをスクロール対象にする',()=>{
   const field=new Field();
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:20,scale:1},field),280);
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:-10,scale:1},field),300);
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:0,scale:1.5},field),0);
-  assert.equal(dockKeyboardInset(800,{height:720,offsetTop:0,scale:1},field),0);
-  assert.equal(dockKeyboardInset(800,{height:500,offsetTop:0,scale:1},new Field({kind:'select'})),0);
+  assert.equal(panelEditor(field),field);
   assert.equal(panelEditor(new Field({excluded:true})),null);
   assert.equal(panelEditor(new Field({inert:true})),null);
+  assert.equal(panelEditor(null),null);
 });
 
 test('入力欄が見えていれば動かず、隠れた欄とラベルだけパネル内で表示する',()=>{
@@ -40,11 +37,11 @@ test('固定ヘッダーに隠れた入力欄とラベルを、パネル自体�
  revealPanelField(visible);assert.equal(visible.scroll.scrollTop,0);
 });
 
-test('パネルが大きいままでも入力欄とラベルをキーボード上のボトムナビより上に出す',()=>{
- const options={panelBottom:760,viewport:{height:470,offsetTop:0,scale:1},dockTop:406};
+test('ボトムナビが元の位置にあっても入力欄とラベルをキーボードより上に出す',()=>{
+ const options={panelBottom:760,viewport:{height:470,offsetTop:0,scale:1},dockTop:780};
  const below=new Field({...options,top:600,bottom:644,labelTop:580});
- revealPanelField(below);assert.equal(below.scroll.scrollTop,266);
- const visible=new Field({...options,top:300,bottom:344,labelTop:280});
+ revealPanelField(below);assert.equal(below.scroll.scrollTop,186);
+ const visible=new Field({...options,top:400,bottom:444,labelTop:380});
  revealPanelField(visible);assert.equal(visible.scroll.scrollTop,0);
  const hiddenDock=new Field({...options,top:450,bottom:494,labelTop:430,dockVisible:false});
  revealPanelField(hiddenDock);assert.equal(hiddenDock.scroll.scrollTop,36);
