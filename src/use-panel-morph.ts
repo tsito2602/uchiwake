@@ -81,7 +81,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
       if(isClosing.current||isSuspended.current||!layer.current?.isTop())return;
       if(event.key==='Escape'){event.preventDefault();back.current();return;}
       if(event.key!=='Tab')return;
-      const controls=[...document.querySelectorAll<HTMLElement>('.card-panel button:not([disabled]), .card-panel input:not([disabled]), .card-panel select:not([disabled]), .context-host button:not([disabled])')].filter(visible);
+      const controls=[...document.querySelectorAll<HTMLElement>('.card-panel button:not([disabled]), .card-panel input:not([disabled]), .card-panel select:not([disabled]), .card-panel textarea:not([disabled]), .card-panel [contenteditable="true"], .context-host button:not([disabled])')].filter(visible);
       if(!controls.length)return;
       const index=controls.indexOf(document.activeElement as HTMLElement);
       if(event.shiftKey&&index<=0){event.preventDefault();controls[controls.length-1].focus();}

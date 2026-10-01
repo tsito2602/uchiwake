@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lockOverlayBackground } from '../src/overlay-lock.ts';
-
-function page(overflow='') {
- return {body:{style:{overflow}},main:{inert:false},dock:{inert:false},switcher:{inert:false}};
-}
+import { lockOverlayBackground, overlayPage as page } from './overlay-lock-fixture.mjs';
 
 test('パネルからメニューへ戻るとき、後片付けの順番に関係なくスクロールが復帰する',()=>{
  for(const order of [[0,1],[1,0]]){
@@ -18,6 +14,23 @@ test('パネルからメニューへ戻るとき、後片付けの順番に関�
   assert.equal(body.style.overflow,'');
   assert.deepEqual([main.inert,dock.inert,switcher.inert],[false,false,false]);
  }
+});
+
+test('iPhoneのページ移動を固定し、最後のパネルを閉じたときだけ元のスクロールとスタイルを復元する',()=>{
+ const {body,root,view,main}=page('auto',true);
+ body.style.setProperty('position','relative','important');
+ root.style.setProperty('overflow','scroll');
+ const outer=lockOverlayBackground([main],body);
+ assert.equal(body.style.position,'fixed');assert.equal(body.style.top,'-240px');
+ assert.equal(view.scrollY,0);assert.equal(root.style.overflow,'hidden');
+ const inner=lockOverlayBackground([main],body);
+ view.scrollY=180;view.dispatchEvent(new Event('scroll'));
+ assert.equal(view.scrollY,0,'native focus pan is reset while the body is fixed');
+ outer();assert.equal(body.style.position,'fixed');assert.equal(view.scrollY,0);
+ inner();assert.equal(body.style.position,'relative');assert.equal(body.style.getPropertyPriority('position'),'important');
+ assert.equal(body.style.overflow,'auto');assert.equal(body.style.getPropertyValue('top'),'');
+ assert.equal(root.style.overflow,'scroll');assert.equal(view.scrollY,240);
+ view.scrollY=300;view.dispatchEvent(new Event('scroll'));assert.equal(view.scrollY,300,'no scroll guard remains after closing');
 });
 
 test('スペース・追加メニューとパネルが重なっても、最後を閉じるまで背景を操作させない',()=>{

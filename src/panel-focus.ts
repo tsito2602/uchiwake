@@ -19,7 +19,7 @@ export function revealPanelField(focused:Element|null) {
   const bottom=Math.min(bounds.bottom,dockTop,viewport?viewport.offsetTop+viewport.height:bounds.bottom)-12;
   if(bottom<=top)return;
   const input=editor.getBoundingClientRect();
-  const field=editor.closest('.field')?.getBoundingClientRect();
+  const field=editor.closest('.field, .statement-edit-field')?.getBoundingClientRect();
   const start=field&&input.bottom-field.top<=bottom-top?field.top:input.top;
   const end=Math.min(input.bottom,start+bottom-top);
   const delta=start<top?start-top:end>bottom?end-bottom:0;

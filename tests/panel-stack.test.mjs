@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { registerPanel } from '../src/panel-stack.ts';
-import { lockOverlayBackground } from '../src/overlay-lock.ts';
+import { lockOverlayBackground, overlayPage } from './overlay-lock-fixture.mjs';
 
 test('スペース設定と子編集の間を繰り返し戻っても、最前面と背景ロックを正しく維持する',()=>{
- const body={style:{overflow:'auto'}},main={inert:false},parent={inert:false};
+ const {body,main}=overlayPage('auto'),parent={inert:false};
  const outer=registerPanel(parent),unlock=lockOverlayBackground([main,...outer.parents],body);
  try {
   assert.equal(outer.ownsBackground,true);
