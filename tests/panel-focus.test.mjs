@@ -9,7 +9,7 @@ class Field {
     this.ownerDocument={defaultView:{visualViewport:viewport},querySelector:()=>dockTop===null?null:{getClientRects:()=>dockVisible?[{}]:[],getBoundingClientRect:()=>({top:dockTop})}};
   }
   matches(selector) {if(selector==='select')return this.kind==='select';if(selector.startsWith(':disabled'))return this.excluded;return ['input','textarea','select'].includes(this.kind);}
-  closest(selector) {if(selector==='[inert]')return this.inert?{}:null;if(selector==='.card-panel')return this.scroll;if(selector==='.field')return {getBoundingClientRect:()=>({top:this.labelTop})};return null;}
+  closest(selector) {if(selector==='[inert]')return this.inert?{}:null;if(selector==='.card-panel')return this.scroll;if(selector==='.field, .statement-edit-field')return {getBoundingClientRect:()=>({top:this.labelTop})};return null;}
   getBoundingClientRect(){return {top:this.top,bottom:this.bottom};}
 }
 globalThis.HTMLElement=Field;
