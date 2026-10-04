@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { animatePanelBackground } from './kondo-panel-motion';
 import { lockOverlayBackground } from './overlay-lock';
 import { openedByKeyboard } from './focus-intent';
+import { HapticTouch } from './haptic-touch';
 
 // Match FuseAddMenu's timing and reverse dismissal, anchored at the top right.
 export function SpaceDialog({title,children,onClose,closing,onExited}:{title:string;children:ReactNode;onClose:()=>void;closing:boolean;onExited:()=>void}) {
@@ -48,5 +49,5 @@ export function SpaceDialog({title,children,onClose,closing,onExited}:{title:str
   const timer=window.setTimeout(finish,450);
   return()=>{active=false;clearTimeout(timer);};
  },[closing]);
- return createPortal(<div className="space-overlay" ref={root}><div className="space-veil" onClick={onClose}/><section className="space-dialog space-menu" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>{children}</section></div>,document.body);
+ return createPortal(<div className="space-overlay" ref={root}><div className="space-veil" onClick={onClose}><HapticTouch/></div><section className="space-dialog space-menu" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>{children}</section></div>,document.body);
 }

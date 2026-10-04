@@ -5,6 +5,7 @@ import { CreditCard, Home } from 'lucide-react';
 import { animatePanelBackground } from './kondo-panel-motion';
 import { lockOverlayBackground } from './overlay-lock';
 import { openedByKeyboard } from './focus-intent';
+import { HapticTouch } from './haptic-touch';
 
 export type AddOption={id:string;label:string;color?:string;kind:'card'|'rent';onClick:()=>void};
 
@@ -68,7 +69,7 @@ export function FuseAddMenu({options,closing,onClose,onSelect,onExited}:{options
     return()=>{active=false;clearTimeout(timer);};
   },[closing]);
   return createPortal(<div className="fuse-add-overlay" ref={root}>
-    <div className="fuse-add-veil" onClick={onClose}/>
+    <div className="fuse-add-veil" onClick={onClose}><HapticTouch/></div>
     <div className="fuse-add-options" role="menu" aria-label="追加する項目" tabIndex={-1}>{options.map(option=>{
       const Icon=option.kind==='rent'?Home:CreditCard;
       return <button key={option.id} role="menuitem" onClick={()=>onSelect(option)}><span>{option.label}</span><Icon size={25} strokeWidth={1.8} color={displayColor(option.color)}/></button>;
