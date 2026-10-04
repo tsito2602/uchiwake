@@ -47,7 +47,8 @@
 .card-panel-backdrop:not([data-panel-nested='true']) > .card-panel-scrim,
 :root[data-brand-theme='dark'] .card-panel-backdrop:not([data-panel-nested='true']) > .card-panel-scrim { background: color-mix(in srgb, var(--canvas) 45%, transparent); }
 
-/* The sign-in concept line flows through the Soft Orbit palette. */
+/* The sign-in AI line flows through the Soft Orbit palette: the one place
+   on this screen that speaks about the AI. */
 .login-rainbow { background: linear-gradient(90deg, #f44e9e, #c14fdd, #8b56f5, #5567f9, #2d99f4, #24bee6, #2ec4b1, #64c67f, #aec95c, #eabe50, #fc9353, #fc6975, #f44e9e) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: login-rainbow 9s linear infinite; }
 @keyframes login-rainbow { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .login-rainbow { animation: none; } }
@@ -93,19 +94,6 @@ main.shell[aria-busy='true'] #main-content { opacity: .45; filter: saturate(.6) 
 
 /* Saved statement drops (import-landing.ts). */
 .landing-drop { position: fixed; z-index: 400; top: 0; left: 0; width: 14px; height: 14px; border-radius: 50%; pointer-events: none; box-shadow: 0 2px 6px #0000001f; }
-
-/* Sign-in: the Soft Orbit colours drift slowly behind the panel, as a quiet
-   light rather than a background picture. */
-.login { position: relative; isolation: isolate; overflow: hidden; }
-.login::before { content: ''; position: absolute; z-index: -1; inset: -20%; background:
-  radial-gradient(32% 26% at 28% 30%, #f44e9e 0%, transparent 70%),
-  radial-gradient(30% 28% at 74% 36%, #5567f9 0%, transparent 70%),
-  radial-gradient(34% 26% at 40% 74%, #2ec4b1 0%, transparent 70%),
-  radial-gradient(26% 22% at 76% 70%, #fc9353 0%, transparent 70%);
-  filter: blur(60px) saturate(1.1); opacity: .2; animation: login-drift 26s ease-in-out infinite alternate; pointer-events: none; }
-:root[data-brand-theme='dark'] .login::before { opacity: .22; }
-@keyframes login-drift { 0% { transform: translate(0,0) rotate(0deg) scale(1); } 50% { transform: translate(3%,-4%) rotate(8deg) scale(1.06); } 100% { transform: translate(-4%,3%) rotate(-6deg) scale(1.02); } }
-@media (prefers-reduced-motion: reduce) { .login::before { animation: none; } }
 
 /* Empty month: a blank slip whose lines are written in one after another. */
 .empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
