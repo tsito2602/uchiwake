@@ -64,7 +64,7 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
     if(event.button!==0||!event.isPrimary||pointer.current)return;
     swallowClick.current=false;
     // Capture only once the finger slides: a plain tap must reach the tab's
-    // HapticTouch switch, which pointer capture would redirect to the nav.
+    // haptic switch, which pointer capture would redirect to the nav.
     pointer.current={id:event.pointerId,target:event.currentTarget,x:event.clientX,y:event.clientY};
     setPreview(hit(event));
   }
@@ -74,7 +74,11 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
     setPreview(hit(event));
   }
   function up(event:PointerEvent<HTMLElement>) {
-    if(pointer.current?.id!==event.pointerId)return;
+    const held=pointer.current;if(held?.id!==event.pointerId)return;
+    // A plain tap selects through the tab's own click, which on iPhone first
+    // passes through its haptic switch. Switching tabs here would change the
+    // page before that click, and iOS then drops the click and its tick.
+    if(!held.target.hasPointerCapture(held.id)){release();return;}
     const index=hit(event);
     swallowClick.current=true;
     window.setTimeout(()=>{swallowClick.current=false;},0);
@@ -101,7 +105,7 @@ export function FloatingDock({personal,tab,onSelect,add,context,panelActive,mont
           {context.secondaryAction&&separateSecondary&&<div className="context-island context-delete"><button aria-label={context.secondaryAction.label} onClick={context.secondaryAction.onAction} disabled={context.secondaryAction.disabled}><Trash2 size={22} aria-hidden="true"/></button></div>}
           {context.trailingEdit&&<div className="context-island context-edit"><button aria-label={context.trailingEdit.label} onClick={context.trailingEdit.onAction} disabled={context.trailingEdit.disabled}><Pencil size={22} aria-hidden="true"/></button></div>}
         </nav>
-          :<div className={`browse-dock${add?' has-add':''}${showMonth?'':' no-month'}`}><nav className="safari-dock" data-wide="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={event=>{if(pointer.current?.id===event.pointerId)release();}} onLostPointerCapture={event=>{if(pointer.current?.id===event.pointerId)release();}} onClickCapture={event=>{if(swallowClick.current){if(!(event.target as Element).closest?.('.haptic-touch'))event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
+          :<div className={`browse-dock${add?' has-add':''}${showMonth?'':' no-month'}`}><nav className="safari-dock" data-wide="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={event=>{if(pointer.current?.id===event.pointerId)release();}} onLostPointerCapture={event=>{if(pointer.current?.id===event.pointerId)release();}} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
             <span className="dock-selection" aria-hidden="true"/>
             {dockTabs.map((item,index)=><button key={item.key} data-dock-index={index} aria-current={tab===item.key?'page':undefined} aria-label={personal&&item.key==='home'?'支出':item.label} onClick={()=>onSelect(item.key)}><item.icon size={22} strokeWidth={1.8}/></button>)}
           </nav>{showMonth&&<div className="dock-month" aria-label="表示月"><button aria-label="前月" onClick={onPrevMonth}><ChevronLeft size={18}/></button><NativeMonthPicker value={month} onChange={onMonthChange}/><button aria-label="翌月" onClick={onNextMonth}><ChevronRight size={18}/></button></div>}{add&&<button className="dock-add" disabled={add.disabled} aria-label={add.label} aria-haspopup="menu" aria-expanded={menuOpen} onClick={()=>setMenuPhase('open')} style={{opacity:menuOpen?0:1,transform:menuOpen?'scale(.5)':undefined}}><Plus size={23}/></button>}</div>}

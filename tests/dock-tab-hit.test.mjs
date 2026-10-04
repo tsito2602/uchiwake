@@ -52,13 +52,16 @@ test('カレンダー上や領域外で指を離すと選択せず、互換ク�
   }
 });
 
-test('iPhoneの触覚スイッチへのクリックは止めるが、切り替え自体は妨げない',t=>{
+test('指を滑らせないタップはタブ自身のクリックで選び、iPhoneの触覚スイッチを通す',t=>{
   const f=fixture(t);f.nav.onPointerDown(f.event(40));f.nav.onPointerUp(f.event(40));
-  // A plain tap never captures the pointer, so it can reach the tab's switch.
-  assert.equal(f.capture.size,0);
+  // A plain tap never captures the pointer and leaves the click alone.
+  assert.equal(f.capture.size,0);assert.deepEqual(f.selected,[]);
   let prevented=false,stopped=false;
-  f.nav.onClickCapture({target:{closest:selector=>selector==='.haptic-touch'?{}:null},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
-  assert.ok(!prevented&&stopped);assert.deepEqual(f.selected,['home']);
+  f.nav.onClickCapture({target:{},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+  assert.ok(!prevented&&!stopped);
+  const tabs=f.nav.children.flat().filter(child=>child?.type==='button');
+  tabs[0].props.onClick();
+  assert.deepEqual(f.selected,['home']);
 });
 
 test('領域外からアイコンへ戻って離すと、そのタブを一度だけ選ぶ',t=>{
