@@ -26,7 +26,7 @@ import { HapticTouch } from './haptic-touch';
 import { hapticEverywhere } from './haptic-everywhere';
 import { SegmentSelection } from './segment-selection';
 import { ScrollEdge } from './scroll-edge';
-import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
+import { ArrowDown, ArrowUp, Equal, ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
 import { CardStatementPanel } from './card-statement-panel';
@@ -396,6 +396,13 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setImportConfirmation(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setImportFiles([]);setEditing(null);setDemoView(enabled);};
   const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&!!draft.card_id&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount&&!isReviewCategory(e.category,state?.category_settings));
   const chartEnd=historyEndMonth(displayedMonth);
+  // Compare the figure shown large with the same figure last month, once
+  // there was anything to settle then.
+  // Both months come from the history, so the line agrees with the bars.
+  const historyFigure=(point?:HistoryPoint)=>point?(personal||showTotalFirst?point.total:point.amount):0;
+  const previousShown=historyFigure(history.find(point=>point.month===bump(displayedMonth,-1)));
+  const currentPoint=history.find(point=>point.month===displayedMonth);
+  const monthDelta=hasSettlementData&&currentPoint&&previousShown>0?historyFigure(currentPoint)-previousShown:null;
   const chart=history.length?history:Array.from({length:120},(_,index)=>({month:bump(chartEnd,index-119),amount:0,total:0}));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
   const panelTitle=state?.cards.find(card=>card.id===(openCard?.type==='card'?openCard.id:panelStatements[0]?.card_id))?.name||panelStatements[0]?.title;
@@ -496,6 +503,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
             <span className="hero-money">{hasSettlementData?<NumberTicker value={personal||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span>
             <span className="hero-secondary" hidden={personal}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
           </button>
+          {monthDelta!==null&&<p className="hero-delta" key={`${displayedMonth}-${showTotalFirst}`} data-trend={monthDelta<0?'down':monthDelta>0?'up':'flat'}>{monthDelta<0?<ArrowDown size={13} aria-hidden="true"/>:monthDelta>0?<ArrowUp size={13} aria-hidden="true"/>:<Equal size={13} aria-hidden="true"/>}{monthDelta===0?'先月と同じ':`先月より${yen(Math.abs(monthDelta))}${monthDelta<0?'少ない':'多い'}`}</p>}
           {!personal&&!demoView&&hasSettlementData&&<button className="allocation-breakdown-trigger" onClick={event=>setAllocationBreakdown({origin:panelOrigin(event.currentTarget)})}><UsersRound size={16}/><span>負担の内訳</span><small>{Object.keys(allocations).length}人{!!roundingRemainder&&` · 端数${roundingRemainder.toLocaleString('ja-JP')}円${roundingUnassigned?'（未選択）':''}`}</small><ChevronRight size={15}/></button>}
           <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>

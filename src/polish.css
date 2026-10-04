@@ -83,3 +83,10 @@ main.shell[aria-busy='true'] #main-content { opacity: .45; filter: saturate(.6) 
    says whose statement it is before the title is read. */
 .card-panel-frame[data-toned] .card-panel-glass { background: color-mix(in srgb, var(--panel-tone) 7%, var(--panel-tint)); }
 .card-panel-frame[data-toned] .card-panel > .card-panel-header { background: color-mix(in srgb, var(--panel-tone) 6%, var(--panel-header-tint)); }
+
+/* Last month, in one quiet line under the figure. Neutral ink: spending more
+   is not always bad news, so the arrow carries the direction, not a colour. */
+.hero-delta { display: inline-flex; align-self: flex-start; width: fit-content; align-items: center; gap: 4px; margin: 10px 0 0; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; animation: delta-arrive 520ms cubic-bezier(.22,.72,.18,1) 120ms both; }
+.hero-delta svg { flex: none; }
+@keyframes delta-arrive { from { opacity: 0; transform: translateY(4px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@media (prefers-reduced-motion: reduce) { .hero-delta { animation: none; } }
