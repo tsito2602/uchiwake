@@ -1,8 +1,29 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { haptic } from './haptics';
 import { LiveSpring, reducedMotion } from './cartoon-motion';
 import { NumberTicker } from './number-ticker';
+
+const H=32,R=H/2;
+type End={seam:number;round:number;neck:number}|null;
+// One piece of the bar as a path, drawn by hand rather than through an SVG
+// goo filter (iPhone Safari does not apply those to HTML). Its outer ends are
+// round caps; an inner end is a straight cut while joined, rounds off as the
+// gap opens, and until it snaps keeps a thinning thread to the seam.
+function piecePath(x0:number,x1:number,left:End,right:End){
+  const f=(n:number)=>n.toFixed(2);
+  let d='';
+  if(!left)d+=`M ${f(x0+R)} ${-R}`;
+  else if(left.neck>.4){const c=left.seam,xs=x0+left.round,k=xs-c;d+=`M ${f(c)} ${f(-left.neck)} C ${f(c+k*.25)} ${f(-left.neck)} ${f(c+k*.55)} ${-R} ${f(xs)} ${-R}`;}
+  else d+=`M ${f(x0)} ${f(-R+left.round)} Q ${f(x0)} ${-R} ${f(x0+left.round)} ${-R}`;
+  if(!right)d+=` L ${f(x1-R)} ${-R} A ${R} ${R} 0 0 1 ${f(x1-R)} ${R}`;
+  else if(right.neck>.4){const c=right.seam,xs=x1-right.round,k=c-xs;d+=` L ${f(xs)} ${-R} C ${f(xs+k*.45)} ${-R} ${f(c-k*.25)} ${f(-right.neck)} ${f(c)} ${f(-right.neck)} L ${f(c)} ${f(right.neck)} C ${f(c-k*.25)} ${f(right.neck)} ${f(xs+k*.45)} ${R} ${f(xs)} ${R}`;}
+  else d+=` L ${f(x1-right.round)} ${-R} Q ${f(x1)} ${-R} ${f(x1)} ${f(-R+right.round)} L ${f(x1)} ${f(R-right.round)} Q ${f(x1)} ${R} ${f(x1-right.round)} ${R}`;
+  if(!left)d+=` L ${f(x0+R)} ${R} A ${R} ${R} 0 0 1 ${f(x0+R)} ${-R} Z`;
+  else if(left.neck>.4){const c=left.seam,xs=x0+left.round,k=xs-c;d+=` L ${f(xs)} ${R} C ${f(c+k*.55)} ${R} ${f(c+k*.25)} ${f(left.neck)} ${f(c)} ${f(left.neck)} Z`;}
+  else d+=` L ${f(x0+left.round)} ${R} Q ${f(x0)} ${R} ${f(x0)} ${f(R-left.round)} Z`;
+  return d;
+}
 
 export type SplitPerson={id:string;name:string;amount:number};
 
@@ -18,7 +39,6 @@ const shares=(people:SplitPerson[])=>{
 // squashes away and each person's amount springs out in its place. With two
 // people the seam can then be pulled in 5% steps to change the split.
 export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editable:boolean;onCommit?:(firstPercent:number)=>void}) {
-  const filter=`split-goo-${useId().replace(/:/g,'')}`;
   const root=useRef<HTMLDivElement>(null);
   const [split,setSplit]=useState(false);
   const [slot,setSlot]=useState<HTMLElement|null>(null);
@@ -35,21 +55,37 @@ export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editab
   function draw(){
     const node=root.current,s=springs.current;if(!node||!s)return;
     const width=node.clientWidth,gap=Math.max(0,s.gap.value),squash=s.squash.value;
-    const pieces=[...node.querySelectorAll<HTMLElement>('.split-bar-piece')],labels=[...node.querySelectorAll<HTMLElement>('.split-bar-label')];
+    const pieces=[...node.querySelectorAll<SVGPathElement>('.split-bar-piece')],labels=[...node.querySelectorAll<HTMLElement>('.split-bar-label')];
+    const svg=node.querySelector('svg.split-bar-shape');
+    svg?.setAttribute('viewBox',`0 ${-R-3} ${Math.max(1,width)} ${H+6}`);
+    node.querySelector('.split-bar-shape > g')?.setAttribute('transform',`scale(1 ${squash.toFixed(4)})`);
     const parts=pair?[s.ratio.value,1-s.ratio.value]:shapes.current;
-    const gaps=Math.max(0,parts.length-1)*gap;let left=0;
-    parts.forEach((part,index)=>{
-      const w=Math.max(0,part*(width-gaps)),piece=pieces[index],label=labels[index];
-      if(piece){piece.style.left=`${left}px`;piece.style.width=`${w}px`;piece.style.transform=`scaleY(${squash})`;}
-      if(label){
-        const edge=index===0?-1:index===parts.length-1?1:0;
-        label.style.left=`${left}px`;label.style.width=`${w}px`;label.style.transform=`translateX(${edge*gap*.15}px)`;
-        label.style.opacity=w>(index===0?96:112)?'1':'0';
+    // Seams sit at the shares of the full width; each side gives back half the gap.
+    const seams:number[]=[];let at=0;parts.slice(0,-1).forEach(part=>{at+=part*width;seams.push(at);});
+    // While the gap is under SNAP the pieces stay joined by a thread that
+    // thins as it stretches, its shoulders reaching back into each piece;
+    // past it the thread snaps and the torn ends round off.
+    const SNAP=10,stretch=Math.min(1,gap/SNAP),snapped=gap>=SNAP;
+    const neck=snapped?0:Math.max(1.6,R*Math.pow(1-stretch,1.4));
+    const round=snapped?R*Math.min(1,.55+(gap-SNAP)/8):R*1.4*stretch;
+    parts.forEach((_,index)=>{
+      const x0=index===0?0:seams[index-1]+gap/2,x1=index===parts.length-1?width:seams[index]-gap/2,piece=pieces[index],label=labels[index];
+      const left:End=index===0?null:{seam:seams[index-1],round,neck},right:End=index===parts.length-1?null:{seam:seams[index],round,neck};
+      if(piece)piece.setAttribute('d',x1-x0>1?piecePath(x0,Math.max(x0+1,x1),left,right):'');
+      if(!label)return;
+      const w=x1-x0;
+      if(pair){
+        // Like the mock: the names ride the two outer ends and lean out with the tear.
+        label.style.left=index===0?'7px':'auto';label.style.right=index===0?'auto':'7px';label.style.width='auto';
+        label.style.transform=`translateX(${(index===0?-1:1)*gap*.15}px)`;
+        label.style.opacity=w>(index===0?112:132)?'1':'0';
+      }else{
+        label.style.left=`${x0}px`;label.style.width=`${w}px`;label.style.right='auto';label.style.transform='';
+        label.style.opacity=w>96?'1':'0';
       }
-      left+=w+gap;
     });
     const seam=node.querySelector<HTMLElement>('.split-bar-seam');
-    if(seam)seam.style.left=`${s.ratio.value*(width-gap)+gap/2}px`;
+    if(seam)seam.style.left=`${s.ratio.value*width}px`;
     const hero=node.closest('.settlement-hero')?.querySelector<HTMLElement>('.hero-money');
     if(hero){hero.style.transform=s.heroX.value===1&&s.heroY.value===1?'':`scale(${s.heroX.value},${s.heroY.value})`;hero.style.opacity=s.heroOpacity.value>=.999?'':String(Math.max(0,s.heroOpacity.value));}
     const nums=slot?[...slot.querySelectorAll<HTMLElement>('.hero-split-person')]:[];
@@ -126,9 +162,8 @@ export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editab
     <div ref={root} className="split-bar" data-split={split||undefined} role="button" tabIndex={0} aria-expanded={split}
       aria-label={`負担の割合：${people.map((person,index)=>`${person.name} ${percent(shown[index])}%`).join('、')}。${split?'タップでまとめる':'タップで金額を表示'}`}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onKeyDown={key}>
-      <svg className="split-bar-filter" aria-hidden="true" width="0" height="0"><filter id={filter}><feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/><feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></svg>
-      <div className="split-bar-goo" style={{filter:`url(#${filter})`}} aria-hidden="true">{people.map((person,index)=><i key={person.id} className="split-bar-piece" data-tone={index%3}/>)}</div>
-      {people.map((person,index)=><span key={person.id} className="split-bar-label" data-tone={index%3} data-edge={index===people.length-1&&index>0?'end':undefined} aria-hidden="true">
+      <svg className="split-bar-shape" aria-hidden="true" preserveAspectRatio="none"><g>{people.map((person,index)=><path key={person.id} className="split-bar-piece" data-tone={index%3}/>)}</g></svg>
+      {people.map((person,index)=><span key={person.id} className="split-bar-label" data-tone={index%3} data-edge={index===people.length-1&&index>0?'end':undefined} data-pair={pair||undefined} aria-hidden="true">
         <i>{initial(person.name)}</i><span className="split-bar-name">{person.name}</span><span className="split-bar-share">{percent(shown[index])}%</span>
       </span>)}
       {canDrag&&<span className="split-bar-seam" aria-hidden="true"><span/></span>}
