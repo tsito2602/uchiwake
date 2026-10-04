@@ -102,7 +102,7 @@ if (screen && root && canvas) {
 }
 
 // Adapted from uchino: the mark turns into a drop of ink that falls and
-// becomes the bottom navigation. The fan first melts into one smooth ring at
+// becomes the bottom navigation. The pie chart first melts into one smooth ring at
 // the same place and size, the hole closes into a ball, and the ball stretches
 // as it falls, lands, and spreads into the dock. Returns how long the handover
 // runs, or 0 when there is no dock on screen (sign-in), where the cover simply
@@ -127,7 +127,7 @@ function toDock(cover: HTMLElement): number {
   const ball = r * .78;
   const MORPH = 1150, landAt = MORPH * .8, total = MORPH + 80;
   cover.querySelector('.boot-name')?.animate([{opacity: 1}, {opacity: 0, filter: 'blur(4px)', transform: 'translateY(6px)'}], {duration: 260, easing: 'ease-in', fill: 'forwards'});
-  // The fan's pieces draw together into the ring that replaces them.
+  // The pie chart's slices, and the one lifted as the first stroke of う, draw together into the ring that replaces them.
   symbol.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'scale(.94)', filter: 'blur(2px)'}], {duration: 220, easing: 'ease-in', fill: 'forwards'});
   drop.animate([
     {...shape(rx - r, ry - r, r * 2, r * 2, r * .5, 'transparent'), opacity: 0},
