@@ -1,5 +1,5 @@
 import { initializeTheme, THEME_EVENT } from './theme';
-import { BOOT_HOLD_END, BOOT_EXIT_DURATION, drawBrand, type BrandTheme } from './brand-motion';
+import { BOOT_HOLD_END, BOOT_EXIT_DURATION, BRAND_THEMES, drawBrand, type BrandTheme } from './brand-motion';
 
 const screen = document.getElementById('initial-boot');
 const root = document.getElementById('root');
@@ -101,37 +101,45 @@ if (screen && root && canvas) {
   } else tick(started);
 }
 
-// Adapted from uchino: instead of fading, the mark itself drops into the
-// bottom navigation. It lifts a little, falls under gravity while shrinking to
-// the dock's height, lands with a small squash, and the dock opens out of it.
-// Returns how long the handover runs, or 0 when there is no dock on screen
-// (sign-in), where the cover simply fades.
+// Adapted from uchino: the mark turns into a drop of ink that falls and
+// becomes the bottom navigation. The fan first melts into one smooth ring at
+// the same place and size, the hole closes into a ball, and the ball stretches
+// as it falls, lands, and spreads into the dock. Returns how long the handover
+// runs, or 0 when there is no dock on screen (sign-in), where the cover simply
+// fades.
 function toDock(cover: HTMLElement): number {
   const dock = document.querySelector<HTMLElement>('.kondo-floating-dock');
   const symbol = cover.querySelector<HTMLElement>('.boot-symbol');
   if (!dock || !symbol || !cover.animate) return 0;
   const d = dock.getBoundingClientRect(), p = symbol.getBoundingClientRect();
   if (!d.width || !d.height || !p.width) return 0;
-  const style = getComputedStyle(cover);
-  const dx = d.left + d.width / 2 - (p.left + p.width / 2), dy = d.top + d.height / 2 - (p.top + p.height / 2);
-  const s = Math.min(1, d.height * 1.1 / p.height);
-  const FALL = 820, LAND = .7, total = FALL + 240, landAt = FALL * LAND;
-  const at = (x: number, y: number, sx: number, sy = sx) => `translate(${x}px, ${y}px) scale(${sx}, ${sy})`;
+  const style = getComputedStyle(cover), ink = BRAND_THEMES[theme].ink;
+  const drop = document.createElement('div');
+  drop.style.cssText = `position:fixed;left:0;top:0;box-sizing:border-box;border:0 solid ${ink};pointer-events:none`;
+  cover.appendChild(drop);
+  // The finished mark's ring, in the symbol box: the canvas draws 1750 logo
+  // units across 340px from (-82, -101), and the ring sits around (640, 700)
+  // with an outer radius of about 330 and an inner one of 165.
+  const unit = p.width / 176 * 340 / 1750;
+  const rx = p.left + (-82 / 176 * p.width) + (248 + 640) * unit, ry = p.top + (-101 / 142 * p.height) + (240 + 700) * unit, r = 330 * unit;
+  const shape = (left: number, top: number, width: number, height: number, border: number, fill: string) =>
+    ({left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`, borderRadius: `${Math.min(width, height) / 2}px`, borderWidth: `${border}px`, backgroundColor: fill});
+  const ball = r * .78;
+  const MORPH = 1150, landAt = MORPH * .8, total = MORPH + 80;
   cover.querySelector('.boot-name')?.animate([{opacity: 1}, {opacity: 0, filter: 'blur(4px)', transform: 'translateY(6px)'}], {duration: 260, easing: 'ease-in', fill: 'forwards'});
-  // The mark is gone the moment it touches down; the dock takes over from there.
-  symbol.animate([
-    {transform: 'none', easing: 'cubic-bezier(.3,0,.4,1)'},
-    {transform: at(0, -14, 1.03), offset: .2, easing: 'cubic-bezier(.55,0,.9,.4)'},
-    {transform: at(dx, dy, s * .92, s * 1.08), offset: LAND, easing: 'ease-out', opacity: 1},
-    {transform: at(dx, dy + 3, s * 1.25, s * .7), offset: LAND + .1, opacity: 0, filter: 'blur(4px)'},
-    {transform: at(dx, dy + 3, s * 1.25, s * .7), opacity: 0, filter: 'blur(4px)'},
-  ], {duration: FALL, fill: 'forwards'});
-  cover.animate([{backgroundColor: style.backgroundColor}, {backgroundColor: 'transparent'}], {duration: 420, delay: 380, easing: 'ease-out', fill: 'forwards'});
-  dock.animate([
-    {opacity: 0, scale: '.6', filter: 'blur(6px)'},
-    {opacity: 0, scale: '.6', filter: 'blur(6px)', offset: landAt / total, easing: 'cubic-bezier(.2,1.4,.4,1)'},
-    {opacity: 1, scale: '1', filter: 'blur(0)'},
-  ], {duration: total});
-  document.getElementById('main-content')?.animate([{opacity: 0, transform: 'translateY(12px)'}, {opacity: 1, transform: 'none'}], {duration: 560, delay: 600, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'backwards'});
+  // The fan's pieces draw together into the ring that replaces them.
+  symbol.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'scale(.94)', filter: 'blur(2px)'}], {duration: 220, easing: 'ease-in', fill: 'forwards'});
+  drop.animate([
+    {...shape(rx - r, ry - r, r * 2, r * 2, r * .5, 'transparent'), opacity: 0},
+    {...shape(rx - r, ry - r, r * 2, r * 2, r * .5, 'transparent'), opacity: 1, offset: .12},
+    {...shape(rx - ball, ry - ball, ball * 2, ball * 2, ball, ink), offset: .3},
+    {...shape(rx - ball * .72, ry, ball * 1.44, ball * 2.2, ball * .72, ink), offset: .46},
+    {...shape(rx - 40, d.top - 26, 80, 70, 35, ink), offset: .68},
+    {...shape(d.left - 8, d.top + 4, d.width + 16, d.height - 8, (d.height - 8) / 2, ink), offset: .84, opacity: 1},
+    {...shape(d.left, d.top, d.width, d.height, d.height / 2, ink), opacity: 0},
+  ], {duration: MORPH, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'both'});
+  cover.animate([{backgroundColor: style.backgroundColor}, {backgroundColor: 'transparent'}], {duration: 420, delay: 560, easing: 'ease-out', fill: 'forwards'});
+  dock.animate([{opacity: 0}, {opacity: 0, offset: landAt / total}, {opacity: 1}], {duration: total});
+  document.getElementById('main-content')?.animate([{opacity: 0, transform: 'translateY(12px)'}, {opacity: 1, transform: 'none'}], {duration: 560, delay: 800, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'backwards'});
   return total;
 }
