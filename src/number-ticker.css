@@ -13,3 +13,7 @@
 .number-ticker-static { display: none; }
 .number-ticker[data-settled='true'] > .number-ticker-static { display: inline-flex; align-items: center; }
 .number-ticker[data-settled='true'] > .number-ticker-glyphs { display: none; }
+/* Wrap digits so a spring overshoot past 9 or below 0 shows the next figure, not a gap. */
+.number-ticker-reel::before, .number-ticker-reel::after { display: flex; align-items: center; justify-content: center; height: 1.1em; line-height: 1; }
+.number-ticker-reel::before { content: '9'; position: absolute; top: -1.1em; }
+.number-ticker-reel::after { content: '0'; flex-shrink: 0; }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { reducedMotion } from './cartoon-motion';
 import { displayColor } from './display-color';
 import { NativeMonthPicker } from './native-month-picker';
 import { Check, ChevronDown, CreditCard, FileImage, FileText, Files, Table2, Plus, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
@@ -90,12 +91,85 @@ function ImportElapsed() {
   return <span className="import-elapsed" aria-label={`経過時間 ${seconds}秒`}>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span>;
 }
 
+const sorted=(entry:EntryDraft)=>!entry.import_meta||entry.import_meta.status==='classified'||entry.import_meta.status==='review';
+
+// The breakdown grows as rows are sorted: one stacked bar in proportion to
+// each category's amount, with a legend that wraps however many categories
+// there are. Rows still waiting for a decision show as a hatched piece.
+function ImportMix({entries,settings}:{entries:EntryDraft[];settings:CategoryAppearance[]}) {
+  const sums=new Map<string,{amount:number;color?:string;review:boolean}>();
+  for(const entry of entries){
+    if(!sorted(entry)||entry.amount<=0)continue;
+    const review=entry.import_meta?.status==='review';
+    const key=review?'要確認':entry.category;
+    const current=sums.get(key)??{amount:0,color:review?undefined:displayColor(categoryAppearance(entry.category,settings).color),review};
+    current.amount+=entry.amount;sums.set(key,current);
+  }
+  const parts=[...sums.entries()].sort((a,b)=>Number(a[1].review)-Number(b[1].review)||b[1].amount-a[1].amount);
+  const total=parts.reduce((sum,[,part])=>sum+part.amount,0);
+  if(!parts.length)return null;
+  return <div className="import-mix" aria-label="費目ごとの内訳">
+    <div className="import-mix-bar" aria-hidden="true">{parts.map(([category,part])=><span key={category} data-review={part.review||undefined} style={{flexGrow:part.amount,background:part.color}}/>)}</div>
+    <ul className="import-mix-legend">{parts.map(([category,part])=><li key={category} data-review={part.review||undefined}><i style={{background:part.color}}/>{category}<b>{Math.round(part.amount/total*100)}%</b></li>)}</ul>
+  </div>;
+}
+
+// Each category tag is stamped onto its row: it leaves the Soft Orbit card
+// (the AI at work), arcs to the row and lands with a squash.
+function useCategoryStamps(entries:EntryDraft[],list:React.RefObject<HTMLDivElement|null>) {
+  const seen=useRef(new Map<string,string>());
+  const mounted=useRef(false);
+  useLayoutEffect(()=>{
+    const fresh:HTMLElement[]=[];
+    const first=!mounted.current;mounted.current=true;
+    entries.forEach((entry,index)=>{
+      const id=entry.import_meta?.id??String(index),status=sorted(entry)?'sorted':entry.import_meta?.status??'new';
+      const before=seen.current.get(id);seen.current.set(id,status);
+      // A row is stamped the moment it is sorted, whether it arrived sorted or was sorted later.
+      if(!first&&status==='sorted'&&before!=='sorted'){
+        const tag=list.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(id)}"] .import-category-tag`);
+        if(tag)fresh.push(tag);
+      }
+    });
+    const source=document.querySelector('.import-phase-status')?.getBoundingClientRect();
+    if(!fresh.length||!source||reducedMotion())return;
+    const scroller=list.current?.closest<HTMLElement>('.card-panel-scroll')??list.current?.parentElement;
+    const box=scroller?.getBoundingClientRect(),dock=document.querySelector('.kondo-floating-dock')?.getBoundingClientRect();
+    const view={top:Math.max(0,box?.top??0),bottom:Math.min(window.innerHeight,box?.bottom??window.innerHeight,dock&&dock.height?dock.top-4:Infinity)};
+    fresh.slice(0,6).forEach((tag,order)=>{
+      const target=tag.getBoundingClientRect();
+      // Only rows the eye can see get a flyer: not ones scrolled out of the
+      // panel, nor ones sitting under the dock.
+      if(target.top<view.top||target.bottom>view.bottom||!target.width){tag.animate([{transform:'scale(1.25,.75)'},{transform:'scale(1)'}],{duration:280,easing:'ease-out'});return;}
+      const flyer=tag.cloneNode(true) as HTMLElement;
+      flyer.classList.add('import-stamp-flyer');
+      Object.assign(flyer.style,{left:`${target.left}px`,top:`${target.top}px`,width:`${target.width}px`});
+      document.body.appendChild(flyer);
+      tag.style.visibility='hidden';
+      const dx=source.left+source.width/2-(target.left+target.width/2),dy=source.bottom-12-(target.top+target.height/2);
+      const delay=order*70;
+      const flight=flyer.animate([
+        {transform:`translate(${dx}px,${dy}px) scale(.55)`,opacity:0},
+        {transform:`translate(${dx*.45}px,${dy*.45-46}px) scale(1.15) rotate(-6deg)`,opacity:1,offset:.5},
+        {transform:'translate(0px,0px) scale(1.35,.6)',opacity:1,offset:.86},
+        {transform:'translate(0px,0px) scale(1)',opacity:1},
+      ],{duration:540,delay,easing:'cubic-bezier(.45,0,.25,1)',fill:'both'});
+      const land=()=>{flyer.remove();tag.style.visibility='';tag.animate([{transform:'scale(1.25,.75)'},{transform:'scale(.94,1.08)'},{transform:'scale(1)'}],{duration:320,easing:'ease-out'});};
+      void flight.finished.then(land,land);
+    });
+    fresh.slice(6).forEach(tag=>tag.animate([{transform:'scale(1.25,.75)'},{transform:'scale(1)'}],{duration:280,easing:'ease-out'}));
+  });
+}
+
 export function ImportProcessing({progress,settings}:{progress:ImportProgress;settings:CategoryAppearance[]}) {
   const reading=progress.phase==='reading';
+  const list=useRef<HTMLDivElement>(null);
+  useCategoryStamps(progress.entries,list);
   return <div className="import-processing">
-    <div className="import-sorting-list" aria-label="仕分け結果">
+    <ImportMix entries={progress.entries} settings={settings}/>
+    <div ref={list} className="import-sorting-list" aria-label="仕分け結果">
       {reading&&!progress.entries.length?<div className="import-skeleton" aria-hidden="true">{[0,1,2].map(index=><div key={index}><i/><span/><b/></div>)}</div>:progress.entries.map((entry,index)=>{
-        return <div className="import-sorted-entry" data-import-entry="" data-classification={entry.import_meta?.status} key={entry.import_meta?.id??index}><ImportEntryLine entry={entry} settings={settings}/></div>;
+        return <div className="import-sorted-entry" data-import-entry="" data-entry-id={entry.import_meta?.id??String(index)} data-classification={entry.import_meta?.status} key={entry.import_meta?.id??index}><ImportEntryLine entry={entry} settings={settings}/></div>;
       })}
     </div>
   </div>;

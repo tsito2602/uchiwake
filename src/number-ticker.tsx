@@ -1,11 +1,16 @@
 // Exact text is always the fallback; first display and value changes use layout-based digit reels.
 import { useLayoutEffect, useRef } from 'react';
 import './number-ticker.css';
+import { springSamples } from './cartoon-motion';
 
 const DIGITS=Array.from({length:10},(_,digit)=>digit);
 const HEIGHT=1.1;
-const DURATION=900;
-const STAGGER=40;
+// Only digits that change roll, and each lands on the boing spring: past its
+// mark, back, then still.
+const ROLL=springSamples({stiffness:260,damping:17}).values;
+const DURATION=Math.round(ROLL.length/120*1000);
+const roll=(t:number)=>ROLL[Math.min(ROLL.length-1,Math.round(t*(ROLL.length-1)))];
+const STAGGER=45;
 
 export function NumberTicker({value}:{value:number}) {
   const text=Math.round(value).toLocaleString('ja-JP');
@@ -43,8 +48,9 @@ export function NumberTicker({value}:{value:number}) {
       const elapsed=now-started;
       if(elapsed>=duration){finish();return;}
       reels.forEach(({reel,from,to},index)=>{
+        if(from===to)return;
         const t=Math.min(1,Math.max(0,(elapsed-index*STAGGER)/DURATION));
-        const progress=1-Math.pow(1-t,4);
+        const progress=roll(t);
         // Layout positioning avoids WebKit's clipped compositor transform reels.
         reel.style.top=`${-(from+(to-from)*progress)*HEIGHT}em`;
       });

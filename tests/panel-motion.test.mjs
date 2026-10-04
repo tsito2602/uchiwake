@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { animatePanel, animatePanelBackground, animatePanelSurroundings, cancelPanel, reversePanel } from '../src/kondo-panel-motion.ts';
+import { animatePanel, animatePanelBackground, animatePanelSurroundings, cancelPanel, morphTiming, reversePanel } from '../src/kondo-panel-motion.ts';
 
 // Web Animations API double: verify geometry and interruption without a browser.
 const bounds={left:12,top:12,right:378,bottom:740,width:366,height:728};
@@ -19,7 +19,8 @@ test('カード位置から背景だけを展開し、スクロール内容は�
   assert.ok(frames.every(frame=>!('clipPath' in frame)));
   assert.equal(surface.frames[0].clipPath,'inset(388px 8px 225px 8px round 16px)');
   assert.equal(surface.frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
-  assert.deepEqual(timing,{duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'backwards'});
+  assert.deepEqual(timing,{...morphTiming,fill:'backwards'});
+  assert.equal(timing.duration,320);
 });
 test('小ボタン・領域外からはスクロール内容を切り抜かず48pxの動きで開く',()=>{
   for(const origin of [undefined,{left:310,top:18,width:44,height:44},{left:20,top:180,width:350,height:62},{left:310,top:800,width:56,height:56},{left:20,top:900,width:350,height:115}]){

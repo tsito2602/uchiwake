@@ -16,15 +16,15 @@ const yen=(amount:number)=>`¥${amount.toLocaleString('ja-JP')}`;
 const monthLabel=(month:string)=>`${Number(month.slice(0,4))}年${Number(month.slice(5))}月`;
 const ease=[0.22,1,0.36,1] as const;
 
-export function SettlementChart({data,month,visibleMonths,onSelectMonth}:{data:HistoryPoint[];month:string;visibleMonths:number;onSelectMonth:(month:string)=>void}) {
+export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPreview}:{data:HistoryPoint[];month:string;visibleMonths:number;onSelectMonth:(month:string)=>void;onPreview?:(point:HistoryPoint|null)=>void}) {
   const reduce=useReducedMotion();
   const [active,setActive]=useState<number|null>(null);
   const plot=useRef<HTMLDivElement>(null);
   const [plotWidth,setPlotWidth]=useState(0);
   const [scrollLeft,setScrollLeft]=useState(0);
   const cursor=useRef<number|null>(null);
-  const latest=useRef({data,visibleMonths,onSelectMonth});
-  useLayoutEffect(()=>{latest.current={data,visibleMonths,onSelectMonth};});
+  const latest=useRef({data,visibleMonths,onSelectMonth,onPreview});
+  useLayoutEffect(()=>{latest.current={data,visibleMonths,onSelectMonth,onPreview};});
   const scrollTo=(left:number)=>{
     const element=plot.current;
     if(element){element.scrollLeft=left;setScrollLeft(element.scrollLeft);}
@@ -35,7 +35,7 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth}:{data:H
       return {left:bounds?.left??0,width:bounds?.width??0,scrollLeft:element?.scrollLeft??0,count:latest.current.data.length,visibleMonths:latest.current.visibleMonths};
     },
     scrollTo,
-    onPreview:index=>{if(index!==null)cursor.current=index;setActive(index);},
+    onPreview:index=>{if(index!==null)cursor.current=index;setActive(index);latest.current.onPreview?.(index===null?null:latest.current.data[index]??null);},
     onSelect:index=>{const point=latest.current.data[index];if(point)latest.current.onSelectMonth(point.month);}
   }),[]);
   useLayoutEffect(()=>{
@@ -100,7 +100,7 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth}:{data:H
           const width=slot*(selected?.74:.42);
           // Entrance is separate from scrubbing, so the stagger never delays selection.
           return <g key={`${data.length}-${item.month}`} className="history-bar-grow" style={{'--bar-delay':`${i*Math.min(.045,.3/Math.max(1,data.length-1))}s`,animation:reduce?'none':undefined} as CSSProperties}>
-            <motion.rect fill={selected?'var(--ink)':item.month===month?'var(--history-current)':item.total?'var(--history-bar)':'var(--soft)'} initial={false} animate={{x:(i+.5)*slot-width/2,y:156-height*(selected?1.08:1),width,height:height*(selected?1.08:1)}} transition={{duration:reduce?0:.28,ease}} rx={Math.min(5,slot*.12)}/>
+            <motion.rect fill={selected?'var(--ink)':item.month===month?'var(--history-current)':item.total?'var(--history-bar)':'var(--soft)'} initial={false} animate={{x:(i+.5)*slot-width/2,y:156-height*(selected?1.08:1),width,height:height*(selected?1.08:1)}} transition={reduce?{duration:0}:{type:'spring',stiffness:520,damping:19,mass:.8}} rx={Math.min(5,slot*.12)}/>
           </g>;
         })}
       </svg>
@@ -111,7 +111,10 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth}:{data:H
 
 export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCategory}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[];animateAmounts?:boolean;onSelectCategory?:(category:Category,source:HTMLElement)=>void}) {
   const reduce=useReducedMotion();
-  const [view,setView]=useState<'bar'|'pie'>('bar');
+  // The donut is the logo's own shape, so it is the default; a choice of bars is remembered.
+  const [view,setViewState]=useState<'bar'|'pie'>(()=>{try{return localStorage.getItem('uchiwake-category-view')==='bar'?'bar':'pie';}catch{return 'pie';}});
+  const setView=(next:'bar'|'pie')=>{setViewState(next);try{localStorage.setItem('uchiwake-category-view',next);}catch{/* Only a preference. */}};
+  const [activeCategory,setActiveCategory]=useState<Category|null>(null);
   const items=[...data].sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount));
   const maximum=Math.max(1,...items.map(item=>Math.abs(item.amount)));
   const positive=data.reduce((sum,item)=>sum+Math.max(0,item.amount),0);
@@ -124,13 +127,13 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
       </div>
     </div>
     <AnimatePresence mode="wait" initial={false}><motion.div key={view} initial={{opacity:0,y:reduce?0:5}} animate={{opacity:1,y:0}} exit={{opacity:0,y:reduce?0:-3}} transition={{duration:reduce?0:.15}}>
-    {view==='pie'&&<CategoryPie items={items.filter(item=>item.amount>0)} settings={settings} onSelectCategory={onSelectCategory}/>}
+    {view==='pie'&&<CategoryPie items={items.filter(item=>item.amount>0)} settings={settings} onSelectCategory={onSelectCategory} onActiveChange={setActiveCategory}/>}
     <ul><AnimatePresence initial={false}>{items.map((item,index)=>{
       const content=<>
       <div className="category-chart-label"><span><CategoryIcon name={categoryAppearance(item.category,settings).icon} color={categoryAppearance(item.category,settings).color} size={17}/>{item.category}</span><span><strong>{animateAmounts?<NumberTicker value={item.amount}/>:yen(item.amount)}</strong><small>{item.amount<0?'返金':positive?`${Math.round(item.amount/positive*100)}%`:''}</small></span></div>
       {view==='bar'&&<div className={`category-chart-track${item.amount<0?' is-refund':''}`} aria-hidden="true"><motion.div initial={reduce?false:{scaleX:0}} whileInView={{scaleX:1}} viewport={{once:true,amount:.5}} animate={{width:`${Math.abs(item.amount)/maximum*100}%`}} transition={{duration:reduce?0:.55,ease,scaleX:{delay:reduce?0:index*.035,duration:reduce?0:.55,ease}}} style={{background:displayColor(categoryAppearance(item.category,settings).color),transformOrigin:'left'}}/></div>}
       </>;
-      return <motion.li layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>{onSelectCategory?<button type="button" className="category-chart-row panel-source" aria-label={`${item.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>onSelectCategory(item.category,event.currentTarget)}>{content}</button>:content}</motion.li>;
+      return <motion.li data-active={view==='pie'&&activeCategory===item.category?'true':undefined} layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>{onSelectCategory?<button type="button" className="category-chart-row panel-source" aria-label={`${item.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>onSelectCategory(item.category,event.currentTarget)}>{content}</button>:content}</motion.li>;
     })}</AnimatePresence></ul>
     </motion.div></AnimatePresence>
     {refunds&&<p className="category-chart-note">返金はマイナス額で表示。割合はプラスのカテゴリ合計を基準にしています。{view==='pie'&&'円グラフにはプラスのカテゴリのみ表示しています。'}</p>}

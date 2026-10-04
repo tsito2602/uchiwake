@@ -4,17 +4,39 @@ import { animatePanelBackground } from './kondo-panel-motion';
 import { lockOverlayBackground } from './overlay-lock';
 import { openedByKeyboard } from './focus-intent';
 import { HapticTouch } from './haptic-touch';
+import { springEasing } from './cartoon-motion';
 
 // Match FuseAddMenu's timing and reverse dismissal, anchored at the top right.
-export function SpaceDialog({title,children,onClose,closing,onExited}:{title:string;children:ReactNode;onClose:()=>void;closing:boolean;onExited:()=>void}) {
+// With an anchor (the dock's tab island) the list is a sheet that stretches
+// out of the island, keeping its bottom edge on the dock.
+export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{title:string;children:ReactNode;onClose:()=>void;closing:boolean;onExited:()=>void;anchor?:DOMRect}) {
  const root=useRef<HTMLDivElement>(null),close=useRef(onClose),exit=useRef(onExited);
  const animations=useRef<Animation[]>([]);close.current=onClose;exit.current=onExited;
  useLayoutEffect(()=>{
   const node=root.current!,previous=document.activeElement as HTMLElement|null;
   const layers=[...document.querySelectorAll<HTMLElement>('main.shell,.floating-nav-host,.space-switcher')];
   const unlockBackground=lockOverlayBackground(layers);
-  const buttons=[...node.querySelectorAll<HTMLButtonElement>('.space-options>button')];
-  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+  const buttons=[...node.querySelectorAll<HTMLButtonElement>('.space-options>button, .space-sheet-row')];
+  const sheet=node.querySelector<HTMLElement>('.space-sheet');
+  if(sheet&&anchor){
+   const dock=document.querySelector('.kondo-floating-dock')?.getBoundingClientRect();
+   const left=dock?.left??16,right=dock?.right??window.innerWidth-16,bottom=dock?.bottom??window.innerHeight-16;
+   Object.assign(sheet.style,{left:`${left}px`,width:`${right-left}px`,bottom:`${window.innerHeight-bottom}px`});
+  }
+  if(sheet&&anchor&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+   const bounds=sheet.getBoundingClientRect(),radius=getComputedStyle(sheet).borderRadius||'28px';
+   const inset=`inset(${Math.max(0,anchor.top-bounds.top)}px ${Math.max(0,bounds.right-anchor.right)}px ${Math.max(0,bounds.bottom-anchor.bottom)}px ${Math.max(0,anchor.left-bounds.left)}px round ${anchor.height/2}px)`;
+   const stretch=springEasing({stiffness:300,damping:21});
+   const fade:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
+   animations.current=[
+    node.querySelector('.space-veil')!.animate([{opacity:0,backdropFilter:'blur(0px)'},{opacity:1,backdropFilter:'blur(8px)'}],fade),
+    sheet.animate([{clipPath:inset},{clipPath:`inset(0px 0px 0px 0px round ${radius})`}],{duration:stretch.duration,easing:stretch.easing,fill:'both'}),
+   ];
+   const main=layers.find(l=>l.matches('main.shell'));if(main)animations.current.push(animatePanelBackground(main,false));
+   const rows=[...sheet.querySelectorAll<HTMLElement>('.space-sheet-title, .space-sheet-row, hr')];
+   const rise=springEasing('boing');
+   rows.reverse().forEach((row,index)=>animations.current.push(row.animate([{opacity:0,transform:'translateY(18px) scale(.96)'},{opacity:1,transform:'none'}],{duration:rise.duration,easing:rise.easing,fill:'both',delay:60+index*22})));
+  }else if(!sheet&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const timing:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
    animations.current=[node.querySelector('.space-veil')!.animate([{opacity:0,backdropFilter:'blur(0px)'},{opacity:1,backdropFilter:'blur(8px)'}],timing)];
    const main=layers.find(l=>l.matches('main.shell'));if(main)animations.current.push(animatePanelBackground(main,false));
@@ -44,10 +66,13 @@ export function SpaceDialog({title,children,onClose,closing,onExited}:{title:str
   root.current!.inert=true;
   if(!animations.current.length){exit.current();return;}
   let active=true;const finish=()=>{if(active){active=false;exit.current();}};
-  animations.current.forEach(animation=>{animation.playbackRate=-1.5;animation.play();});
+  // Everything retreats together: the veil lifts as the sheet folds back into the island.
+  animations.current.forEach(animation=>{const end=Number(animation.effect?.getComputedTiming().endTime)||300;animation.playbackRate=anchor?-Math.max(.6,end/420):-1.5;animation.play();});
   void Promise.all(animations.current.map(animation=>animation.finished)).then(finish,()=>undefined);
   const timer=window.setTimeout(finish,450);
   return()=>{active=false;clearTimeout(timer);};
  },[closing]);
- return createPortal(<div className="space-overlay" ref={root}><div className="space-veil" onClick={onClose}><HapticTouch/></div><section className="space-dialog space-menu" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>{children}</section></div>,document.body);
+ return createPortal(<div className="space-overlay" ref={root}><div className="space-veil" onClick={onClose}><HapticTouch/></div>{anchor
+  ?<section className="space-sheet space-menu" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>{children}</section>
+  :<section className="space-dialog space-menu" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>{children}</section>}</div>,document.body);
 }

@@ -31,7 +31,9 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
   const unresolvedAmount=unresolved.reduce((sum,{entry})=>sum+Math.abs(entry.amount),0);
   const groups=unresolved.length?[{label:'要確認',rows:unresolved,pending:true},{label:'分類済み',rows:classified,pending:false}]:[{label:'分類済み',rows:classified,pending:false}];
   const update=(index:number,change:Partial<EntryDraft>)=>onChange(withDraftEntries(draft,draft.entries.map((entry,i)=>i===index?{...entry,...change,...(entry.import_meta?{import_meta:{...entry.import_meta,...change.import_meta,...('amount' in change?{amount_uncertain:false}:{}),...('title' in change?{remember_rule:false}:{}),...('category' in change?{status:'classified' as const}: {})}}:{})}:entry)));
-  const chooseCategory=(index:number,category:string)=>update(index,{category});
+  // A chosen category is stamped onto its row, the same landing as the AI's stamps.
+  const [stamped,setStamped]=useState<string|null>(null);
+  const chooseCategory=(index:number,category:string)=>{setStamped(draft.entries[index]?.import_meta?.id??String(index));update(index,{category});};
   return <div className="import-processing import-review">
     <div className="import-processing-symbol import-complete-symbol" aria-hidden="true"><Check className="import-animated-check" size={30}/></div>
     <div className="import-processing-heading"><h3>仕分け結果</h3><p>{card?.name} · {Number(draft.due_month.slice(0,4))}年{Number(draft.due_month.slice(5))}月{draft.demo?' · デモ':''}</p></div>
@@ -40,7 +42,7 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
     <div className="import-sorting-list import-review-list" aria-label="仕分け結果">
       {groups.filter(group=>group.rows.length>0).map(group=><section className="import-review-group" key={group.label} aria-label={group.label}>
         {unresolved.length>0&&<div className="import-review-group-heading"><h4>{group.label}<span>{group.rows.length}件</span></h4>{group.pending&&<p role="status">確認対象の金額：¥{unresolvedAmount.toLocaleString('ja-JP')}。表示された理由を確認してください。</p>}</div>}
-      {group.rows.map(({entry,index})=><div className="import-review-item" data-expanded={editing===index} key={entry.import_meta?.id??index} style={{'--import-row-delay':`${Math.min(index,7)*25}ms`} as CSSProperties}>
+      {group.rows.map(({entry,index})=><div className="import-review-item" data-expanded={editing===index} data-needs-review={needsReview(entry)||undefined} data-stamped={stamped===(entry.import_meta?.id??String(index))||undefined} key={entry.import_meta?.id??index} style={{'--import-row-delay':`${Math.min(index,7)*25}ms`} as CSSProperties}>
         <button className="import-sorted-entry import-entry-button" disabled={busy} aria-label={`${entry.title||`${index+1}件目`}を編集`} aria-expanded={editing===index} aria-controls={`${id}-entry-${index}`} onClick={()=>setEditing(editing===index?null:index)}><ImportEntryLine entry={entry} settings={settings}/><span className="import-entry-edit" aria-hidden="true">{editing===index?<X size={16}/>:<Pencil size={16}/>}</span></button>
         {needsReview(entry)&&<div className="import-review-reasons"><ul>{reviewReasons(entry,fallbackCategory(settings)).map(reason=><li key={reason}>{reason}</li>)}</ul>
           {isReviewCategory(entry.category,settings)&&<><div className="import-candidates">{entry.import_meta?.candidates?.map(candidate=><button disabled={busy} key={candidate.category} onClick={()=>chooseCategory(index,candidate.category)}>{candidate.category} <small>{Math.round(candidate.score*100)}%</small></button>)}</div>{!!entry.import_meta?.candidates?.length&&<p className="subtle">割合は候補の比較用です。正答率を示すものではありません。</p>}

@@ -1,6 +1,18 @@
 // Adapted from tsito2602/kondo's animateDialog (MIT; see licenses/kondo-MIT.txt).
 export type PanelOrigin = {left:number;top:number;width:number;height:number};
 export const panelTiming:KeyframeAnimationOptions={duration:320,easing:'cubic-bezier(.32, 0, .2, 1)',fill:'both'};
+// The card itself becomes the panel: its outline stretches to full size on a
+// stiff spring that overshoots a touch, then settles (Cartoon Physics boing).
+const linearEasing=typeof CSS!=='undefined'&&typeof CSS.supports==='function'&&CSS.supports('animation-timing-function','linear(0, 1)');
+// Sampled here (not imported) so node's type-stripping tests load this file as is.
+function springCurve(stiffness:number,damping:number){
+  const points=[0];let x=0,v=0;
+  for(let i=0;i<240&&!(i>20&&Math.abs(x-1)<.001&&Math.abs(v)<.01);i++){v+=(-stiffness*(x-1)-damping*v)/120;x+=v/120;points.push(x);}
+  points[points.length-1]=1;
+  const stride=Math.max(1,Math.floor(points.length/48));
+  return `linear(${points.filter((_,i)=>i%stride===0||i===points.length-1).map(p=>+p.toFixed(4)).join(',')})`;
+}
+export const morphTiming:KeyframeAnimationOptions={duration:320,easing:linearEasing?springCurve(380,23):'cubic-bezier(.3, 1.18, .42, 1)',fill:'both'};
 const completedEntrances=new WeakMap<Animation,CSSNumberish>();
 const panelParts=new WeakMap<Animation,Animation[]>();
 
@@ -56,14 +68,14 @@ export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
   if(glass)parts.push(glass.animate([
     {clipPath:foldedGlass},
     {clipPath:`inset(0px 0px 0px 0px round ${radius})`},
-  ],{...panelTiming,fill:'backwards'}));
+  ],{...morphTiming,fill:'backwards'}));
   // The photograph and text must share the glass's reveal boundary; fading
   // full-size content alone exposes the photo before its panel has unfolded.
   if(content)parts.push(content.animate([
     {opacity:0,clipPath:foldedGlass},
     {opacity:1,clipPath:`inset(0px 0px 0px 0px round ${radius})`},
-  ],{...panelTiming,fill:'backwards'}));
-  const animation=panel.animate([folded,full],{...panelTiming,fill:'backwards'});
+  ],{...morphTiming,fill:'backwards'}));
+  const animation=panel.animate([folded,full],{...morphTiming,fill:'backwards'});
   panelParts.set(animation,parts);
   // Backwards fill alone still retains a finished animation/compositing layer.
   // Detach it entirely while reading/scrolling, preserving only the exit time.
