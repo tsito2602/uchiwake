@@ -1,23 +1,17 @@
-import {ios} from './haptic-touch';
+import {hapticLabel,ios,wire} from './haptic-touch';
 
 // On iPhone every tappable control ticks, not only the ones that render a
-// <HapticTouch/> themselves: each one gets the same invisible native switch
+// <HapticTouch/> themselves: each one gets the same invisible switch label
 // over its surface. React may wipe it when it rewrites a control's text, so
-// the switches are put back whenever the tree changes.
+// the labels are put back whenever the tree changes.
 const tappable='button,a[href],[role=button],[role=menuitem],[role=tab],[role=option],[role=switch]';
 
 function equip(host:HTMLElement){
-  const own=host.querySelectorAll<HTMLInputElement>(':scope>.haptic-touch');
-  if(own.length>1)for(const input of own)if(input.dataset.auto)input.remove();
+  const own=host.querySelectorAll<HTMLElement>(':scope>.haptic-touch');
+  if(own.length>1)for(const label of own)if(label.dataset.auto)label.remove();
   if(own.length||host.closest('[data-no-haptic]')||host.matches('input,select,textarea'))return;
-  const input=document.createElement('input');
-  input.type='checkbox';input.setAttribute('switch','');input.className='haptic-touch';input.tabIndex=-1;
-  input.setAttribute('aria-hidden','true');input.dataset.auto='1';
-  let pressed=false;
-  input.addEventListener('click',event=>{event.stopPropagation();pressed=true;});
-  input.addEventListener('change',()=>{if(!pressed)return;pressed=false;host.click();});
-  host.setAttribute('data-haptic-host','');
-  host.appendChild(input);
+  const label=hapticLabel();label.dataset.auto='1';
+  host.appendChild(label);wire(label);
 }
 
 export function hapticEverywhere(){

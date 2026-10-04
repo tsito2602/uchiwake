@@ -1,12 +1,13 @@
 /* Refinements brought back from uchino, which grew out of this app's UI. */
 
-/* iPhone haptics (haptic-touch.tsx): an invisible native switch over each
-   tappable control. Zero specificity: any stylesheet that positions the
-   control (fixed, absolute, sticky) wins whatever order the styles arrive in;
-   only plain static controls become the switch's containing block. */
+/* iPhone haptics (haptic-touch.tsx): an invisible label over each tappable
+   control that toggles a hidden native switch. Zero specificity: any
+   stylesheet that positions the control (fixed, absolute, sticky) wins
+   whatever order the styles arrive in; only plain static controls become the
+   label's containing block. */
 :where([data-haptic-host]) { position: relative; }
-.haptic-touch { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: inherit; opacity: 0; -webkit-appearance: none; appearance: none; background: none; cursor: inherit; -webkit-tap-highlight-color: transparent; }
-.haptic-touch:disabled { pointer-events: none; }
+.haptic-touch { position: absolute; inset: 0; z-index: 2; margin: 0; border-radius: inherit; cursor: inherit; -webkit-tap-highlight-color: transparent; }
+.haptic-touch > input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 :disabled > .haptic-touch { display: none; }
 
 /* Menus opened by a tap take focus on the menu itself, without a ring. */

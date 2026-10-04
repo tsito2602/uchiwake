@@ -57,7 +57,7 @@ test('iPhoneの触覚スイッチへのクリックは止めるが、切り替�
   // A plain tap never captures the pointer, so it can reach the tab's switch.
   assert.equal(f.capture.size,0);
   let prevented=false,stopped=false;
-  f.nav.onClickCapture({target:{classList:{contains:name=>name==='haptic-touch'}},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+  f.nav.onClickCapture({target:{closest:selector=>selector==='.haptic-touch'?{}:null},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
   assert.ok(!prevented&&stopped);assert.deepEqual(f.selected,['home']);
 });
 
