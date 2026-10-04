@@ -101,10 +101,11 @@ if (screen && root && canvas) {
   } else tick(started);
 }
 
-// Adapted from uchino: instead of fading, the mark condenses into a drop of
-// ink that falls and spreads into the bottom navigation. Returns how long the
-// handover runs, or 0 when there is no dock on screen (sign-in), where the
-// cover simply fades.
+// Adapted from uchino: instead of fading, the mark itself drops into the
+// bottom navigation. It lifts a little, falls under gravity while shrinking to
+// the dock's height, lands with a small squash, and the dock opens out of it.
+// Returns how long the handover runs, or 0 when there is no dock on screen
+// (sign-in), where the cover simply fades.
 function toDock(cover: HTMLElement): number {
   const dock = document.querySelector<HTMLElement>('.kondo-floating-dock');
   const symbol = cover.querySelector<HTMLElement>('.boot-symbol');
@@ -112,27 +113,25 @@ function toDock(cover: HTMLElement): number {
   const d = dock.getBoundingClientRect(), p = symbol.getBoundingClientRect();
   if (!d.width || !d.height || !p.width) return 0;
   const style = getComputedStyle(cover);
-  const drop = document.createElement('div');
-  drop.style.cssText = `position:fixed;left:0;top:0;background:${style.color};pointer-events:none`;
-  cover.appendChild(drop);
-  const box = (left: number, top: number, width: number, height: number) =>
-    ({left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`, borderRadius: `${Math.min(width, height) / 2}px`});
-  const cx = p.left + p.width / 2, cy = p.top + p.height / 2, size = Math.min(p.width, p.height) * .42;
-  const CONDENSE = 220, MORPH = 760, total = CONDENSE + MORPH + 80, landAt = CONDENSE + MORPH * .8;
-  const ease = 'cubic-bezier(.5,0,.3,1)';
+  const dx = d.left + d.width / 2 - (p.left + p.width / 2), dy = d.top + d.height / 2 - (p.top + p.height / 2);
+  const s = Math.min(1, d.height * 1.1 / p.height);
+  const FALL = 820, LAND = .7, total = FALL + 240, landAt = FALL * LAND;
+  const at = (x: number, y: number, sx: number, sy = sx) => `translate(${x}px, ${y}px) scale(${sx}, ${sy})`;
   cover.querySelector('.boot-name')?.animate([{opacity: 1}, {opacity: 0, filter: 'blur(4px)', transform: 'translateY(6px)'}], {duration: 260, easing: 'ease-in', fill: 'forwards'});
-  // The fan gathers itself toward its centre while the drop forms there.
-  symbol.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'scale(.42)', filter: 'blur(3px)'}], {duration: CONDENSE + 60, easing: 'cubic-bezier(.5,0,.8,.4)', fill: 'forwards'});
-  drop.animate([
-    {...box(cx - size / 2, cy - size / 2, size, size), opacity: 0},
-    {...box(cx - size / 2, cy - size / 2, size, size), opacity: 1, offset: CONDENSE / (CONDENSE + MORPH)},
-    {...box(cx - size * .36, cy + size * .2, size * .72, size * 1.1), offset: .36},
-    {...box(cx - 40, d.top - 26, 80, 70), offset: .64},
-    {...box(d.left - 8, d.top + 4, d.width + 16, d.height - 8), offset: .82, opacity: 1},
-    {...box(d.left, d.top, d.width, d.height), opacity: 0},
-  ], {duration: CONDENSE + MORPH, easing: ease, fill: 'both'});
-  cover.animate([{backgroundColor: style.backgroundColor}, {backgroundColor: 'transparent'}], {duration: 420, delay: 420, easing: 'ease-out', fill: 'forwards'});
-  dock.animate([{opacity: 0}, {opacity: 0, offset: landAt / total}, {opacity: 1}], {duration: total});
-  document.getElementById('main-content')?.animate([{opacity: 0, transform: 'translateY(12px)'}, {opacity: 1, transform: 'none'}], {duration: 560, delay: 640, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'backwards'});
+  // The mark is gone the moment it touches down; the dock takes over from there.
+  symbol.animate([
+    {transform: 'none', easing: 'cubic-bezier(.3,0,.4,1)'},
+    {transform: at(0, -14, 1.03), offset: .2, easing: 'cubic-bezier(.55,0,.9,.4)'},
+    {transform: at(dx, dy, s * .92, s * 1.08), offset: LAND, easing: 'ease-out', opacity: 1},
+    {transform: at(dx, dy + 3, s * 1.25, s * .7), offset: LAND + .1, opacity: 0, filter: 'blur(4px)'},
+    {transform: at(dx, dy + 3, s * 1.25, s * .7), opacity: 0, filter: 'blur(4px)'},
+  ], {duration: FALL, fill: 'forwards'});
+  cover.animate([{backgroundColor: style.backgroundColor}, {backgroundColor: 'transparent'}], {duration: 420, delay: 380, easing: 'ease-out', fill: 'forwards'});
+  dock.animate([
+    {opacity: 0, scale: '.6', filter: 'blur(6px)'},
+    {opacity: 0, scale: '.6', filter: 'blur(6px)', offset: landAt / total, easing: 'cubic-bezier(.2,1.4,.4,1)'},
+    {opacity: 1, scale: '1', filter: 'blur(0)'},
+  ], {duration: total});
+  document.getElementById('main-content')?.animate([{opacity: 0, transform: 'translateY(12px)'}, {opacity: 1, transform: 'none'}], {duration: 560, delay: 600, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'backwards'});
   return total;
 }
