@@ -21,6 +21,10 @@ import { streamStatement } from './statement-import-stream';
 import { readStatementFile, mergeStatementFiles, type StatementFile } from './statement-files';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { haptic } from './haptics';
+import { HapticTouch } from './haptic-touch';
+import { hapticEverywhere } from './haptic-everywhere';
+import { SegmentSelection } from './segment-selection';
 import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
@@ -52,6 +56,7 @@ import './palette.css';
 import './settings.css';
 import './entry-sort-controls.css';
 import './entry-dock.css';
+import './polish.css';
 
 type Tab = DockTab;
 type Editing = { type:'bill'; data:Partial<Bill>; view:'summary'|'edit'|'fixed'; initialView:'summary'|'fixed'; rentRuleMonth?:string; origin?:PanelOrigin; closing?:boolean };
@@ -198,7 +203,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const rowsTotal=draft?.entries.reduce((sum,row)=>sum+Number(row.amount||0),0)||0;
   async function save() {
     if (!editing||demoView||busy) return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try {
       const id=editing.data.id;
       const targetMonth=editing.data.due_month;
@@ -259,7 +264,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   }
   async function saveStatement() {
     if(demoView||busy||!draft||draft.demo || !totalChecked || draft.confirmed_total!==rowsTotal||draft.entries.some(entry=>isReviewCategory(entry.category,state?.category_settings)))return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try {
       await api('/statements',{method:'POST',body:JSON.stringify({due_month:draft.due_month,card_id:draft.card_id,title:draft.title,confirmed_total:draft.confirmed_total,entries:draft.entries})});
       const targetMonth=draft.due_month;setImportPanel(current=>current?{...current,closing:true}:null);
@@ -280,7 +285,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const {editedEntries,changes:entryChanges,valid:validEntryChanges}=prepareStatementEdits(state?.statements||[],state?.entries||[],{categories:categoryDraft,amounts:amountDraft,deletedIds:deletedEntryIds});
   async function saveStatementEdits() {
     if(demoView||busy||!entryChanges.length||!validEntryChanges)return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try{
       for(const change of entryChanges){
         await api(`/statements/${change.id}/entries`,{method:'PUT',body:JSON.stringify({revision:change.revision,entries:change.entries.map(({id,category,amount})=>({id,category,amount})),deleted_ids:change.deleted_ids})});
@@ -303,7 +308,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const dismissCategorySettings=()=>setCategorySettings(current=>current?{...current,closing:true}:null);
   async function saveCategorySettings() {
     if(!categorySettings||demoView||busy)return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try{
       const draft=categorySettings.draft;
       await api<CategoryAppearance>(categorySettings.isNew?'/category-settings':`/category-settings/${encodeURIComponent(categorySettings.saved.category)}`,{method:categorySettings.isNew?'POST':'PUT',body:JSON.stringify({...draft,category:normalizeCategoryName(draft.category)})});
@@ -333,7 +338,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   async function saveRentRule() {
     if(demoView||busy)return;
     if(!rentStartMonth||!Number.isSafeInteger(Number(rentAmount))||Number(rentAmount)<=0)return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try{await api(`/rent-rules/${rentStartMonth}`,{method:'PUT',body:JSON.stringify({amount:Number(rentAmount)})});dismissBill();await load();}
     catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
@@ -514,7 +519,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         <div className="settings-group-heading settings-common-heading"><small>アプリ共通</small><h2>アカウント・表示</h2></div>
         <AccountSettings user={user} signingOut={signingOut} updateProfile={saveProfile}/>
         <AppearanceSettings/>
-        {state.demo_enabled&&<section className="section settings-section demo-settings"><h2 className="section-heading"><Database size={20} aria-hidden="true"/>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
+        {state.demo_enabled&&<section className="section settings-section demo-settings"><h2 className="section-heading"><Database size={20} aria-hidden="true"/>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="appearance-control data-mode-control" role="group" aria-label="表示するデータ" style={{'--appearance-index':demoView?1:0} as React.CSSProperties}><SegmentSelection index={demoView?1:0} memory="data-mode"/><button type="button" aria-pressed={!demoView} onClick={()=>{if(demoView){haptic();switchDemo(false);}}}>{demoView&&<HapticTouch/>}<Database size={20} aria-hidden="true"/>実データ</button><button type="button" aria-pressed={demoView} onClick={()=>{if(!demoView){haptic();switchDemo(true);}}}>{!demoView&&<HapticTouch/>}<Sparkles size={20} aria-hidden="true"/>デモデータ</button></div></section>}
         <AppUpdateSettings/>
         <button type="button" className="settings-add-card settings-logout" disabled={signingOut || savingProfile} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
         <AppInfo/>
@@ -554,4 +559,5 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
 function Field({label,children}:{label:string;children:React.ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
 function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
 function BillRow({bill,onEdit}:{bill:Bill;onEdit:()=>void}) {return <div className="row"><div className="row-symbol">{bill.kind==='card'?<CreditCard size={19}/>:bill.kind==='rent'?<Home size={19}/>:<ArrowDownLeft size={19}/>}</div><div className="row-content"><strong>{bill.title}</strong><small>{billKinds[bill.kind]}{bill.note?` · ${bill.note}`:''}</small></div><strong className="row-money">{yen(bill.amount)}</strong><button className="row-edit" onClick={onEdit} aria-label={`${bill.title}を編集`}>編集</button></div>}
+hapticEverywhere();
 createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut,updateProfile)=><SpaceApp key={user.id} user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>}</AuthGate>);

@@ -57,7 +57,12 @@ export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
     {clipPath:foldedGlass},
     {clipPath:`inset(0px 0px 0px 0px round ${radius})`},
   ],{...panelTiming,fill:'backwards'}));
-  if(content)parts.push(content.animate([{opacity:0},{opacity:1}],{...panelTiming,fill:'backwards'}));
+  // The photograph and text must share the glass's reveal boundary; fading
+  // full-size content alone exposes the photo before its panel has unfolded.
+  if(content)parts.push(content.animate([
+    {opacity:0,clipPath:foldedGlass},
+    {opacity:1,clipPath:`inset(0px 0px 0px 0px round ${radius})`},
+  ],{...panelTiming,fill:'backwards'}));
   const animation=panel.animate([folded,full],{...panelTiming,fill:'backwards'});
   panelParts.set(animation,parts);
   // Backwards fill alone still retains a finished animation/compositing layer.

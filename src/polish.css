@@ -1,0 +1,59 @@
+/* Refinements brought back from uchino, which grew out of this app's UI. */
+
+/* iPhone haptics (haptic-touch.tsx): an invisible native switch over each
+   tappable control. Zero specificity: any stylesheet that positions the
+   control (fixed, absolute, sticky) wins whatever order the styles arrive in;
+   only plain static controls become the switch's containing block. */
+:where([data-haptic-host]) { position: relative; }
+.haptic-touch { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: inherit; opacity: 0; -webkit-appearance: none; appearance: none; background: none; cursor: inherit; -webkit-tap-highlight-color: transparent; }
+.haptic-touch:disabled { pointer-events: none; }
+:disabled > .haptic-touch { display: none; }
+
+/* Menus opened by a tap take focus on the menu itself, without a ring. */
+.fuse-add-options:focus, .space-menu:focus { outline: none; }
+
+/* One press feel everywhere: swell a little on press (the dock's 320ms) and
+   settle slowly on release (the dock's 900ms). Larger surfaces swell less. */
+:is(.icon-button, .primary, .secondary, .settings-add-card, .appearance-control button, .chart-ranges button, .settlement-item, .statement-preview, .settings-card-button, .allocation-breakdown-trigger) { transition: transform 900ms cubic-bezier(.22,.72,.18,1), background 180ms, color 180ms, box-shadow 180ms; }
+:is(.icon-button, .chart-ranges button):active:not(:disabled) { transform: scale(1.08,1.12); transition: transform 320ms cubic-bezier(.16,1,.3,1), background 180ms, color 180ms; }
+:is(.primary, .secondary, .settings-add-card, .appearance-control button, .allocation-breakdown-trigger):active:not(:disabled) { transform: scale(1.03,1.07); transition: transform 320ms cubic-bezier(.16,1,.3,1), background 180ms, color 180ms; }
+:is(.settlement-item, .statement-preview, .settings-card-button):active:not(:disabled) { transform: scale(1.015,1.02); transition: transform 320ms cubic-bezier(.16,1,.3,1), background 180ms, color 180ms; }
+@media (prefers-reduced-motion: reduce) { :is(.icon-button, .primary, .secondary, .settings-add-card, .appearance-control button, .chart-ranges button, .settlement-item, .statement-preview, .settings-card-button, .allocation-breakdown-trigger):active { transform: none; } }
+
+/* Switching tabs: the old page lifts away (kondo-route-motion) while the new
+   one rises into place, heading first, then each block in turn. */
+.route-page-enter > *, .route-page-enter > .settings-page > * { animation: page-rise 640ms cubic-bezier(.22,.72,.18,1) both; }
+.route-page-enter > .settings-page { animation: none; }
+.route-page-enter > :nth-child(1) { animation-delay: 50ms; }
+.route-page-enter > :nth-child(2) { animation-delay: 100ms; }
+.route-page-enter > :nth-child(3) { animation-delay: 140ms; }
+.route-page-enter > :nth-child(4) { animation-delay: 185ms; }
+.route-page-enter > :nth-child(5) { animation-delay: 230ms; }
+.route-page-enter > :nth-child(6) { animation-delay: 275ms; }
+.route-page-enter > :nth-child(7) { animation-delay: 320ms; }
+.route-page-enter > :nth-child(n+8) { animation-delay: 365ms; }
+.route-page-enter > .settings-page > :nth-child(1) { animation-delay: 100ms; }
+.route-page-enter > .settings-page > :nth-child(2) { animation-delay: 145ms; }
+.route-page-enter > .settings-page > :nth-child(3) { animation-delay: 190ms; }
+.route-page-enter > .settings-page > :nth-child(4) { animation-delay: 235ms; }
+.route-page-enter > .settings-page > :nth-child(5) { animation-delay: 280ms; }
+.route-page-enter > .settings-page > :nth-child(n+6) { animation-delay: 325ms; }
+@keyframes page-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .route-page-enter * { animation: none !important; } }
+
+/* Calm the page behind an open panel: a veil of the canvas colour instead of
+   a grey tint, so cards and chart colours do not stain the panel glass.
+   Nested panels keep the first veil. */
+.card-panel-backdrop:not([data-panel-nested='true']) > .card-panel-scrim,
+:root[data-brand-theme='dark'] .card-panel-backdrop:not([data-panel-nested='true']) > .card-panel-scrim { background: color-mix(in srgb, var(--canvas) 45%, transparent); }
+
+/* The sign-in concept line flows through the Soft Orbit palette. */
+.login-rainbow { background: linear-gradient(90deg, #f44e9e, #c14fdd, #8b56f5, #5567f9, #2d99f4, #24bee6, #2ec4b1, #64c67f, #aec95c, #eabe50, #fc9353, #fc6975, #f44e9e) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: login-rainbow 9s linear infinite; }
+@keyframes login-rainbow { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .login-rainbow { animation: none; } }
+
+/* Empty states rise into place, and their add action is a pill like the dock. */
+.empty:not(.loading) { animation: empty-arrive 820ms cubic-bezier(.22,.72,.18,1) 120ms both; }
+.empty .secondary { border-radius: 999px; padding-inline: 24px; }
+@keyframes empty-arrive { from { opacity: 0; transform: translateY(14px) scale(.98); filter: blur(6px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) { .empty:not(.loading) { animation: none; } }

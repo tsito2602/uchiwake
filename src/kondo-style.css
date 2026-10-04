@@ -367,7 +367,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .settlement-list .settlement-item > svg { flex: 0 0 auto; margin-top: 12px; color: var(--muted); }
 .settlement-list .settlement-item:hover { background: var(--soft); }
 .demo-view-banner { width: fit-content; margin-bottom: 20px; padding: 8px 13px; border-radius: 999px; background: var(--soft); color: var(--ink); font-size: 12px; font-weight: 650; }
-.demo-settings .mode-options { margin-top: 17px; }
+
 .card-panel-backdrop { position: fixed; z-index: calc(60 + var(--panel-depth, 0)); inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; isolation: isolate; }
 .card-panel-scrim { position: absolute; z-index: -1; inset: 0; background: #00000014; pointer-events: none; }
 .card-panel-backdrop[data-panel-nested='true'] > .card-panel-scrim { visibility: hidden; }

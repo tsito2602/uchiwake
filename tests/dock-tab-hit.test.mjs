@@ -47,9 +47,18 @@ test('カレンダー上や領域外で指を離すと選択せず、互換ク�
     const f=fixture(t);f.nav.onPointerDown(f.event(40));f.nav.onPointerMove(f.event(x));f.nav.onPointerUp(f.event(x));
     assert.deepEqual(f.selected,[]);assert.equal(f.capture.size,0);
     let prevented=false,stopped=false;
-    f.nav.onClickCapture({preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+    f.nav.onClickCapture({target:{classList:{contains:()=>false}},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
     assert.ok(prevented&&stopped);
   }
+});
+
+test('iPhoneの触覚スイッチへのクリックは止めるが、切り替え自体は妨げない',t=>{
+  const f=fixture(t);f.nav.onPointerDown(f.event(40));f.nav.onPointerUp(f.event(40));
+  // A plain tap never captures the pointer, so it can reach the tab's switch.
+  assert.equal(f.capture.size,0);
+  let prevented=false,stopped=false;
+  f.nav.onClickCapture({target:{classList:{contains:name=>name==='haptic-touch'}},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+  assert.ok(!prevented&&stopped);assert.deepEqual(f.selected,['home']);
 });
 
 test('領域外からアイコンへ戻って離すと、そのタブを一度だけ選ぶ',t=>{

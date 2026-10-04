@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { CreditCard, Home } from 'lucide-react';
 import { animatePanelBackground } from './kondo-panel-motion';
 import { lockOverlayBackground } from './overlay-lock';
+import { openedByKeyboard } from './focus-intent';
 
 export type AddOption={id:string;label:string;color?:string;kind:'card'|'rent';onClick:()=>void};
 
@@ -35,7 +36,8 @@ export function FuseAddMenu({options,closing,onClose,onSelect,onExited}:{options
         ],{...timing,delay:(buttons.length-1-index)*25}));
       });
     }
-    buttons[0]?.focus({preventScroll:true});
+    // A tap opens the menu without lighting a focus ring on its first item.
+    (openedByKeyboard()?buttons[0]:node.querySelector<HTMLElement>('[role="menu"]')??node)?.focus({preventScroll:true});
     const keydown=(event:KeyboardEvent)=>{
       if(event.key==='Escape'){event.preventDefault();onClose();return;}
       const index=buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -67,7 +69,7 @@ export function FuseAddMenu({options,closing,onClose,onSelect,onExited}:{options
   },[closing]);
   return createPortal(<div className="fuse-add-overlay" ref={root}>
     <div className="fuse-add-veil" onClick={onClose}/>
-    <div className="fuse-add-options" role="menu" aria-label="追加する項目">{options.map(option=>{
+    <div className="fuse-add-options" role="menu" aria-label="追加する項目" tabIndex={-1}>{options.map(option=>{
       const Icon=option.kind==='rent'?Home:CreditCard;
       return <button key={option.id} role="menuitem" onClick={()=>onSelect(option)}><span>{option.label}</span><Icon size={25} strokeWidth={1.8} color={displayColor(option.color)}/></button>;
     })}</div>

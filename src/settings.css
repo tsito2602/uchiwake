@@ -16,9 +16,13 @@
 .settings-page .category-settings-list .settings-card-button { gap: 6px; min-height: 54px; }
 .settings-page .category-settings-list .settings-card-button > svg:first-child { flex-basis: 21px; width: 21px; }
 .settings-page .category-settings-list .settings-card-button strong { font-size: 14px; }
-.appearance-control { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; padding: 4px; border-radius: 22px; background: var(--appearance-track); }
-.appearance-control button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 72px; padding: 10px 2px; border: 0; border-radius: 16px; color: var(--muted); background: transparent; font-size: 12px; transition: background .18s, color .18s, box-shadow .18s; }
-.appearance-control button[aria-pressed='true'] { color: var(--ink); background: var(--paper); box-shadow: 0 1px 4px #0000000d; }
+.appearance-control { position: relative; isolation: isolate; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; padding: 4px; border-radius: 22px; background: var(--appearance-track); }
+.appearance-control button { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 72px; padding: 10px 2px; border: 0; border-radius: 16px; color: var(--muted); background: transparent; font-size: 12px; transition: background .18s, color .18s, box-shadow .18s; }
+.appearance-control button[aria-pressed='true'] { color: var(--ink); }
+/* The white face is one element that SegmentSelection stretches between options. */
+.appearance-selection { position: absolute; z-index: 0; pointer-events: none; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 16px)/3); border-radius: 16px; background: var(--paper); box-shadow: 0 1px 4px #0000000d; transform: translateX(calc(var(--appearance-index) * (100% + 4px))); transition: background 240ms; }
+.data-mode-control { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.data-mode-control .appearance-selection { width: calc((100% - 12px)/2); }
 .appearance-control button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @media(max-width:359px) { .settings-page .settings-section { padding: 20px; } }
 @media(prefers-reduced-motion:reduce) { .appearance-control button { transition: none; } }

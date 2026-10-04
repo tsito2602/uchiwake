@@ -4,13 +4,19 @@ import { useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 
 type RouteTransition={skipTransition:()=>void;finished:Promise<void>};
-const duration=240;
+// The old page only lifts and fades (quickly, so it never reads as a second
+// moving heading); the new page's pieces then rise in a short stagger (polish.css).
+const duration=170,settle=1300;
 
-export function startRouteTransition(direction:number,update:()=>void):RouteTransition|undefined {
+let enterTimer=0;
+
+// direction is kept for callers; the motion is the same whichever way the tab moves.
+export function startRouteTransition(_direction:number,update:()=>void):RouteTransition|undefined {
   const page=document.getElementById('main-content');
   if(!page||!window.requestAnimationFrame||window.matchMedia('(prefers-reduced-motion: reduce)').matches){update();return;}
   const bounds=page.getBoundingClientRect();
   const copy=page.cloneNode(true) as HTMLElement;
+  copy.classList.remove('route-page-enter');
   copy.classList.add('route-page-copy');
   // Snapshot the final text, never a partially animated/clipped digit reel.
   copy.querySelectorAll<HTMLElement>('.number-ticker').forEach(ticker=>{ticker.dataset.settled='true';});
@@ -32,6 +38,9 @@ export function startRouteTransition(direction:number,update:()=>void):RouteTran
   try{flushSync(update);}catch(error){layer.remove();throw error;}
   const next=document.getElementById('main-content');
   if(!next){layer.remove();return;}
+  next.classList.remove('route-page-enter');void next.offsetWidth;next.classList.add('route-page-enter');
+  // Drop the class once the stagger is over, so rows added later are not delayed.
+  window.clearTimeout(enterTimer);enterTimer=window.setTimeout(()=>next.classList.remove('route-page-enter'),settle);
   let frame=0;
   let cleaned=false;
   let resolveFinished!:()=>void;
@@ -49,9 +58,9 @@ export function startRouteTransition(direction:number,update:()=>void):RouteTran
   const tick=(now:number)=>{
     if(cleaned)return;
     const t=Math.min(1,Math.max(0,(now-started)/duration));
-    const progress=1-Math.pow(1-t,3);
+    const progress=1-Math.pow(1-t,2);
     copy.style.opacity=String(1-progress);
-    copy.style.left=`${bounds.left-12*direction*progress}px`;
+    copy.style.transform=`translateY(${-6*progress}px)`;
     if(t===1)cleanup();
     else frame=window.requestAnimationFrame(tick);
   };

@@ -138,11 +138,12 @@ export function prepareDockMorph(
   to: DockIsland[],
   stableSlots = false,
 ): DockMorphPlan {
-  // Keep the add surface independent, while the white islands use the same
-  // splitting/merging geometry as context navigation (no zero-sized shrink).
+  // Keep the add surface independent only while present on both screens.
+  // When it enters or leaves, merge/split the actual capsule geometry instead
+  // of shrinking a missing slot to zero.
   const fromAdd = stableSlots ? from.find(island => island.slot === 2) : undefined;
   const toAdd = stableSlots ? to.find(island => island.slot === 2) : undefined;
-  if (fromAdd && toAdd) {
+  if (fromAdd && toAdd && fromAdd.width > 0 && toAdd.width > 0) {
     const neutral = prepareDockMorph(
       from.filter(island => island.slot !== 2),
       to.filter(island => island.slot !== 2),

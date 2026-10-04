@@ -30,14 +30,17 @@ test('小ボタン・領域外からはスクロール内容を切り抜かず48
     assert.ok(frames.every(frame=>!('clipPath' in frame)));
   }
 });
-test('背景の透過度・ブラーは開閉中も一定で、文字だけを兄弟要素としてフェードする',()=>{
+test('背景の透過度・ブラーは開閉中も一定で、文字だけを兄弟要素として背景と同じ境界でフェードする',()=>{
   for(const origin of [undefined,{left:20,top:400,width:350,height:115}]){
     const {frames,timing,surface,content}=opening(origin);
     for(const frame of [...frames,...surface.frames]){
       for(const property of ['opacity','filter','backdropFilter','backgroundColor'])assert.equal(frame[property],undefined);
     }
     assert.ok(frames.every(frame=>!('clipPath' in frame)));
-    assert.deepEqual(content.frames,[{opacity:0},{opacity:1}]);
+    // Text shares the glass's reveal boundary, so it never shows outside the unfolding panel.
+    assert.deepEqual(content.frames.map(frame=>frame.opacity),[0,1]);
+    assert.equal(content.frames[0].clipPath,surface.frames[0].clipPath);
+    assert.equal(content.frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
     assert.deepEqual(content.timing,timing);
     assert.deepEqual(surface.timing,timing);
     if(!origin)assert.equal(surface.frames[0].clipPath,'inset(100% 0px 0px 0px round 28px)');
