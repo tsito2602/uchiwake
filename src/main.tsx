@@ -529,7 +529,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         <h2 className="ledger-cards-heading">カード別</h2>
         {state.statements.map(s=><button className="statement-preview panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===s.id?'true':undefined} data-card-id={s.card_id??undefined} key={s.id} onClick={event=>setOpenCard({type:'statement',id:s.id,view:'details',origin:panelOrigin(event.currentTarget)})}><span className="statement-preview-heading"><CreditCard size={22} color={displayColor(state.cards.find(card=>card.id===s.card_id)?.color)}/><span><strong>{state.cards.find(card=>card.id===s.card_id)?.name||s.title}</strong><small>{state.entries.filter(e=>e.statement_id===s.id).length}件の明細</small></span><ChevronRight size={18}/></span><strong className="statement-preview-amount">{yen(s.confirmed_total)}</strong></button>)}
 
-      </>:demoView?<div className="empty">この月のデモ明細はありません。</div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
+      </>:demoView?<div className="empty"><EmptySymbol/><p>この月のデモ明細はありません。</p></div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
       {tab==='settings'&&<div className="settings-page">
         <SpaceSettingsLinks spaces={spaces} disabled={busy} onOpen={(target,source)=>{if(target.id===space.id)openSpaceSettings(source);else onSelectSpace(target.id,panelOrigin(source));}}/>
         <div className="settings-group-heading settings-common-heading"><small>アプリ共通</small><h2>アカウント・表示</h2></div>
@@ -573,7 +573,9 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   </>;
 }
 function Field({label,children}:{label:string;children:React.ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
-function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
+function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><EmptySymbol/><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
+// A blank statement slip: what the month will hold once a statement arrives.
+function EmptySymbol() {return <svg className="empty-symbol" viewBox="0 0 64 64" aria-hidden="true"><path className="empty-slip" d="M18 8h28a4 4 0 0 1 4 4v42l-6-4-6 4-6-4-6 4-6-4-6 4V12a4 4 0 0 1 4-4Z"/><path className="empty-line" d="M24 22h16"/><path className="empty-line" d="M24 30h10"/><path className="empty-line" d="M24 38h13"/></svg>}
 function BillRow({bill,onEdit}:{bill:Bill;onEdit:()=>void}) {return <div className="row"><div className="row-symbol">{bill.kind==='card'?<CreditCard size={19}/>:bill.kind==='rent'?<Home size={19}/>:<ArrowDownLeft size={19}/>}</div><div className="row-content"><strong>{bill.title}</strong><small>{billKinds[bill.kind]}{bill.note?` · ${bill.note}`:''}</small></div><strong className="row-money">{yen(bill.amount)}</strong><button className="row-edit" onClick={onEdit} aria-label={`${bill.title}を編集`}>編集</button></div>}
 hapticEverywhere();
 createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut,updateProfile)=><SpaceApp key={user.id} user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>}</AuthGate>);
