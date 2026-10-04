@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { CreditCard, X } from 'lucide-react';
 import type { CardEntry, Category, State } from './domain';
 import { categoryAppearance } from './category-appearance';
@@ -49,7 +49,7 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
   };
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
-    <div className="card-panel-frame">
+    <div className="card-panel-frame" data-toned style={{'--panel-tone':displayColor(appearance.color)} as CSSProperties}>
       <div className="card-panel-glass" aria-hidden="true"/>
       <section className="card-panel category-entries-panel" role="dialog" aria-modal="true" aria-labelledby="category-entries-title" ref={panel}>
         <header className="card-panel-header"><span className="card-panel-icon"><CategoryIcon name={appearance.icon} color={appearance.color} size={24}/></span><div><h2 id="category-entries-title" tabIndex={-1}>{category}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月 · {appearance.include_in_settlement===false?'精算対象外':'精算対象'}</span></div><button className="card-panel-close" aria-label="カテゴリの明細を閉じる" onClick={onClose}><X size={20}/></button></header>

@@ -1,6 +1,6 @@
 import { sortEntries, type EntrySort } from './entry-sort';
 import { displayColor } from './display-color';
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { ArrowRight, CreditCard, Trash2, Undo2, X } from 'lucide-react';
 import { categoryTotals, statementSettlementAmount, type CategoryAppearance, type CardEntry, type CardStatement, type Category } from './domain';
 import { allCategoryAppearances, categoryAppearance } from './category-appearance';
@@ -57,7 +57,7 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
   ].map(group=>({...group,entries:cardEntries.filter(entry=>(categoryAppearance(entry.category,categorySettings).include_in_settlement!==false)===group.included)}));
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
-    <div className="card-panel-frame">
+    <div className="card-panel-frame" data-toned={color?true:undefined} style={color?{'--panel-tone':displayColor(color)} as CSSProperties:undefined}>
       <div className="card-panel-glass" aria-hidden="true"/>
       <section className="card-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="card-panel-title" ref={panel}>
         <header className="card-panel-header"><span className="card-panel-icon"><CreditCard size={22} color={displayColor(color)}/></span><div><h2 tabIndex={-1} id="card-panel-title">{view==='edit'?'明細を編集':title}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</span></div><button className="card-panel-close" aria-label="明細を閉じる" onClick={onClose}><X size={20}/></button></header>

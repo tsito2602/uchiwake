@@ -78,3 +78,8 @@ main.shell[aria-busy='true'] #main-content { opacity: .45; filter: saturate(.6) 
 .dock-month-value[data-direction='prev'] { --month-from: -70%; }
 @keyframes month-roll { from { opacity: 0; transform: translateY(var(--month-from, 70%)); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
 @media (prefers-reduced-motion: reduce) { .dock-month-value[data-direction] { animation: none; } }
+
+/* A card's or category's panel takes on a breath of its colour, so the glass
+   says whose statement it is before the title is read. */
+.card-panel-frame[data-toned] .card-panel-glass { background: color-mix(in srgb, var(--panel-tone) 7%, var(--panel-tint)); }
+.card-panel-frame[data-toned] .card-panel > .card-panel-header { background: color-mix(in srgb, var(--panel-tone) 6%, var(--panel-header-tint)); }
