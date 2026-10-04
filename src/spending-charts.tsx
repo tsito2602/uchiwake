@@ -8,7 +8,7 @@ import type { Category, CategoryAppearance } from './domain';
 import './spending-charts.css';
 import { NumberTicker } from './number-ticker';
 import { CategoryPie } from './category-pie';
-import { LiveSpring, reducedMotion } from './cartoon-motion';
+import { LiveSpring, reducedMotion, springAnimate } from './cartoon-motion';
 import { historyScrollForIndex } from './chart-interaction';
 import { createHistoryGesture } from './history-chart-gesture';
 
@@ -69,6 +69,31 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPrevie
     document.addEventListener('visibilitychange',hide);
     return()=>{release();window.removeEventListener('blur',release);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);document.removeEventListener('visibilitychange',hide);};
   },[gesture]);
+  // Another period (6M/1Y/3Y/5Y), like the mock: the bars squeeze or widen on a
+  // spring with the current month held in place, and the bars in view dip and
+  // spring back up one after another.
+  const bars=useRef<HTMLDivElement>(null);
+  const shownPeriod=useRef(visibleMonths);
+  const widthSpring=useRef<LiveSpring|null>(null);
+  useLayoutEffect(()=>{
+    const from=shownPeriod.current;shownPeriod.current=visibleMonths;
+    const element=plot.current,row=bars.current;
+    if(from===visibleMonths||!element||!row||!plotWidth||!data.length||reducedMotion())return;
+    const widthFor=(months:number)=>Math.max(1,data.length/months)*plotWidth;
+    const at=Math.max(0,data.findIndex(item=>item.month===month));
+    const place=(width:number)=>{
+      row.style.width=`${width}px`;
+      // Keep the current month's right edge where the period leaves it.
+      const end=(at+1)*width/data.length,left=Math.max(0,Math.min(width-plotWidth,end-plotWidth));
+      element.scrollLeft=left;
+    };
+    widthSpring.current?.stop();
+    const spring=new LiveSpring(widthFor(from),width=>{place(width);if(width===spring.target){row.style.width=`${Math.max(1,data.length/visibleMonths)*100}%`;setScrollLeft(element.scrollLeft);}},{stiffness:420,damping:28});
+    widthSpring.current=spring;place(widthFor(from));spring.to(widthFor(visibleMonths));
+    const slots=[...row.querySelectorAll<HTMLElement>('.history-bar')],first=Math.max(0,at+1-Math.min(data.length,visibleMonths));
+    slots.slice(first,at+1).forEach((bar,index)=>springAnimate(bar,{scale:'1 .85'},{scale:'1 1'},{stiffness:300,damping:17},{delay:index*35,fill:'backwards'}));
+    return()=>spring.stop();
+  },[visibleMonths]);
   const visibleCount=Math.min(data.length,visibleMonths);
   const firstVisible=plotWidth?Math.floor(scrollLeft/plotWidth*visibleCount+1e-9):Math.max(0,data.length-visibleCount);
   const lastVisible=plotWidth?Math.ceil((scrollLeft+plotWidth)/plotWidth*visibleCount-1e-9):data.length;
@@ -96,7 +121,7 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPrevie
       onPointerCancel={event=>gesture.cancel(event.pointerId)} onLostPointerCapture={event=>gesture.cancel(event.pointerId)}
       onScroll={event=>{setScrollLeft(event.currentTarget.scrollLeft);gesture.refresh();}}
       onContextMenu={event=>event.preventDefault()}>
-      <div className="history-bars" style={{width:`${Math.max(1,data.length/visibleMonths)*100}%`}} aria-hidden="true">
+      <div ref={bars} className="history-bars" style={{width:`${Math.max(1,data.length/visibleMonths)*100}%`}} aria-hidden="true">
         {data.map((item,i)=>{
           const hot=active===i;
           // Bars grow in one after another on the first draw, then follow the data directly.
@@ -156,9 +181,18 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
   const maximum=Math.max(1,...items.map(item=>Math.abs(item.amount)));
   const dataSignature=data.map(item=>`${item.category}:${item.amount}`).join();
   useEffect(()=>{setActiveCategory(null);},[dataSignature,view]);
+  // A tap anywhere but the donut and its list lets go of the picked piece.
+  const chartRoot=useRef<HTMLElement>(null);
+  useEffect(()=>{
+    if(activeCategory===null)return;
+    const away=(event:PointerEvent)=>{const target=event.target as Element|null,root=chartRoot.current;
+      if(!root||target?.closest?.('.category-pie, .category-chart ul'))return;setActiveCategory(null);};
+    document.addEventListener('pointerdown',away,true);
+    return()=>document.removeEventListener('pointerdown',away,true);
+  },[activeCategory]);
   const positive=data.reduce((sum,item)=>sum+Math.max(0,item.amount),0);
   const refunds=data.some(item=>item.amount<0);
-  return <section className="category-chart" aria-label="カテゴリ別のカード利用額">
+  return <section ref={chartRoot} className="category-chart" aria-label="カテゴリ別のカード利用額">
     <div className="category-chart-heading"><h2>カテゴリ別</h2>
       <div className="category-chart-switch" role="group" aria-label="グラフの表示形式">
         <button type="button" aria-label="円グラフ" title="円グラフ" aria-pressed={view==='pie'} onClick={()=>setView('pie')}><ChartPie size={19} aria-hidden="true"/></button>

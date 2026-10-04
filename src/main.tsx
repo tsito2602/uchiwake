@@ -31,7 +31,7 @@ import { hapticEverywhere } from './haptic-everywhere';
 import { SegmentSelection } from './segment-selection';
 import { ScrollEdge } from './scroll-edge';
 import { landImport, type ImportLanding } from './import-landing';
-import { ArrowDown, ArrowUp, Equal, ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
+import { ArrowDownLeft, ArrowRight, LogOut, Calculator, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
 import { CardStatementPanel } from './card-statement-panel';
@@ -127,7 +127,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const transitionPage=useRouteTransition();
   // Reset after the new page is committed, before the browser paints it.
   useLayoutEffect(()=>{window.scrollTo({top:0,left:0,behavior:'instant'});},[tab]);
-  const [showTotalFirst,setShowTotalFirst]=useState(false);
+  const [splitOpen,setSplitOpen]=useState(false);
   const [demoView,setDemoView]=useState(()=>window.sessionStorage.getItem('uchiwake-demo-view')==='1');
   const requestId=useRef(0);
   const loadRequest=useRef<AbortController|null>(null);
@@ -178,14 +178,6 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [chartMonths,setChartMonths]=useState<6|12|36|60>(6);
   // Scrubbing the bar chart: the hero figure follows the bar under the finger.
   const [scrub,setScrub]=useState<HistoryPoint|null>(null);
-  // The month-on-month chip puffs up when spending rose and sinks when it fell.
-  const deltaSeen=useRef(false);
-  const playDelta=useCallback((node:HTMLElement|null)=>{
-    if(!node)return;
-    if(!deltaSeen.current){deltaSeen.current=true;return;}
-    if(node.dataset.trend==='up')springAnimate(node,{scale:'.7'},{scale:'1'},{stiffness:420,damping:9});
-    else if(node.dataset.trend==='down')springAnimate(node,{scale:'1.08 .72',translate:'0 5px'},{scale:'1 1',translate:'0 0'},{stiffness:300,damping:16});
-  },[]);
   // Switching space slides the page in from the side of the space chosen.
   const shownSpaceId=useRef(space.id);
   useLayoutEffect(()=>{
@@ -244,7 +236,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const breakdown=useMemo(()=>categoryTotals(state?.entries||[]),[state]);
   const cardTotal=(state?.statements||[]).reduce((sum,item)=>sum+item.confirmed_total,0);
   const otherBills=(state?.bills||[]).filter(item=>item.kind==='utilities'||item.kind==='other');
-  const splitPeople=Object.entries(allocations).map(([id,amount])=>({id,amount,name:id===user.id?(state?.members?.find(member=>member.user_id===id)?.name||user.name||'あなた'):state?.members?.find(member=>member.user_id===id)?.name||'メンバー'})).sort((a,b)=>a.id===user.id?-1:b.id===user.id?1:0);
+  const splitPeople=Object.entries(allocations).map(([id,amount])=>({id,amount,avatarUrl:id===user.id?(state?.members?.find(member=>member.user_id===id)?.avatarUrl??user.avatarUrl):state?.members?.find(member=>member.user_id===id)?.avatarUrl,name:id===user.id?(state?.members?.find(member=>member.user_id===id)?.name||user.name||'あなた'):state?.members?.find(member=>member.user_id===id)?.name||'メンバー'})).sort((a,b)=>a.id===user.id?-1:b.id===user.id?1:0);
   async function saveSplit(firstPercent:number){
     const settings=state?.settlement;if(!settings||demoView||splitPeople.length!==2)return;
     if(splitPeople.some(person=>person.id===STAGING_PARTNER)){
@@ -459,10 +451,6 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   // Compare the figure shown large with the same figure last month, once
   // there was anything to settle then.
   // Both months come from the history, so the line agrees with the bars.
-  const historyFigure=(point?:HistoryPoint)=>point?(single||showTotalFirst?point.total:point.amount):0;
-  const previousShown=historyFigure(history.find(point=>point.month===bump(displayedMonth,-1)));
-  const currentPoint=history.find(point=>point.month===displayedMonth);
-  const monthDelta=hasSettlementData&&currentPoint&&previousShown>0?historyFigure(currentPoint)-previousShown:null;
   const chart=history.length?history:Array.from({length:120},(_,index)=>({month:bump(chartEnd,index-119),amount:0,total:0}));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
   const panelTitle=state?.cards.find(card=>card.id===(openCard?.type==='card'?openCard.id:panelStatements[0]?.card_id))?.name||panelStatements[0]?.title;
@@ -559,13 +547,13 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       {tab==='home'&&<>
         <p className="space-current-name">{space.name}</p>
         <section className="hero settlement-hero">
-          <button type="button" className="settlement-amount-toggle" aria-label={single?(personal?'今月の支出合計':'今月の支払い合計'):`現在は${showTotalFirst?'支払い合計':'あなたの負担額'}を大きく表示。タップして切り替え`} aria-pressed={single?undefined:showTotalFirst} onClick={()=>{if(!single)setShowTotalFirst(value=>!value);}}>
-            <span className="hero-label">{single?<UsersRound size={18} aria-hidden="true"/>:showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{scrub?`${Number(scrub.month.slice(5))}月の`:''}{personal?'支出合計':single?'支払い合計':showTotalFirst?'支払い合計':'あなたの負担額'}{!single&&<><span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></>}</span>
-            <span className="hero-stage"><span className="hero-money" data-scrub={scrub?'true':undefined}>{scrub?<NumberTicker value={single||showTotalFirst?scrub.total:scrub.amount}/>:hasSettlementData?<NumberTicker value={single||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span><span className="hero-split-slot"/></span>
-            <span className="hero-secondary" hidden={single}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
-          </button>
-          {monthDelta!==null&&<p className="hero-delta" key={`${displayedMonth}-${showTotalFirst}`} data-trend={monthDelta<0?'down':monthDelta>0?'up':'flat'} ref={playDelta}>{monthDelta<0?<ArrowDown size={13} aria-hidden="true"/>:monthDelta>0?<ArrowUp size={13} aria-hidden="true"/>:<Equal size={13} aria-hidden="true"/>}{monthDelta===0?'先月と同じ':`先月より${yen(Math.abs(monthDelta))}${monthDelta<0?'少ない':'多い'}`}</p>}
-          {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)}/>}
+          <div className="settlement-amount-toggle">
+            <span className="hero-label"><UsersRound size={18} aria-hidden="true"/>{scrub?`${Number(scrub.month.slice(5))}月の`:''}{personal?'支出合計':splitOpen?'それぞれの負担額':'支払い合計'}{!single&&<span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span>}</span>
+            <span className="hero-stage"><span className="hero-money" data-scrub={scrub?'true':undefined}>{scrub?<NumberTicker value={scrub.total}/>:hasSettlementData?<NumberTicker value={totals.total}/>: '—'}</span><span className="hero-split-slot"/></span>
+            {/* Joined, your share sits under the total; torn apart, the total sits small under the two shares. */}
+            {!single&&<span className="hero-secondary" key={splitOpen?'total':'share'}><span>{splitOpen?'支払い合計':'あなたの負担額'}</span><strong>{hasSettlementData?<NumberTicker value={splitOpen?(scrub?.total??totals.total):(scrub?scrub.amount:totals.perPerson)}/>: '—'}</strong></span>}
+          </div>
+          {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)} onSplitChange={setSplitOpen}/>}
           {!personal&&!demoView&&hasSettlementData&&<button className="allocation-breakdown-trigger" onClick={event=>setAllocationBreakdown({origin:panelOrigin(event.currentTarget)})}><UsersRound size={16}/><span>負担の内訳</span><small>{Object.keys(allocations).length}人{!!roundingRemainder&&` · 端数${roundingRemainder.toLocaleString('ja-JP')}円${roundingUnassigned?'（未選択）':''}`}</small><ChevronRight size={15}/></button>}
           <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth} onPreview={setScrub}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>

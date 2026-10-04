@@ -45,7 +45,8 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
   const swallowClick=useRef(false);
   const separateSecondary=!!context?.secondaryAction&&(context.commit||context.rentActions||context.backOnly);
   const showMonth=tab!=='settings';
-  const selected=Math.max(0,dockTabs.findIndex(item=>item.key===tab));
+  // While the space sheet is out, the pill sits on the space (face) tab it came from.
+  const selected=space?.open?dockTabs.findIndex(item=>item.key==='settings'):Math.max(0,dockTabs.findIndex(item=>item.key===tab));
   useLayoutEffect(()=>{morph.current?.measure();},[context,showMonth]);
   // Liquid selection: the edge in the direction of travel leads on a stiff
   // spring and the trailing edge follows on a soft one, so the fill stretches

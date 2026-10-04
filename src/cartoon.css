@@ -157,7 +157,8 @@ body:has(.fuse-add-overlay) .browse-dock .dock-add { opacity: 0; pointer-events:
 .split-bar-piece[data-tone='2'] { fill: var(--brand-pale); }
 .split-bar-label { position: absolute; top: 3px; height: 32px; display: flex; align-items: center; gap: 5px; padding: 0 8px; color: var(--canvas); font-size: 11.5px; font-weight: 700; white-space: nowrap; pointer-events: none; transition: opacity .2s; box-sizing: border-box; overflow: hidden; }
 .split-bar-label[data-edge='end'] { flex-direction: row-reverse; }
-.split-bar-label > i { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--canvas); color: var(--brand-ink); font-size: 10px; font-style: normal; }
+.split-bar-label > i { display: grid; place-items: center; flex: none; overflow: hidden; width: 22px; height: 22px; border-radius: 50%; background: var(--canvas); color: var(--brand-ink); font-size: 10px; font-style: normal; }
+.split-bar-label > i > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .split-bar-label[data-tone='1'] > i { color: var(--brand-mid); }
 .split-bar-label[data-tone='2'] { color: var(--brand-ink); }
 .split-bar-label[data-tone='2'] > i { background: var(--brand-ink); color: var(--brand-pale); }
@@ -247,3 +248,10 @@ body:has(.fuse-add-overlay) .browse-dock .dock-add { opacity: 0; pointer-events:
 @media (prefers-reduced-motion: reduce) { .import-mix-bar > span, .import-mix-legend li, .import-sorted-entry[data-classification='review'], .import-review-item[data-needs-review] > .import-sorted-entry, .import-review-item[data-stamped] .import-category-tag { animation: none; transition: none; } }
 .panel-source[data-panel-source='true'] { visibility: hidden; }
 .browse-dock .safari-dock { transform-origin: 50% 100%; }
+
+/* The hero is a read-out now, not a switch. Its second line changes with the
+   split bar (your share while joined, the total once torn) and pops in. */
+div.settlement-amount-toggle { cursor: auto; }
+.settlement-hero .hero-secondary { animation: hero-secondary-in .42s cubic-bezier(.34, 1.56, .64, 1) both; }
+@keyframes hero-secondary-in { from { opacity: 0; transform: translateY(6px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .settlement-hero .hero-secondary { animation: none; } }

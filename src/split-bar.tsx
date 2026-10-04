@@ -25,7 +25,13 @@ function piecePath(x0:number,x1:number,left:End,right:End){
   return d;
 }
 
-export type SplitPerson={id:string;name:string;amount:number};
+export type SplitPerson={id:string;name:string;amount:number;avatarUrl?:string|null};
+
+// The person's own picture (their Google icon), or their initial without one.
+function Avatar({person}:{person:SplitPerson}){
+  const [failed,setFailed]=useState<string|null>(null);
+  return <i>{person.avatarUrl&&person.avatarUrl!==failed?<img src={person.avatarUrl} alt="" referrerPolicy="no-referrer" draggable={false} onError={()=>setFailed(person.avatarUrl??null)}/>:initial(person.name)}</i>;
+}
 
 const STEP=.05;
 const initial=(name:string)=>Array.from(name.trim())[0]??'';
@@ -38,7 +44,7 @@ const shares=(people:SplitPerson[])=>{
 // their share. A tap stretches it until it tears in two: the hero amount
 // squashes away and each person's amount springs out in its place. With two
 // people the seam can then be pulled in 5% steps to change the split.
-export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editable:boolean;onCommit?:(firstPercent:number)=>void}) {
+export function SplitBar({people,editable,onCommit,onSplitChange}:{people:SplitPerson[];editable:boolean;onCommit?:(firstPercent:number)=>void;onSplitChange?:(split:boolean)=>void}) {
   const root=useRef<HTMLDivElement>(null);
   const [split,setSplit]=useState(false);
   const [slot,setSlot]=useState<HTMLElement|null>(null);
@@ -101,6 +107,8 @@ export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editab
     heroOpacity:new LiveSpring(1,()=>drawRef.current(),{stiffness:300,damping:26}),
     nums:[0,1,2,3,4,5].map(()=>new LiveSpring(1,()=>drawRef.current(),{stiffness:380,damping:13})),
   };
+  const splitChange=useRef(onSplitChange);splitChange.current=onSplitChange;
+  useEffect(()=>()=>splitChange.current?.(false),[]);
   useLayoutEffect(()=>{setSlot(root.current?.closest('.settlement-hero')?.querySelector<HTMLElement>('.hero-split-slot')??null);},[]);
   useLayoutEffect(()=>{draw();});
   useEffect(()=>{
@@ -114,7 +122,7 @@ export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editab
 
   const later=(ms:number,fn:()=>void)=>window.setTimeout(fn,reducedMotion()?0:ms);
   function toggle(){
-    const s=springs.current!,next=!split;setSplit(next);haptic();
+    const s=springs.current!,next=!split;setSplit(next);onSplitChange?.(next);haptic();
     if(next){
       s.squash.set(.6);s.squash.to(1,{stiffness:500,damping:16});
       s.gap.to(14,{stiffness:230,damping:10});
@@ -164,7 +172,7 @@ export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editab
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onKeyDown={key}>
       <svg className="split-bar-shape" aria-hidden="true" preserveAspectRatio="none"><g>{people.map((person,index)=><path key={person.id} className="split-bar-piece" data-tone={index%3}/>)}</g></svg>
       {people.map((person,index)=><span key={person.id} className="split-bar-label" data-tone={index%3} data-edge={index===people.length-1&&index>0?'end':undefined} data-pair={pair||undefined} aria-hidden="true">
-        <i>{initial(person.name)}</i><span className="split-bar-name">{person.name}</span><span className="split-bar-share">{percent(shown[index])}%</span>
+        <Avatar person={person}/><span className="split-bar-share">{percent(shown[index])}%</span>
       </span>)}
       {canDrag&&<span className="split-bar-seam" aria-hidden="true"><span/></span>}
     </div>
