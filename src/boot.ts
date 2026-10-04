@@ -1,5 +1,5 @@
 import { initializeTheme, THEME_EVENT } from './theme';
-import { BOOT_HOLD_END, BOOT_EXIT_DURATION, BRAND_THEMES, drawBrand, type BrandTheme } from './brand-motion';
+import { BALL, BALL_EDGE, BOOT_HOLD_END, BOOT_EXIT_DURATION, BRAND_THEMES, drawBrand, drawMelt, type BrandTheme } from './brand-motion';
 
 const screen = document.getElementById('initial-boot');
 const root = document.getElementById('root');
@@ -101,12 +101,12 @@ if (screen && root && canvas) {
   } else tick(started);
 }
 
-// Adapted from uchino: the mark turns into a drop of ink that falls and
-// becomes the bottom navigation. The pie chart first melts into one smooth ring at
-// the same place and size, the hole closes into a ball, and the ball stretches
-// as it falls, lands, and spreads into the dock. Returns how long the handover
-// runs, or 0 when there is no dock on screen (sign-in), where the cover simply
-// fades.
+// Adapted from uchino: the mark itself becomes a ball of ink that drops into
+// the bottom navigation. On the canvas the slices slide together into one
+// solid disc (drawMelt); that disc is handed to an element of the same size,
+// which squashes, stretches as it falls, lands, and spreads into the dock.
+// Returns how long the handover runs, or 0 when there is no dock on screen
+// (sign-in), where the cover simply fades.
 function toDock(cover: HTMLElement): number {
   const dock = document.querySelector<HTMLElement>('.kondo-floating-dock');
   const symbol = cover.querySelector<HTMLElement>('.boot-symbol');
@@ -114,32 +114,36 @@ function toDock(cover: HTMLElement): number {
   const d = dock.getBoundingClientRect(), p = symbol.getBoundingClientRect();
   if (!d.width || !d.height || !p.width) return 0;
   const style = getComputedStyle(cover), ink = BRAND_THEMES[theme].ink;
-  const drop = document.createElement('div');
-  drop.style.cssText = `position:fixed;left:0;top:0;box-sizing:border-box;border:0 solid ${ink};pointer-events:none`;
-  cover.appendChild(drop);
-  // The finished mark's ring, in the symbol box: the canvas draws 1750 logo
-  // units across 340px from (-82, -101), and the ring sits around (640, 700)
-  // with an outer radius of about 330 and an inner one of 165.
+  // The canvas draws 1750 logo units across 340px from (-82, -101) in the symbol box.
   const unit = p.width / 176 * 340 / 1750;
-  const rx = p.left + (-82 / 176 * p.width) + (248 + 640) * unit, ry = p.top + (-101 / 142 * p.height) + (240 + 700) * unit, r = 330 * unit;
-  const shape = (left: number, top: number, width: number, height: number, border: number, fill: string) =>
-    ({left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`, borderRadius: `${Math.min(width, height) / 2}px`, borderWidth: `${border}px`, backgroundColor: fill});
-  const ball = r * .78;
-  const MORPH = 1150, landAt = MORPH * .8, total = MORPH + 80;
-  cover.querySelector('.boot-name')?.animate([{opacity: 1}, {opacity: 0, filter: 'blur(4px)', transform: 'translateY(6px)'}], {duration: 260, easing: 'ease-in', fill: 'forwards'});
-  // The pie chart's slices, and the one lifted as the first stroke of う, draw together into the ring that replaces them.
-  symbol.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'scale(.94)', filter: 'blur(2px)'}], {duration: 220, easing: 'ease-in', fill: 'forwards'});
+  const bx = p.left - 82 / 176 * p.width + (248 + BALL.x) * unit, by = p.top - 101 / 142 * p.height + (240 + BALL.y) * unit, r = BALL_EDGE * unit;
+  const MELT = 300, FALL = 720, total = MELT + FALL + 60, landAt = MELT + FALL * .8;
+  cover.querySelector('.boot-name')?.animate([{opacity: 1}, {opacity: 0, filter: 'blur(4px)', transform: 'translateY(6px)'}], {duration: 220, easing: 'ease-in', fill: 'forwards'});
+  if (ctx && canvas) {
+    const begun = performance.now();
+    const melt = (now: number) => {
+      const m = Math.min(1, (now - begun) / MELT);
+      drawMelt(ctx, canvas.width, canvas.height, m, theme);
+      if (m < 1) requestAnimationFrame(melt);
+    };
+    melt(begun);
+  }
+  symbol.animate([{opacity: 1}, {opacity: 0}], {duration: 1, delay: MELT, fill: 'forwards'});
+  const drop = document.createElement('div');
+  drop.style.cssText = `position:fixed;left:0;top:0;opacity:0;background:${ink};pointer-events:none`;
+  cover.appendChild(drop);
+  const box = (left: number, top: number, width: number, height: number) =>
+    ({left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`, borderRadius: `${Math.min(width, height) / 2}px`});
   drop.animate([
-    {...shape(rx - r, ry - r, r * 2, r * 2, r * .5, 'transparent'), opacity: 0},
-    {...shape(rx - r, ry - r, r * 2, r * 2, r * .5, 'transparent'), opacity: 1, offset: .12},
-    {...shape(rx - ball, ry - ball, ball * 2, ball * 2, ball, ink), offset: .3},
-    {...shape(rx - ball * .72, ry, ball * 1.44, ball * 2.2, ball * .72, ink), offset: .46},
-    {...shape(rx - 40, d.top - 26, 80, 70, 35, ink), offset: .68},
-    {...shape(d.left - 8, d.top + 4, d.width + 16, d.height - 8, (d.height - 8) / 2, ink), offset: .84, opacity: 1},
-    {...shape(d.left, d.top, d.width, d.height, d.height / 2, ink), opacity: 0},
-  ], {duration: MORPH, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'both'});
-  cover.animate([{backgroundColor: style.backgroundColor}, {backgroundColor: 'transparent'}], {duration: 420, delay: 560, easing: 'ease-out', fill: 'forwards'});
+    {...box(bx - r, by - r, r * 2, r * 2), opacity: 1},
+    {...box(bx - r * 1.14, by - r * .7, r * 2.28, r * 1.7), offset: .12},
+    {...box(bx - r * .72, by - r * .9, r * 1.44, r * 2.5), offset: .3},
+    {...box(bx - 40, d.top - 30, 80, 76), offset: .56},
+    {...box(d.left - 8, d.top + 4, d.width + 16, d.height - 8), offset: .8, opacity: 1},
+    {...box(d.left, d.top, d.width, d.height), opacity: 0},
+  ], {duration: FALL, delay: MELT, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards'});
+  cover.animate([{backgroundColor: style.backgroundColor}, {backgroundColor: 'transparent'}], {duration: 400, delay: MELT + 200, easing: 'ease-out', fill: 'forwards'});
   dock.animate([{opacity: 0}, {opacity: 0, offset: landAt / total}, {opacity: 1}], {duration: total});
-  document.getElementById('main-content')?.animate([{opacity: 0, transform: 'translateY(12px)'}, {opacity: 1, transform: 'none'}], {duration: 560, delay: 800, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'backwards'});
+  document.getElementById('main-content')?.animate([{opacity: 0, transform: 'translateY(12px)'}, {opacity: 1, transform: 'none'}], {duration: 520, delay: MELT + 360, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'backwards'});
   return total;
 }

@@ -140,19 +140,20 @@ test('描画待機中にタイムアウトしても操作を解放し、後か�
   assert.equal(app.dispatched.length,1);
 });
 
-test('ドックがあれば、ロゴが丸い滴に変わってボトムナビになってから操作を解放する',()=>{
+test('ドックがあれば、ロゴそのものが玉になってボトムナビへ落ちてから操作を解放する',()=>{
   const app=launch({alreadyReady:true,dock:true});
   app.advance(BOOT_HOLD_END);app.advance(16);app.advance(16);
   const cover=app.ids['initial-boot'];
   assert.equal(cover.classList.has('boot-leaving'),false);
   const drop=cover.children[0];
   const frames=drop.animations[0].frames,last=frames.at(-1);
-  // It starts as a ring over the mark and ends as the dock itself.
-  assert.equal(frames[0].backgroundColor,'transparent');
+  // It takes over from the melted mark as a disc and ends as the dock itself.
+  assert.equal(frames[0].width,frames[0].height);
+  assert.equal(drop.animations[0].timing.delay,300);
   assert.deepEqual([last.left,last.top,last.width,last.height,last.opacity],['16px','780px','358px','56px',0]);
   assert.equal(app.symbol.animations[0].frames.at(-1).opacity,0);
   assert.equal(app.dockElement.animations.length,1);
-  app.advance(1200);
+  app.advance(1060);
   assert.equal(cover.isConnected,true);
   assert.equal(app.ids.root.attrs.inert,'');
   app.advance(40);
