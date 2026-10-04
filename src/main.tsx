@@ -75,6 +75,17 @@ const monthText = (month:string) => `${Number(month.slice(0,4))}年${Number(mont
 const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const bump = (month:string,diff:number) => { const [year,m]=month.split('-').map(Number); const date=new Date(Date.UTC(year,m-1+diff,1)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}`; };
 type SpaceAppProps=AccountProps&{space:Space;spaces:Space[];onSelectSpace:(id:string,settingsOrigin?:PanelOrigin)=>void;onReady:(id:string)=>void;initialSettingsOrigin?:PanelOrigin;refreshSpaces:()=>Promise<void>;month:string;setMonth:(month:string)=>void;tab:Tab;setTab:(tab:Tab)=>void};
+// Staging only: a shared space with just you gets a stand-in partner, so the
+// two-person screens (split bar, faces, shares) can be tried alone. It lives
+// only in what the screen shows; nothing about it is saved.
+const STAGING_PARTNER='staging-partner';
+function withStagingPartner<T extends State&Partial<SpaceData>>(result:T,space:Space):T {
+  if(!result.demo_enabled||space.kind!=='shared'||!result.members||!result.settlement)return result;
+  if(result.members.filter(member=>member.active).length!==1)return result;
+  const members=[...result.members,{user_id:STAGING_PARTNER,name:'パートナー（仮）',active:true}];
+  return {...result,members,settlement:{...result.settlement,config:defaultConfig(members.filter(member=>member.active))}};
+}
+
 function SpaceApp(account:AccountProps) {
  const [spaces,setSpaces]=useState<Space[]>([]),[selected,setSelected]=useState(()=>localStorage.getItem(`uchiwake-space:${account.user.id}`)||''),[error,setError]=useState('');
  const [month,setMonth]=useState(today().slice(0,7)),[tab,setTab]=useState<Tab>('home');
@@ -198,7 +209,10 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         api<State&Partial<SpaceData>>(`/state${query}`,{signal}),
         api<{months:HistoryPoint[]}>(`/settlement-history${historyQuery}`,{signal}).catch(()=>({months:[]}))
       ]);
-      if(request===requestId.current){setState(result);setHistory(resultHistory.months);setNotice('');}
+      if(request===requestId.current){
+        const staged=withStagingPartner(result,space);
+        setState(staged);setHistory(staged===result?resultHistory.months:resultHistory.months.map(point=>({...point,amount:Math.round(point.total/2)})));setNotice('');
+      }
     }
     catch(e) { if(request===requestId.current&&!controller.signal.aborted){if(demoView){window.sessionStorage.removeItem('uchiwake-demo-view');setDemoView(false);}else {setNotice(signal.aborted?'データの読み込みがタイムアウトしました。もう一度お試しください。':String(e instanceof Error?e.message:e));if((e as {status?:number}).status===404){setState(null);void refreshSpaces();}}} }
     finally {controller.abort();if(loadRequest.current===controller)loadRequest.current=null;}
@@ -221,6 +235,8 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const rentEnabled=state?.space_preferences?.rent_enabled===true;
   const rent=useMemo(()=>rentForMonth(displayedMonth,state?.bills||[],state?.rent_rules||[]),[displayedMonth,state]);
   const splitItems=useMemo(()=>state?settlementItems(state,personal):[],[state,personal]);
+  // One person in a shared space: the share is the whole bill, so there is nothing to switch.
+  const single=personal||(state?.members?.filter(member=>member.active).length??1)<=1;
   const allocationConfig=state?.settlement?.config??defaultConfig([{user_id:user.id,name:user.name||'あなた',active:true}]);
   const {amounts:allocations,remainder:roundingRemainder,unassigned:roundingUnassigned}=useMemo(()=>settlementDetails(splitItems,allocationConfig),[splitItems,allocationConfig]);
   const totals={total:splitItems.reduce((n,i)=>n+i.amount,0),perPerson:allocations[user.id]??0};
@@ -231,6 +247,11 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const splitPeople=Object.entries(allocations).map(([id,amount])=>({id,amount,name:id===user.id?(state?.members?.find(member=>member.user_id===id)?.name||user.name||'あなた'):state?.members?.find(member=>member.user_id===id)?.name||'メンバー'})).sort((a,b)=>a.id===user.id?-1:b.id===user.id?1:0);
   async function saveSplit(firstPercent:number){
     const settings=state?.settlement;if(!settings||demoView||splitPeople.length!==2)return;
+    if(splitPeople.some(person=>person.id===STAGING_PARTNER)){
+      // The stand-in partner exists only on this screen, so its split stays here too.
+      setState(current=>current?.settlement?{...current,settlement:{...current.settlement,config:{...allocationConfig,uniform:true,common:{mode:'percent',shares:[{user_id:splitPeople[0].id,weight:firstPercent*100},{user_id:splitPeople[1].id,weight:(100-firstPercent)*100}]}}}}:current);
+      return;
+    }
     const config={...allocationConfig,uniform:true,common:{mode:'percent' as const,shares:[{user_id:splitPeople[0].id,weight:firstPercent*100},{user_id:splitPeople[1].id,weight:(100-firstPercent)*100}]}};
     try{await api(`/spaces/${space.id}/settlement`,{method:'PUT',body:JSON.stringify({month:displayedMonth,scope:'month',config,revision:settings.scope==='month'&&settings.month===displayedMonth?settings.revision:0})});await load();}
     catch(e){setNotice(e instanceof Error?e.message:String(e));await load();}
@@ -438,7 +459,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   // Compare the figure shown large with the same figure last month, once
   // there was anything to settle then.
   // Both months come from the history, so the line agrees with the bars.
-  const historyFigure=(point?:HistoryPoint)=>point?(personal||showTotalFirst?point.total:point.amount):0;
+  const historyFigure=(point?:HistoryPoint)=>point?(single||showTotalFirst?point.total:point.amount):0;
   const previousShown=historyFigure(history.find(point=>point.month===bump(displayedMonth,-1)));
   const currentPoint=history.find(point=>point.month===displayedMonth);
   const monthDelta=hasSettlementData&&currentPoint&&previousShown>0?historyFigure(currentPoint)-previousShown:null;
@@ -538,10 +559,10 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       {tab==='home'&&<>
         <p className="space-current-name">{space.name}</p>
         <section className="hero settlement-hero">
-          <button type="button" className="settlement-amount-toggle" aria-label={personal?'今月の支出合計':`現在は${showTotalFirst?'支払い合計':'あなたの負担額'}を大きく表示。タップして切り替え`} aria-pressed={showTotalFirst} onClick={()=>{if(!personal)setShowTotalFirst(value=>!value);}}>
-            <span className="hero-label">{showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{scrub?`${Number(scrub.month.slice(5))}月の`:''}{personal?'支出合計':showTotalFirst?'支払い合計':'あなたの負担額'}{!personal&&<><span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></>}</span>
-            <span className="hero-stage"><span className="hero-money" data-scrub={scrub?'true':undefined}>{scrub?<NumberTicker value={personal||showTotalFirst?scrub.total:scrub.amount}/>:hasSettlementData?<NumberTicker value={personal||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span><span className="hero-split-slot"/></span>
-            <span className="hero-secondary" hidden={personal}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
+          <button type="button" className="settlement-amount-toggle" aria-label={single?(personal?'今月の支出合計':'今月の支払い合計'):`現在は${showTotalFirst?'支払い合計':'あなたの負担額'}を大きく表示。タップして切り替え`} aria-pressed={single?undefined:showTotalFirst} onClick={()=>{if(!single)setShowTotalFirst(value=>!value);}}>
+            <span className="hero-label">{single?<UsersRound size={18} aria-hidden="true"/>:showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{scrub?`${Number(scrub.month.slice(5))}月の`:''}{personal?'支出合計':single?'支払い合計':showTotalFirst?'支払い合計':'あなたの負担額'}{!single&&<><span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></>}</span>
+            <span className="hero-stage"><span className="hero-money" data-scrub={scrub?'true':undefined}>{scrub?<NumberTicker value={single||showTotalFirst?scrub.total:scrub.amount}/>:hasSettlementData?<NumberTicker value={single||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span><span className="hero-split-slot"/></span>
+            <span className="hero-secondary" hidden={single}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
           </button>
           {monthDelta!==null&&<p className="hero-delta" key={`${displayedMonth}-${showTotalFirst}`} data-trend={monthDelta<0?'down':monthDelta>0?'up':'flat'} ref={playDelta}>{monthDelta<0?<ArrowDown size={13} aria-hidden="true"/>:monthDelta>0?<ArrowUp size={13} aria-hidden="true"/>:<Equal size={13} aria-hidden="true"/>}{monthDelta===0?'先月と同じ':`先月より${yen(Math.abs(monthDelta))}${monthDelta<0?'少ない':'多い'}`}</p>}
           {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)}/>}
@@ -560,7 +581,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       </>}
       {tab==='ledger'&&<>{state.statements.length? <>
         <div className="ledger-overview"><span>{monthText(displayedMonth)}のカード合計</span><strong><NumberTicker value={cardTotal}/></strong></div>
-        {!!breakdown.length&&<CategoryChart data={breakdown} settings={state.category_settings} onSelectCategory={(category,source)=>setCategoryDetails({category,origin:panelOrigin(source)})}/>}
+        {!!breakdown.length&&<CategoryChart data={breakdown} settings={state.category_settings} onSelectCategory={(category,source)=>setCategoryDetails({category,origin:panelOrigin(source)})} openCategory={categoryDetails?.category}/>}
         <h2 className="ledger-cards-heading">カード別</h2>
         {state.statements.map(s=><button className="statement-preview panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===s.id?'true':undefined} data-card-id={s.card_id??undefined} key={s.id} onClick={event=>setOpenCard({type:'statement',id:s.id,view:'details',origin:panelOrigin(event.currentTarget)})}><span className="statement-preview-heading"><CreditCard size={22} color={displayColor(state.cards.find(card=>card.id===s.card_id)?.color)}/><span><strong>{state.cards.find(card=>card.id===s.card_id)?.name||s.title}</strong><small>{state.entries.filter(e=>e.statement_id===s.id).length}件の明細</small></span><ChevronRight size={18}/></span><strong className="statement-preview-amount"><Money value={s.confirmed_total}/></strong></button>)}
 

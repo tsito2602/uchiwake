@@ -30,7 +30,12 @@ export function DockFaces({faces,spaceName}:{faces:DockFace[];spaceName:string})
     const changed=shownSpace!==null&&shownSpace!==spaceName;
     shownSpace=spaceName;
     const s=springs.current!;
-    if(!changed||reducedMotion()){setShown(faces);return;}
+    if(!changed||reducedMotion()){
+      setShown(faces);
+      // Faces that arrive while the tab is still edge-on swing in now.
+      if(s.turn.target!==0){if(reducedMotion())s.turn.set(0);else{s.turn.set(-90);s.turn.to(0,{stiffness:300,damping:12});}}
+      return;
+    }
     s.turn.set(0);s.turn.to(90,{stiffness:500,damping:30});
     const timer=window.setTimeout(()=>{setShown(faces);s.turn.set(-90);s.turn.to(0,{stiffness:300,damping:12});},120);
     return()=>clearTimeout(timer);

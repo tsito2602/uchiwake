@@ -4,6 +4,8 @@ import { categoryAppearance } from './category-appearance';
 import { displayColor } from './display-color';
 import { LiveSpring, reducedMotion } from './cartoon-motion';
 import { NumberTicker } from './number-ticker';
+import { haptic } from './haptics';
+import { ios } from './haptic-touch';
 import type { Category, CategoryAppearance } from './domain';
 
 type Item={category:Category;amount:number};
@@ -23,8 +25,9 @@ function arc(a0:number,a1:number){
 
 // The category donut. When it comes into view its pieces spin in and gather
 // into the ring; a tapped piece (or its row) pops out and the centre rolls to
-// its amount. Tapping the centre then opens that category's statements.
-export function CategoryPie({items,settings,selected,onPick,onOpen}:{items:Item[];settings:CategoryAppearance[];selected:Category|null;onPick:(category:Category|null)=>void;onOpen?:(category:Category,source:HTMLElement)=>void}) {
+// its amount. Tapping it again (or the centre) opens that category's statements.
+// Another month replays the same gathering.
+export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{items:Item[];settings:CategoryAppearance[];selected:Category|null;opened?:Category|null;onPick:(category:Category|null)=>void;onOpen?:(category:Category,source:Element)=>void}) {
   const root=useRef<HTMLDivElement>(null);
   const groups=useRef<(SVGGElement|null)[]>([]);
   const segments=useRef(new Map<Category,Segment>());
@@ -53,47 +56,74 @@ export function CategoryPie({items,settings,selected,onPick,onOpen}:{items:Item[
   const timers=useRef<number[]>([]);
   const later=(ms:number,fn:()=>void)=>{timers.current.push(window.setTimeout(fn,reducedMotion()?0:ms));};
 
-  // First time on screen: every piece spins in from behind and gathers.
+  // On screen, every piece spins in from behind and gathers: the first time,
+  // and again whenever another month brings new numbers.
+  const previous=useRef<string|null>(null);
   useLayoutEffect(()=>{
-    const node=root.current;if(!node||reducedMotion()){assembled.current=true;return;}
-    slices.forEach((slice,index)=>{const s=segment(slice.category,index);s.rot.set(-70-index*12);s.scale.set(0);});
+    const node=root.current,first=previous.current===null;
+    if(previous.current===signature)return;previous.current=signature;
+    if(!node||reducedMotion()){assembled.current=true;return;}
+    timers.current.forEach(clearTimeout);timers.current=[];
+    const list=latest.current;
+    list.forEach((slice,index)=>{const s=segment(slice.category,index);s.out.set(0);s.rot.set(-70-index*12);s.scale.set(0);});
+    const gather=()=>list.forEach((slice,index)=>{const s=segment(slice.category,index);later(index*55,()=>{s.rot.to(0);s.scale.to(1);});});
+    if(!first){gather();assembled.current=true;return;}
     const observer=new IntersectionObserver(entries=>{
       if(!entries.some(entry=>entry.isIntersecting))return;observer.disconnect();
-      slices.forEach((slice,index)=>{const s=segment(slice.category,index);later(index*55,()=>{s.rot.to(0);s.scale.to(1);});});
-      assembled.current=true;
+      gather();assembled.current=true;
     },{threshold:.35});
     observer.observe(node);
     return()=>observer.disconnect();
-  },[]);
-  // New numbers (another month): the ring settles with a soft squish.
-  const previous=useRef(signature);
-  useEffect(()=>{
-    if(previous.current===signature)return;previous.current=signature;
-    if(!assembled.current)return;
-    slices.forEach((slice,index)=>{const s=segment(slice.category,index);s.rot.to(0);s.scale.set(.92);later(index*30,()=>s.scale.to(1,{stiffness:420,damping:12}));});
   },[signature]);
   // Selection pops the chosen piece out of the ring.
   useEffect(()=>{
+    if(!assembled.current)return;
     slices.forEach((slice,index)=>{const s=segment(slice.category,index),on=slice.category===selected;
       s.out.to(on?POP:0,on?{stiffness:420,damping:12}:{stiffness:420,damping:22});
-      if(on&&assembled.current){s.scale.set(.9);s.scale.to(1,{stiffness:420,damping:10});}});
-  },[selected,signature]);
+      if(on){s.scale.set(.9);s.scale.to(1,{stiffness:420,damping:10});}});
+  },[selected]);
   useLayoutEffect(()=>{slices.forEach((slice,index)=>segment(slice.category,index).draw());});
   useEffect(()=>()=>{timers.current.forEach(clearTimeout);segments.current.forEach(s=>{s.out.stop();s.rot.stop();s.scale.stop();});},[]);
 
   const current=slices.find(item=>item.category===selected)??null;
+  // A tap ticks, picks the piece, and on the picked piece opens its statements.
+  const press=(category:Category,source:Element)=>{
+    haptic();
+    if(category===selected&&onOpen)onOpen(category,source);
+    else onPick(category===selected?null:category);
+  };
+  // iPhone ticks only through a native switch, so one invisible label lies over
+  // the ring and hands each tap to whatever piece (or the centre) is under it.
+  const tapAt=useRef<{x:number;y:number}|null>(null);
+  const label=useRef<HTMLLabelElement>(null);
+  const pressRef=useRef(press);pressRef.current=press;
+  useLayoutEffect(()=>{
+    const node=label.current,input=node?.querySelector('input');if(!node||!input)return;
+    const tap=(event:MouseEvent)=>{event.stopPropagation();if(event.target===node)tapAt.current={x:event.clientX,y:event.clientY};};
+    const change=()=>{
+      const at=tapAt.current;tapAt.current=null;if(!at)return;
+      node.style.pointerEvents='none';
+      const hit=document.elementFromPoint(at.x,at.y);
+      node.style.pointerEvents='';
+      if(hit instanceof SVGPathElement&&hit.dataset.category)pressRef.current(hit.dataset.category as Category,hit);
+      else if(hit instanceof HTMLElement&&hit.matches('.category-pie-open'))hit.click();
+    };
+    node.addEventListener('click',tap);input.addEventListener('change',change);
+    return()=>{node.removeEventListener('click',tap);input.removeEventListener('change',change);};
+  },[total>0]);
   return <div className="category-pie" ref={root} data-selected={current?'true':undefined}>
     {total>0?<svg viewBox="-130 -130 260 260" role="group" aria-label="カテゴリ別の支払い割合。片をタップすると金額を確認できます。">
       {slices.map((item,index)=><g key={item.category} ref={node=>{groups.current[index]=node;}}>
-        <path className="category-pie-slice" data-category={item.category} data-dim={current&&current.category!==item.category?'true':undefined} d={item.path} fillRule="evenodd" role="button" tabIndex={0} aria-pressed={item.category===selected}
+        <path className={`category-pie-slice${onOpen?' panel-source':''}`} data-panel-source={opened===item.category?'true':undefined} data-category={item.category} data-dim={current&&current.category!==item.category?'true':undefined} d={item.path} fillRule="evenodd" role="button" tabIndex={0} aria-pressed={item.category===selected}
           aria-label={`${item.category}：${yen(item.amount)}`} fill={displayColor(categoryAppearance(item.category,settings).color)}
-          onClick={()=>onPick(item.category===selected?null:item.category)}
-          onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onPick(item.category===selected?null:item.category);}if(event.key==='Escape')onPick(null);}}/>
+          onClick={event=>press(item.category,event.currentTarget)}
+          onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();press(item.category,event.currentTarget);}if(event.key==='Escape')onPick(null);}}/>
       </g>)}
     </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
     {total>0&&<div className="category-pie-center" role="status" aria-live="polite">
       <small>{current?current.category:'カード合計'}</small><b><NumberTicker value={current?current.amount:total}/></b><span>{current?`${Math.round(current.amount/total*100)}%`:`${items.length}つの費目`}{current&&onOpen&&<ChevronRight size={12} aria-hidden="true"/>}</span>
     </div>}
-    {total>0&&current&&onOpen&&<button type="button" className="category-pie-open" aria-label={`${current.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>onOpen(current.category,event.currentTarget)}/>}
+    {total>0&&current&&onOpen&&<button type="button" className="category-pie-open" aria-label={`${current.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>{haptic();onOpen(current.category,event.currentTarget);}}/>}
+    {total>0&&ios&&<label ref={label} className="haptic-touch category-pie-haptic" aria-hidden="true"><input type="checkbox" {...{switch:''}} tabIndex={-1}/></label>}
   </div>;
 }

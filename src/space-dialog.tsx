@@ -8,41 +8,41 @@ import { springEasing } from './cartoon-motion';
 
 // Match FuseAddMenu's timing and reverse dismissal, anchored at the top right.
 // With an anchor (the dock's tab island) the list is a sheet that stretches
-// out of the island, keeping its bottom edge on the dock.
+// up out of the island and rests just above the dock. The dock stays in front
+// and live: the face tab closes the sheet again, and any other control closes
+// it on the way to doing its own thing.
 export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{title:string;children:ReactNode;onClose:()=>void;closing:boolean;onExited:()=>void;anchor?:DOMRect}) {
  const root=useRef<HTMLDivElement>(null),close=useRef(onClose),exit=useRef(onExited);
  const animations=useRef<Animation[]>([]);
- const fold=useRef<{sheet:HTMLElement;list:HTMLElement;inset:string;grow:Animation;rise:Animation;island?:HTMLElement;hide?:Animation}|null>(null);close.current=onClose;exit.current=onExited;
+ const fold=useRef<{sheet:HTMLElement;list:HTMLElement;inset:string;drop:string;grow:Animation;rise:Animation}|null>(null);close.current=onClose;exit.current=onExited;
  useLayoutEffect(()=>{
   const node=root.current!,previous=document.activeElement as HTMLElement|null;
-  const layers=[...document.querySelectorAll<HTMLElement>('main.shell,.floating-nav-host,.space-switcher')];
+  const layers=[...document.querySelectorAll<HTMLElement>(anchor?'main.shell,.space-switcher':'main.shell,.floating-nav-host,.space-switcher')];
   const unlockBackground=lockOverlayBackground(layers);
   const buttons=[...node.querySelectorAll<HTMLButtonElement>('.space-options>button, .space-sheet-row')];
   const sheet=node.querySelector<HTMLElement>('.space-sheet');
   if(sheet&&anchor){
    const dock=document.querySelector('.kondo-floating-dock')?.getBoundingClientRect();
-   const left=dock?.left??16,right=dock?.right??window.innerWidth-16,bottom=dock?.bottom??window.innerHeight-16;
-   Object.assign(sheet.style,{left:`${left}px`,width:`${right-left}px`,bottom:`${window.innerHeight-bottom}px`});
+   const left=dock?.left??16,right=dock?.right??window.innerWidth-16,top=dock?.top??window.innerHeight-80;
+   Object.assign(sheet.style,{left:`${left}px`,width:`${right-left}px`,bottom:`${window.innerHeight-top+10}px`,maxHeight:`calc(${top-10}px - max(24px, env(safe-area-inset-top)))`});
   }
   if(sheet&&anchor&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const bounds=sheet.getBoundingClientRect(),radius=getComputedStyle(sheet).borderRadius||'28px';
-   const inset=`inset(${Math.max(0,anchor.top-bounds.top)}px ${Math.max(0,bounds.right-anchor.right)}px ${Math.max(0,bounds.bottom-anchor.bottom)}px ${Math.max(0,anchor.left-bounds.left)}px round ${anchor.height/2}px)`;
+   // It starts as a copy of the island, lying over it, then lifts and stretches.
+   const inset=`inset(${Math.max(0,bounds.height-anchor.height)}px ${Math.max(0,bounds.right-anchor.right)}px 0px ${Math.max(0,anchor.left-bounds.left)}px round ${anchor.height/2}px)`;
+   const drop=`translateY(${Math.max(0,anchor.bottom-bounds.bottom).toFixed(1)}px)`;
    const stretch=springEasing({stiffness:300,damping:20});
    const fade:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
    animations.current=[
     node.querySelector('.space-veil')!.animate([{opacity:0,backdropFilter:'blur(0px)'},{opacity:1,backdropFilter:'blur(8px)'}],fade),
-    sheet.animate([{clipPath:inset},{clipPath:`inset(0px 0px 0px 0px round ${radius})`}],{duration:stretch.duration,easing:stretch.easing,fill:'both'}),
+    sheet.animate([{clipPath:inset,transform:drop},{clipPath:`inset(0px 0px 0px 0px round ${radius})`,transform:'translateY(0px)'}],{duration:stretch.duration,easing:stretch.easing,fill:'both'}),
    ];
    const main=layers.find(l=>l.matches('main.shell'));if(main)animations.current.push(animatePanelBackground(main,false));
-   // The island itself becomes the sheet, so it steps aside while the sheet is out.
-   const island=document.querySelector<HTMLElement>('.browse-dock .safari-dock');
-   const hide=island?.animate([{opacity:1},{opacity:0,offset:.02},{opacity:0}],{duration:stretch.duration,fill:'both'});
-   if(hide)animations.current.push(hide);
    // The list shows once the sheet is more than half open, rising 20px.
    const list=sheet.querySelector<HTMLElement>('.space-sheet-list')??sheet;
    const rise=list.animate([{opacity:0,transform:'translateY(20px)'},{opacity:0,transform:'translateY(14px)',offset:.3},{opacity:1,transform:'translateY(0px)'}],{duration:stretch.duration,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'});
    animations.current.push(rise);
-   fold.current={sheet,list,inset,grow:animations.current[1],rise,island:island??undefined,hide};
+   fold.current={sheet,list,inset,drop,grow:animations.current[1],rise};
   }else if(!sheet&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const timing:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
    animations.current=[node.querySelector('.space-veil')!.animate([{opacity:0,backdropFilter:'blur(0px)'},{opacity:1,backdropFilter:'blur(8px)'}],timing)];
@@ -55,6 +55,10 @@ export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{ti
    const chrome=node.querySelectorAll<HTMLElement>('.space-options hr');
    chrome.forEach(element=>animations.current.push(element.animate([{opacity:0},{opacity:1}],timing)));
   }
+  // The dock stays usable. Its other controls close the sheet and carry on.
+  const host=anchor?document.querySelector<HTMLElement>('.floating-nav-host'):null;
+  const dockPress=(event:Event)=>{if(!(event.target as Element|null)?.closest?.('.dock-space-tab'))close.current();};
+  host?.addEventListener('click',dockPress,true);
   (openedByKeyboard()?buttons[0]:node.querySelector<HTMLElement>('.space-menu'))?.focus({preventScroll:true});
   const keyboard=(event:KeyboardEvent)=>{
    if(event.key==='Escape'){event.preventDefault();close.current();return;}
@@ -66,7 +70,7 @@ export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{ti
    if(event.key==='End')next=buttons.length-1;
    if(next!==undefined){event.preventDefault();buttons[next]?.focus();}
   };node.addEventListener('keydown',keyboard);
-  return()=>{animations.current.forEach(a=>a.cancel());unlockBackground();node.removeEventListener('keydown',keyboard);if(previous?.isConnected&&!previous.closest('[inert]'))previous.focus({preventScroll:true});};
+  return()=>{host?.removeEventListener('click',dockPress,true);animations.current.forEach(a=>a.cancel());unlockBackground();node.removeEventListener('keydown',keyboard);if(previous?.isConnected&&!previous.closest('[inert]'))previous.focus({preventScroll:true});};
  },[]);
  useLayoutEffect(()=>{
   if(!closing)return;
@@ -77,14 +81,13 @@ export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{ti
   if(folding){
    // The sheet folds back into the island on a firmer spring (k420/c28) from
    // wherever it is; the veil and the page come back over the same time.
-   const back=springEasing({stiffness:420,damping:28}),clip=getComputedStyle(folding.sheet).clipPath;
-   folding.grow.cancel();folding.rise.cancel();folding.hide?.cancel();
-   const gone=[folding.grow,folding.rise,folding.hide];
+   const back=springEasing({stiffness:420,damping:28}),style=getComputedStyle(folding.sheet),clip=style.clipPath,transform=style.transform;
+   folding.grow.cancel();folding.rise.cancel();
+   const gone=[folding.grow,folding.rise];
    const parts=[
-    folding.sheet.animate([{clipPath:clip&&clip!=='none'?clip:'inset(0px 0px 0px 0px round 28px)'},{clipPath:folding.inset}],{duration:back.duration,easing:back.easing,fill:'both'}),
+    // It sinks back behind the island, which is in front the whole time.
+    folding.sheet.animate([{clipPath:clip&&clip!=='none'?clip:'inset(0px 0px 0px 0px round 28px)',transform:transform&&transform!=='none'?transform:'translateY(0px)'},{clipPath:folding.inset,transform:folding.drop}],{duration:back.duration,easing:back.easing,fill:'both'}),
     folding.list.animate([{opacity:1},{opacity:0}],{duration:120,fill:'both'}),
-    // The island takes over again as soon as the sheet is back at its size.
-    ...(folding.island?[folding.island.animate([{opacity:0},{opacity:0,offset:.3},{opacity:1,offset:.42},{opacity:1}],{duration:back.duration,fill:'both'})]:[]),
    ];
    animations.current.filter(animation=>!gone.includes(animation)).forEach(animation=>{const end=Number(animation.effect?.getComputedTiming().endTime)||300;animation.playbackRate=-Math.max(.6,end/back.duration);animation.play();});
    animations.current=[...animations.current.filter(animation=>!gone.includes(animation)),...parts];

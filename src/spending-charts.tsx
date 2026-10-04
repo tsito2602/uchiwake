@@ -8,6 +8,7 @@ import type { Category, CategoryAppearance } from './domain';
 import './spending-charts.css';
 import { NumberTicker } from './number-ticker';
 import { CategoryPie } from './category-pie';
+import { LiveSpring, reducedMotion } from './cartoon-motion';
 import { historyScrollForIndex } from './chart-interaction';
 import { createHistoryGesture } from './history-chart-gesture';
 
@@ -116,7 +117,36 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPrevie
   </div>;
 }
 
-export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCategory}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[];animateAmounts?:boolean;onSelectCategory?:(category:Category,source:HTMLElement)=>void}) {
+// One category's bar. It squirts out from the left on a loose spring, thinning
+// while it rushes and settling a touch past its length, in turn down the list:
+// when it first comes into view and again for every other month.
+function CategoryBar({fraction,color,index,signature}:{fraction:number;color:string;index:number;signature:string}) {
+  const bar=useRef<HTMLDivElement>(null);
+  const spring=useRef<LiveSpring|null>(null);
+  spring.current??=new LiveSpring(0,value=>{const node=bar.current,s=spring.current;if(!node)return;
+    node.style.width=`${Math.max(0,value)*100}%`;
+    node.style.transform=`scaleY(${(1-Math.min(.5,Math.abs(s?.velocity??0)*.14)).toFixed(3)})`;},{stiffness:300,damping:15});
+  const target=useRef(fraction);target.current=fraction;
+  const seen=useRef(false);
+  useLayoutEffect(()=>{
+    const node=bar.current,s=spring.current!;if(!node)return;
+    if(reducedMotion()){s.set(target.current);return;}
+    s.set(0);
+    const grow=()=>{const timer=window.setTimeout(()=>s.to(target.current),index*45);return()=>clearTimeout(timer);};
+    if(seen.current)return grow();
+    let stop:(()=>void)|undefined;
+    const observer=new IntersectionObserver(entries=>{if(!entries.some(entry=>entry.isIntersecting))return;observer.disconnect();seen.current=true;stop=grow();},{threshold:.5});
+    observer.observe(node);
+    return()=>{observer.disconnect();stop?.();};
+  },[signature]);
+  useEffect(()=>()=>spring.current?.stop(),[]);
+  return <div ref={bar} style={{background:color,transformOrigin:'left center'}}/>;
+}
+
+export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCategory,openCategory}:{data:{category:Category;amount:number}[];settings?:CategoryAppearance[];animateAmounts?:boolean;onSelectCategory?:(category:Category,source:Element)=>void;openCategory?:Category|null}) {
+  // The piece or row the open category grew from hides while its panel is out.
+  const [openedFrom,setOpenedFrom]=useState<'pie'|'row'>('row');
+  const open=onSelectCategory&&((from:'pie'|'row')=>(category:Category,source:Element)=>{setOpenedFrom(from);onSelectCategory(category,source);});
   const reduce=useReducedMotion();
   // The donut is the logo's own shape, so it is the default; a choice of bars is remembered.
   const [view,setViewState]=useState<'bar'|'pie'>(()=>{try{return localStorage.getItem('uchiwake-category-view')==='bar'?'bar':'pie';}catch{return 'pie';}});
@@ -136,13 +166,13 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
       </div>
     </div>
     <AnimatePresence mode="wait" initial={false}><motion.div key={view} initial={{opacity:0,y:reduce?0:5}} animate={{opacity:1,y:0}} exit={{opacity:0,y:reduce?0:-3}} transition={{duration:reduce?0:.15}}>
-    {view==='pie'&&<CategoryPie items={items.filter(item=>item.amount>0)} settings={settings} selected={activeCategory} onPick={setActiveCategory} onOpen={onSelectCategory}/>}
+    {view==='pie'&&<CategoryPie items={items.filter(item=>item.amount>0)} settings={settings} selected={activeCategory} opened={openedFrom==='pie'?openCategory:null} onPick={setActiveCategory} onOpen={open?.('pie')}/>}
     <ul><AnimatePresence initial={false}>{items.map((item,index)=>{
       const content=<>
       <div className="category-chart-label"><span><CategoryIcon name={categoryAppearance(item.category,settings).icon} color={categoryAppearance(item.category,settings).color} size={17}/>{item.category}</span><span><strong>{animateAmounts?<NumberTicker value={item.amount}/>:yen(item.amount)}</strong><small>{item.amount<0?'返金':positive?`${Math.round(item.amount/positive*100)}%`:''}</small></span></div>
-      {view==='bar'&&<div className={`category-chart-track${item.amount<0?' is-refund':''}`} aria-hidden="true"><motion.div initial={reduce?false:{scaleX:0}} whileInView={{scaleX:1}} viewport={{once:true,amount:.5}} animate={{width:`${Math.abs(item.amount)/maximum*100}%`}} transition={{duration:reduce?0:.55,ease,scaleX:{delay:reduce?0:index*.035,duration:reduce?0:.55,ease}}} style={{background:displayColor(categoryAppearance(item.category,settings).color),transformOrigin:'left'}}/></div>}
+      {view==='bar'&&<div className={`category-chart-track${item.amount<0?' is-refund':''}`} aria-hidden="true"><CategoryBar fraction={Math.abs(item.amount)/maximum} color={displayColor(categoryAppearance(item.category,settings).color)??'currentColor'} index={index} signature={dataSignature}/></div>}
       </>;
-      return <motion.li data-active={view==='pie'&&activeCategory===item.category?'true':undefined} data-dim={view==='pie'&&activeCategory!==null&&activeCategory!==item.category?'true':undefined} layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>{view==='pie'&&item.amount>0?<button type="button" className="category-chart-row panel-source" aria-pressed={activeCategory===item.category} aria-label={activeCategory===item.category&&onSelectCategory?`${item.category}の明細を見る`:`${item.category}を円グラフで示す`} onClick={event=>{if(activeCategory===item.category&&onSelectCategory)onSelectCategory(item.category,event.currentTarget);else setActiveCategory(item.category);}}>{content}</button>:onSelectCategory?<button type="button" className="category-chart-row panel-source" aria-label={`${item.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>onSelectCategory(item.category,event.currentTarget)}>{content}</button>:content}</motion.li>;
+      return <motion.li data-active={view==='pie'&&activeCategory===item.category?'true':undefined} data-dim={view==='pie'&&activeCategory!==null&&activeCategory!==item.category?'true':undefined} layout={reduce?false:"position"} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>{view==='pie'&&item.amount>0?<button type="button" className="category-chart-row panel-source" data-panel-source={openedFrom==='row'&&openCategory===item.category?'true':undefined} aria-pressed={activeCategory===item.category} aria-label={activeCategory===item.category&&onSelectCategory?`${item.category}の明細を見る`:`${item.category}を円グラフで示す`} onClick={event=>{if(activeCategory===item.category&&open)open('row')(item.category,event.currentTarget);else setActiveCategory(item.category);}}>{content}</button>:onSelectCategory?<button type="button" className="category-chart-row panel-source" data-panel-source={openedFrom==='row'&&openCategory===item.category?'true':undefined} aria-label={`${item.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>open!('row')(item.category,event.currentTarget)}>{content}</button>:content}</motion.li>;
     })}</AnimatePresence></ul>
     </motion.div></AnimatePresence>
     {refunds&&<p className="category-chart-note">返金はマイナス額で表示。割合はプラスのカテゴリ合計を基準にしています。{view==='pie'&&'円グラフにはプラスのカテゴリのみ表示しています。'}</p>}

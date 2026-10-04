@@ -53,20 +53,35 @@ export function animatePanelSurroundings(panel:HTMLElement,main:HTMLElement|null
   return animations;
 }
 
+function growSource(bounds:{left:number;top:number;right:number;bottom:number;width:number;height:number},source?:PanelOrigin):PanelOrigin|null {
+  if(!bounds.width||!bounds.height)return null;
+  const rest={left:bounds.left+12,top:bounds.bottom-96,width:Math.max(1,bounds.width-24),height:84};
+  if(!source||source.width<1||source.height<1)return rest;
+  const reach=typeof window!=='undefined'&&window.innerHeight?window.innerHeight:bounds.bottom;
+  if(source.top+source.height<0||source.top>reach)return rest;
+  return source;
+}
+
 export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
   const bounds=panel.getBoundingClientRect();
   const glass=panel.querySelector<HTMLElement>(':scope > .card-panel-glass');
   const content=panel.querySelector<HTMLElement>(':scope > .card-panel');
   const radius=window.getComputedStyle(panel).borderRadius||'0px';
   const parts:Animation[]=[];
-  if(source&&source.width>100&&source.height>65&&source.top+source.height>bounds.top&&source.top<bounds.bottom&&source.left+source.width>bounds.left&&source.left<bounds.right){
+  // Every panel opens the same way: whatever was tapped (a card, a row, a
+  // button) grows into it. With nothing to grow from, or a source scrolled out
+  // of reach, it grows from a card-sized box resting on the dock.
+  const from=growSource(bounds,source);
+  if(from){
+    source=from;
     // The card itself grows: its box is mapped onto the panel's and springs open.
     const sx=source.width/bounds.width,sy=source.height/bounds.height;
     const dx=source.left-bounds.left,dy=source.top-bounds.top;
     const folded:Keyframe={transformOrigin:'0px 0px',transform:`translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`};
     const full:Keyframe={transformOrigin:'0px 0px',transform:'translate(0px, 0px) scale(1, 1)'};
     // Undo the squash on the corners so they stay the card's while it grows.
-    const foldedGlass=`inset(0px 0px 0px 0px round ${(CARD_RADIUS/sx).toFixed(2)}px / ${(CARD_RADIUS/sy).toFixed(2)}px)`;
+    const corner=Math.min(CARD_RADIUS,source.width/2,source.height/2);
+    const foldedGlass=`inset(0px 0px 0px 0px round ${(corner/sx).toFixed(2)}px / ${(corner/sy).toFixed(2)}px)`;
     const openGlass=`inset(0px 0px 0px 0px round ${radius})`;
     if(glass)parts.push(glass.animate([{clipPath:foldedGlass},{clipPath:openGlass}],{...growTiming,fill:'backwards'}));
     // Text waits until the box is mostly open, then each row rises 10px in turn.

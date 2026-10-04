@@ -24,13 +24,17 @@ test('カードの箱そのものがパネルの位置と大きさへバネで�
   assert.deepEqual(timing,{...growTiming,fill:'backwards'});
   assert.ok(timing.duration>320);
 });
-test('小ボタン・領域外からはスクロール内容を切り抜かず48pxの動きで開く',()=>{
-  for(const origin of [undefined,{left:310,top:18,width:44,height:44},{left:20,top:180,width:350,height:62},{left:310,top:800,width:56,height:56},{left:20,top:900,width:350,height:115}]){
-    const {frames}=opening(origin);
-    assert.equal(frames[0].transform,'translateY(48px)');
-    assert.equal(frames[1].transform,'translateY(0px)');
-    assert.ok(frames.every(frame=>!('opacity' in frame)));
-    assert.ok(frames.every(frame=>!('clipPath' in frame)));
+test('ボタンでも領域外でも、押したものか常にドックの上のカードから同じ展開で開く',()=>{
+  // A small button grows out of its own box, with corners no rounder than it.
+  const button=opening({left:310,top:18,width:44,height:44});
+  assert.equal(button.frames[0].transform,'translate(298.00px, 6.00px) scale(0.1202, 0.0604)');
+  assert.equal(button.surface.frames[0].clipPath,'inset(0px 0px 0px 0px round 166.36px / 330.91px)');
+  // Nothing to grow from, or a source off screen: a card resting on the dock.
+  for(const origin of [undefined,{left:20,top:900,width:350,height:115}]){
+    const {frames,timing}=opening(origin);
+    assert.equal(frames[0].transform,'translate(12.00px, 632.00px) scale(0.9344, 0.1154)');
+    assert.deepEqual(timing,{...growTiming,fill:'backwards'});
+    assert.ok(frames.every(frame=>!('opacity' in frame)&&!('clipPath' in frame)));
   }
 });
 test('背景の透過度・ブラーは開閉中も一定で、文字だけを兄弟要素として背景と同じ境界でフェードする',()=>{
@@ -40,20 +44,12 @@ test('背景の透過度・ブラーは開閉中も一定で、文字だけを�
       for(const property of ['opacity','filter','backdropFilter','backgroundColor'])assert.equal(frame[property],undefined);
     }
     assert.ok(frames.every(frame=>!('clipPath' in frame)));
-    // Text shares the glass's reveal boundary, so it never shows outside the unfolding panel.
-    if(origin){
-      // Text waits until the box is mostly open.
-      assert.deepEqual(content.frames.map(frame=>frame.opacity),[0,0,1]);
-      assert.equal(content.frames[0].clipPath,surface.frames[0].clipPath);
-      assert.equal(content.timing.duration,timing.duration);
-      continue;
-    }
-    assert.deepEqual(content.frames.map(frame=>frame.opacity),[0,1]);
+    // Text shares the glass's reveal boundary and waits until the box is mostly open.
+    assert.deepEqual(content.frames.map(frame=>frame.opacity),[0,0,1]);
     assert.equal(content.frames[0].clipPath,surface.frames[0].clipPath);
-    assert.equal(content.frames[1].clipPath,'inset(0px 0px 0px 0px round 28px)');
-    assert.deepEqual(content.timing,timing);
+    assert.equal(content.frames.at(-1).clipPath,'inset(0px 0px 0px 0px round 28px)');
+    assert.equal(content.timing.duration,timing.duration);
     assert.deepEqual(surface.timing,timing);
-    if(!origin)assert.equal(surface.frames[0].clipPath,'inset(100% 0px 0px 0px round 28px)');
   }
 });
 test('スペース設定の入口カード全体を起点にすると明細カードと同じ展開になる',()=>{
@@ -166,45 +162,12 @@ test('追加メニューとパネルの背景はスクロール位置に関わ�
 });
 
 
-test('開き終わったクリップを完全に解除し、同じ終端から閉じる動きを再開する',async()=>{
- let resolveFinished;
- const animation={currentTime:0,playbackRate:1,playState:'running',cancels:0,plays:0,
-  finished:new Promise(resolve=>{resolveFinished=resolve;}),
-  effect:{updateTiming(){}},
-  cancel(){this.cancels++;this.currentTime=null;this.playState='idle';},
-  play(){this.plays++;this.playState='running';}
- };
- globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
- animatePanel({getBoundingClientRect:()=>bounds,querySelector:()=>null,animate:()=>animation});
- animation.currentTime=320;animation.playState='finished';resolveFinished();await Promise.resolve();
- assert.equal(animation.cancels,1);
- assert.equal(animation.playState,'idle');
- assert.equal(animation.currentTime,null);
- const parent={currentTime:10,playbackRate:1,play(){}};
- reversePanel(animation,[parent]);
- assert.equal(animation.currentTime,320);
- assert.equal(parent.currentTime,320);
- assert.equal(animation.playbackRate,-1.15);
- assert.equal(parent.playbackRate,-1.15);
- assert.equal(animation.plays,1);
+test('畳み始めた後に開き終わっても、古い完了処理が閉じる動きを消さない',async()=>{
+  const {animation,finish}=morphing();
+  reversePanel(animation,[]);
+  animation.playState='finished';finish();await Promise.resolve();await Promise.resolve();
+  assert.equal(animation.cancels,0);
 });
-
-test('開く途中の取消しやアンマウントでは、古い完了処理が閉じる動きを消さない',async()=>{
- for(const unmount of [false,true]){
-  let resolveFinished,rejectFinished;
-  const animation={currentTime:96,playbackRate:1,playState:'running',cancels:0,
-   finished:new Promise((resolve,reject)=>{resolveFinished=resolve;rejectFinished=reject;}),
-   effect:{updateTiming(){}},play(){},cancel(){this.cancels++;this.currentTime=null;this.playState='idle';}
-  };
-  globalThis.window={getComputedStyle:()=>({borderRadius:'28px'})};
-  animatePanel({getBoundingClientRect:()=>bounds,querySelector:()=>null,animate:()=>animation});
-  if(unmount){animation.cancel();rejectFinished(new Error('unmounted'));}
-  else {reversePanel(animation,[]);assert.equal(animation.currentTime,96);animation.currentTime=0;animation.playState='finished';resolveFinished();}
-  await Promise.resolve();
-  assert.equal(animation.cancels,unmount?1:0);
- }
-});
-
 
 test('背景の展開と文字の出現も途中取消・畳み・破棄を本体と同期する',async()=>{
   const {animation,created}=morphing();

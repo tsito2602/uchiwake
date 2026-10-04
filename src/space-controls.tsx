@@ -27,7 +27,12 @@ export function SpaceControls({space,spaces,disabled,api,onSelect,onSettings,onR
  const blocked=busy||closing;
  // The dock's face tab asks for the list; it then grows out of the tab island.
  const [anchor,setAnchor]=useState<DOMRect|null>(null);
- useEffect(()=>{if(!dockRequest||disabled||view)return;setAnchor(dockRequest.source.getBoundingClientRect());change('menu');},[dockRequest?.at]);
+ useEffect(()=>{
+  if(!dockRequest)return;
+  // The face tab toggles: pressed again while the sheet is out, it folds it away.
+  if(view==='menu'&&anchor){if(!closing)leaveMenu(()=>change(null));return;}
+  if(disabled||view)return;setAnchor(dockRequest.source.getBoundingClientRect());change('menu');
+ },[dockRequest?.at]);
  useEffect(()=>{onMenuChange?.(view==='menu');},[view==='menu']);
  const leaveMenu=(after:()=>void)=>dismiss(()=>{setAnchor(null);after();});
  const context:DockContext={label:view==='create'?'スペースを作成':'招待コードで参加',commit:true,onBack:back,

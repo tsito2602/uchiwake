@@ -96,6 +96,9 @@
 
 /* The face tab: the people in this space, overlapping like a group photo. */
 .dock-faces { display: inline-flex; align-items: center; perspective: 200px; }
+/* The dock's tab-label rule pins every span to the bottom; faces sit centred. */
+.safari-dock .dock-space-tab :is(.dock-faces, .dock-face) { position: relative; bottom: auto; line-height: 1; }
+.safari-dock .dock-space-tab .dock-face { font-size: 10.5px; }
 .dock-face { position: relative; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex: none; background: var(--brand-ink); color: var(--canvas); font-size: 10.5px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 2px var(--dock-face-ring, var(--canvas)); transform-style: preserve-3d; backface-visibility: hidden; }
 .dock-face + .dock-face { margin-left: -7px; }
 .dock-face:nth-child(1) { z-index: 3; } .dock-face:nth-child(2) { z-index: 2; } .dock-face:nth-child(3) { z-index: 1; }
@@ -110,6 +113,8 @@
 
 /* The space list: a sheet stretched out of the tab island (space-dialog.tsx). */
 .space-sheet.space-menu { position: fixed; top: auto; right: auto; width: auto; max-width: none; max-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - 24px); overflow: auto; overscroll-behavior: contain; padding: 14px 10px 10px; border-radius: 28px; background: var(--canvas); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 24px 60px -18px #0006; pointer-events: auto; }
+/* The dock stays in front of (and usable over) the space sheet and its veil. */
+body:has(.space-overlay .space-sheet) .floating-nav-host { z-index: 151; }
 .space-sheet-list { display: flex; flex-direction: column; gap: 2px; }
 .space-sheet-title { margin: 0 0 6px 12px; font-size: 12px; color: var(--muted); }
 .space-sheet-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 8px 12px; border: 0; border-radius: 18px; background: transparent; color: var(--ink); font-size: 15px; font-weight: 650; text-align: left; transition: background 180ms, transform var(--spring-squish-duration) var(--spring-squish); }
@@ -148,7 +153,7 @@
 .hero-stage > * { grid-area: 1 / 1; }
 .settlement-hero .hero-money { transform-origin: left bottom; will-change: transform, opacity; }
 .hero-split-slot { display: contents; }
-.hero-split-nums { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-width: 0; gap: 12px; width: 100%; align-self: center; pointer-events: none; }
+.hero-split-nums { grid-area: 1 / 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-width: 0; gap: 12px; width: 100%; align-self: center; pointer-events: none; }
 .hero-split-person { display: block; min-width: 0; opacity: 0; transform: translateY(22px) scale(.65); transform-origin: left bottom; will-change: transform, opacity; }
 .hero-split-person:last-child:not(:first-child) { text-align: right; transform-origin: right bottom; }
 .hero-split-person small { display: block; overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -207,7 +212,8 @@
 
 /* ---------- Category donut (category-pie.tsx) ---------- */
 .category-pie svg { width: min(100%, 236px); }
-.category-pie-slice { cursor: pointer; transition: opacity .3s; outline: none; }
+.category-pie-slice { cursor: pointer; transition: opacity .3s; outline: none; transform-box: fill-box; transform-origin: 50% 50%; }
+.category-pie-haptic { inset: auto; left: 50%; top: 50%; translate: -50% -50%; width: min(100%, 236px); aspect-ratio: 1; border-radius: 50%; }
 .category-pie-slice[data-dim] { opacity: .3; }
 .category-pie-slice:focus-visible { stroke: var(--ink); stroke-width: 3px; }
 .category-pie-center { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 112px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0; border: 0; background: none; color: var(--ink); text-align: center; pointer-events: none; font: inherit; }

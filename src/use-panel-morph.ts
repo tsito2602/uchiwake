@@ -6,7 +6,7 @@ import { registerPanel } from './panel-stack';
 import { springAnimate } from './cartoon-motion';
 export type { PanelOrigin } from './kondo-panel-motion';
 
-export const panelOrigin = (element:HTMLElement):PanelOrigin => {
+export const panelOrigin = (element:Element):PanelOrigin => {
   const {left,top,width,height}=element.getBoundingClientRect();
   return {left,top,width,height};
 };
@@ -64,7 +64,7 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const animation=motion.current;
     if(!animation){exited.current();return;}
     // Reverse the retained entrance, including a dismissal before it finishes.
-    const source=document.querySelector<HTMLElement>('.panel-source[data-panel-source="true"]');
+    const source=document.querySelector<Element>('.panel-source[data-panel-source="true"]');
     reversePanel(animation,companions.current);
     let active=true;
     // Back in its place, the card gives a small squish like the mock.
