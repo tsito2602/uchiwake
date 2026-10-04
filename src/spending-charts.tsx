@@ -23,6 +23,8 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPrevie
   const plot=useRef<HTMLDivElement>(null);
   const [plotWidth,setPlotWidth]=useState(0);
   const [scrollLeft,setScrollLeft]=useState(0);
+  // The row's width while a period change squeezes it (null once it rests).
+  const [morphWidth,setMorphWidth]=useState<number|null>(null);
   const cursor=useRef<number|null>(null);
   const latest=useRef({data,visibleMonths,onSelectMonth,onPreview});
   useLayoutEffect(()=>{latest.current={data,visibleMonths,onSelectMonth,onPreview};});
@@ -86,17 +88,22 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPrevie
       // Keep the current month's right edge where the period leaves it.
       const end=(at+1)*width/data.length,left=Math.max(0,Math.min(width-plotWidth,end-plotWidth));
       element.scrollLeft=left;
+      setMorphWidth(width);setScrollLeft(element.scrollLeft);
     };
     widthSpring.current?.stop();
-    const spring=new LiveSpring(widthFor(from),width=>{place(width);if(width===spring.target){row.style.width=`${Math.max(1,data.length/visibleMonths)*100}%`;setScrollLeft(element.scrollLeft);}},{stiffness:420,damping:28});
+    const spring=new LiveSpring(widthFor(from),width=>{place(width);if(width===spring.target){row.style.width=`${Math.max(1,data.length/visibleMonths)*100}%`;setMorphWidth(null);setScrollLeft(element.scrollLeft);}},{stiffness:420,damping:28});
     widthSpring.current=spring;place(widthFor(from));spring.to(widthFor(visibleMonths));
     const slots=[...row.querySelectorAll<HTMLElement>('.history-bar')],first=Math.max(0,at+1-Math.min(data.length,visibleMonths));
     slots.slice(first,at+1).forEach((bar,index)=>springAnimate(bar,{scale:'1 .85'},{scale:'1 1'},{stiffness:300,damping:17},{delay:index*35,fill:'backwards'}));
-    return()=>spring.stop();
+    return()=>{spring.stop();setMorphWidth(null);};
   },[visibleMonths]);
   const visibleCount=Math.min(data.length,visibleMonths);
-  const firstVisible=plotWidth?Math.floor(scrollLeft/plotWidth*visibleCount+1e-9):Math.max(0,data.length-visibleCount);
-  const lastVisible=plotWidth?Math.ceil((scrollLeft+plotWidth)/plotWidth*visibleCount-1e-9):data.length;
+  // Scale to the months actually in view. Mid-squeeze the row is neither
+  // period's width, so read the range from its live width; otherwise the old
+  // scroll offset points past the data and every bar shoots to full height.
+  const rowWidth=morphWidth??plotWidth*Math.max(1,data.length/visibleCount);
+  const firstVisible=plotWidth?Math.max(0,Math.min(data.length-1,Math.floor(scrollLeft/rowWidth*data.length+1e-9))):Math.max(0,data.length-visibleCount);
+  const lastVisible=plotWidth?Math.max(firstVisible+1,Math.ceil((scrollLeft+plotWidth)/rowWidth*data.length-1e-9)):data.length;
   const maximum=Math.max(1,...data.slice(firstVisible,lastVisible).map(item=>Math.abs(item.total)));
   const index=Math.min(data.length-1,active??cursor.current??Math.max(0,data.findIndex(item=>item.month===month)));
   const point=active===null?null:data[active];
@@ -181,12 +188,13 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
   const maximum=Math.max(1,...items.map(item=>Math.abs(item.amount)));
   const dataSignature=data.map(item=>`${item.category}:${item.amount}`).join();
   useEffect(()=>{setActiveCategory(null);},[dataSignature,view]);
-  // A tap anywhere but the donut and its list lets go of the picked piece.
+  // A tap anywhere but the donut's pieces, its centre and its list lets go of
+  // the picked piece (the space around the ring included).
   const chartRoot=useRef<HTMLElement>(null);
   useEffect(()=>{
     if(activeCategory===null)return;
     const away=(event:PointerEvent)=>{const target=event.target as Element|null,root=chartRoot.current;
-      if(!root||target?.closest?.('.category-pie, .category-chart ul'))return;setActiveCategory(null);};
+      if(!root||target?.closest?.('.category-pie-slice, .category-pie-open, .category-pie-haptic, .category-chart ul'))return;setActiveCategory(null);};
     document.addEventListener('pointerdown',away,true);
     return()=>document.removeEventListener('pointerdown',away,true);
   },[activeCategory]);

@@ -97,6 +97,7 @@ export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{item
   const tapAt=useRef<{x:number;y:number}|null>(null);
   const label=useRef<HTMLLabelElement>(null);
   const pressRef=useRef(press);pressRef.current=press;
+  const onPickRef=useRef(onPick);onPickRef.current=onPick;
   useLayoutEffect(()=>{
     const node=label.current,input=node?.querySelector('input');if(!node||!input)return;
     const tap=(event:MouseEvent)=>{event.stopPropagation();if(event.target===node)tapAt.current={x:event.clientX,y:event.clientY};};
@@ -107,6 +108,7 @@ export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{item
       node.style.pointerEvents='';
       if(hit instanceof SVGPathElement&&hit.dataset.category)pressRef.current(hit.dataset.category as Category,hit);
       else if(hit instanceof HTMLElement&&hit.matches('.category-pie-open'))hit.click();
+      else onPickRef.current(null);
     };
     node.addEventListener('click',tap);input.addEventListener('change',change);
     return()=>{node.removeEventListener('click',tap);input.removeEventListener('change',change);};

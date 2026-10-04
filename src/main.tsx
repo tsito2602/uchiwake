@@ -230,13 +230,13 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   // One person in a shared space: the share is the whole bill, so there is nothing to switch.
   const single=personal||(state?.members?.filter(member=>member.active).length??1)<=1;
   const allocationConfig=state?.settlement?.config??defaultConfig([{user_id:user.id,name:user.name||'あなた',active:true}]);
-  const {amounts:allocations,remainder:roundingRemainder,unassigned:roundingUnassigned}=useMemo(()=>settlementDetails(splitItems,allocationConfig),[splitItems,allocationConfig]);
+  const {amounts:allocations,adjustments:roundingAdjustments,remainder:roundingRemainder,unassigned:roundingUnassigned}=useMemo(()=>settlementDetails(splitItems,allocationConfig),[splitItems,allocationConfig]);
   const totals={total:splitItems.reduce((n,i)=>n+i.amount,0),perPerson:allocations[user.id]??0};
 
   const breakdown=useMemo(()=>categoryTotals(state?.entries||[]),[state]);
   const cardTotal=(state?.statements||[]).reduce((sum,item)=>sum+item.confirmed_total,0);
   const otherBills=(state?.bills||[]).filter(item=>item.kind==='utilities'||item.kind==='other');
-  const splitPeople=Object.entries(allocations).map(([id,amount])=>({id,amount,avatarUrl:id===user.id?(state?.members?.find(member=>member.user_id===id)?.avatarUrl??user.avatarUrl):state?.members?.find(member=>member.user_id===id)?.avatarUrl,name:id===user.id?(state?.members?.find(member=>member.user_id===id)?.name||user.name||'あなた'):state?.members?.find(member=>member.user_id===id)?.name||'メンバー'})).sort((a,b)=>a.id===user.id?-1:b.id===user.id?1:0);
+  const splitPeople=Object.entries(allocations).map(([id,amount])=>({id,amount,rounding:roundingAdjustments[id]??0,avatarUrl:id===user.id?(state?.members?.find(member=>member.user_id===id)?.avatarUrl??user.avatarUrl):state?.members?.find(member=>member.user_id===id)?.avatarUrl,name:id===user.id?(state?.members?.find(member=>member.user_id===id)?.name||user.name||'あなた'):state?.members?.find(member=>member.user_id===id)?.name||'メンバー'})).sort((a,b)=>a.id===user.id?-1:b.id===user.id?1:0);
   async function saveSplit(firstPercent:number){
     const settings=state?.settlement;if(!settings||demoView||splitPeople.length!==2)return;
     if(splitPeople.some(person=>person.id===STAGING_PARTNER)){
@@ -553,7 +553,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
             {/* Joined, your share sits under the total; torn apart, the total sits small under the two shares. */}
             {!single&&<span className="hero-secondary" key={splitOpen?'total':'share'}><span>{splitOpen?'支払い合計':'あなたの負担額'}</span><strong>{hasSettlementData?<NumberTicker value={splitOpen?(scrub?.total??totals.total):(scrub?scrub.amount:totals.perPerson)}/>: '—'}</strong></span>}
           </div>
-          {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)} onSplitChange={setSplitOpen}/>}
+          {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)} onSplitChange={setSplitOpen} unassigned={roundingUnassigned} onDecide={demoView?undefined:origin=>setAllocationBreakdown({origin})}/>}
           {!personal&&!demoView&&hasSettlementData&&<button className="allocation-breakdown-trigger" onClick={event=>setAllocationBreakdown({origin:panelOrigin(event.currentTarget)})}><UsersRound size={16}/><span>負担の内訳</span><small>{Object.keys(allocations).length}人{!!roundingRemainder&&` · 端数${roundingRemainder.toLocaleString('ja-JP')}円${roundingUnassigned?'（未選択）':''}`}</small><ChevronRight size={15}/></button>}
           <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth} onPreview={setScrub}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
