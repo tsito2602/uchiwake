@@ -3,6 +3,7 @@ import { animatePanel, animatePanelSurroundings, cancelPanel, reversePanel, type
 import { trackPanelViewport } from './panel-viewport';
 import { lockOverlayBackground } from './overlay-lock';
 import { registerPanel } from './panel-stack';
+import { springAnimate } from './cartoon-motion';
 export type { PanelOrigin } from './kondo-panel-motion';
 
 export const panelOrigin = (element:HTMLElement):PanelOrigin => {
@@ -63,10 +64,12 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const animation=motion.current;
     if(!animation){exited.current();return;}
     // Reverse the retained entrance, including a dismissal before it finishes.
+    const source=document.querySelector<HTMLElement>('.panel-source[data-panel-source="true"]');
     reversePanel(animation,companions.current);
     let active=true;
-    const finish=()=>{if(active){active=false;exited.current();}};
-    const timer=window.setTimeout(finish,600);
+    // Back in its place, the card gives a small squish like the mock.
+    const finish=()=>{if(active){active=false;exited.current();if(source?.isConnected)springAnimate(source,{scale:'1.06 .94'},{scale:'1 1'},{stiffness:420,damping:12});}};
+    const timer=window.setTimeout(finish,(Number(animation.effect?.getComputedTiming().endTime)||500)+120);
     void animation.finished.then(finish,()=>undefined);
     return()=>{active=false;window.clearTimeout(timer);};
   },[closing]);

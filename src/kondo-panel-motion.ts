@@ -10,9 +10,17 @@ function springCurve(stiffness:number,damping:number){
   for(let i=0;i<240&&!(i>20&&Math.abs(x-1)<.001&&Math.abs(v)<.01);i++){v+=(-stiffness*(x-1)-damping*v)/120;x+=v/120;points.push(x);}
   points[points.length-1]=1;
   const stride=Math.max(1,Math.floor(points.length/48));
-  return `linear(${points.filter((_,i)=>i%stride===0||i===points.length-1).map(p=>+p.toFixed(4)).join(',')})`;
+  return {easing:`linear(${points.filter((_,i)=>i%stride===0||i===points.length-1).map(p=>+p.toFixed(4)).join(',')})`,duration:Math.round((points.length-1)/120*1000)};
 }
-export const morphTiming:KeyframeAnimationOptions={duration:320,easing:linearEasing?springCurve(380,23):'cubic-bezier(.3, 1.18, .42, 1)',fill:'both'};
+export const morphTiming:KeyframeAnimationOptions={duration:320,easing:linearEasing?springCurve(380,23).easing:'cubic-bezier(.3, 1.18, .42, 1)',fill:'both'};
+// The mock's card → panel: the card's own box grows into the panel on a
+// k300/c23 spring (about 6% past, then back), and returns on k420/c30.
+const growSpring=springCurve(300,23),foldSpring=springCurve(420,30);
+export const growTiming:KeyframeAnimationOptions={duration:growSpring.duration,easing:linearEasing?growSpring.easing:'cubic-bezier(.3, 1.25, .42, 1)',fill:'both'};
+export const foldTiming:KeyframeAnimationOptions={duration:foldSpring.duration,easing:linearEasing?foldSpring.easing:'cubic-bezier(.3, 1.1, .42, 1)',fill:'both'};
+const CARD_RADIUS=20;
+type Morph={frame:HTMLElement;folded:Keyframe;glass?:HTMLElement;foldedGlass?:string;openGlass?:string;content?:HTMLElement;rows:HTMLElement[]};
+const morphs=new WeakMap<Animation,Morph>();
 const completedEntrances=new WeakMap<Animation,CSSNumberish>();
 const panelParts=new WeakMap<Animation,Animation[]>();
 
@@ -47,21 +55,36 @@ export function animatePanelSurroundings(panel:HTMLElement,main:HTMLElement|null
 
 export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
   const bounds=panel.getBoundingClientRect();
-  const full:Keyframe={transform:'translateY(0px)'};
-  let folded:Keyframe={transform:'translateY(48px)'};
   const glass=panel.querySelector<HTMLElement>(':scope > .card-panel-glass');
   const content=panel.querySelector<HTMLElement>(':scope > .card-panel');
   const radius=window.getComputedStyle(panel).borderRadius||'0px';
   const parts:Animation[]=[];
-  let foldedGlass=`inset(100% 0px 0px 0px round ${radius})`;
-  if(glass&&source&&source.width>100&&source.height>65&&source.top+source.height>bounds.top&&source.top<bounds.bottom&&source.left+source.width>bounds.left&&source.left<bounds.right){
-    const top=Math.max(0,source.top-bounds.top);
-    const right=Math.max(0,bounds.right-source.left-source.width);
-    const bottom=Math.max(0,bounds.bottom-source.top-source.height);
-    const left=Math.max(0,source.left-bounds.left);
-    foldedGlass=`inset(${top}px ${right}px ${bottom}px ${left}px round 16px)`;
-    folded={transform:'translateY(0px)'};
+  if(source&&source.width>100&&source.height>65&&source.top+source.height>bounds.top&&source.top<bounds.bottom&&source.left+source.width>bounds.left&&source.left<bounds.right){
+    // The card itself grows: its box is mapped onto the panel's and springs open.
+    const sx=source.width/bounds.width,sy=source.height/bounds.height;
+    const dx=source.left-bounds.left,dy=source.top-bounds.top;
+    const folded:Keyframe={transformOrigin:'0px 0px',transform:`translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`};
+    const full:Keyframe={transformOrigin:'0px 0px',transform:'translate(0px, 0px) scale(1, 1)'};
+    // Undo the squash on the corners so they stay the card's while it grows.
+    const foldedGlass=`inset(0px 0px 0px 0px round ${(CARD_RADIUS/sx).toFixed(2)}px / ${(CARD_RADIUS/sy).toFixed(2)}px)`;
+    const openGlass=`inset(0px 0px 0px 0px round ${radius})`;
+    if(glass)parts.push(glass.animate([{clipPath:foldedGlass},{clipPath:openGlass}],{...growTiming,fill:'backwards'}));
+    // Text waits until the box is mostly open, then each row rises 10px in turn.
+    const rows=content?[...content.querySelectorAll<HTMLElement>('.card-panel-header, .card-panel-scroll > *')].slice(0,8):[];
+    if(content)parts.push(content.animate([{opacity:0,clipPath:foldedGlass},{opacity:0,offset:.22},{opacity:1,clipPath:openGlass}],{duration:growTiming.duration,easing:'linear',fill:'backwards'}));
+    rows.forEach((row,index)=>parts.push(row.animate([{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'translateY(0px)'}],{duration:220,delay:Number(growTiming.duration)*.3+index*40,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'backwards'})));
+    const animation=panel.animate([folded,full],{...growTiming,fill:'backwards'});
+    panelParts.set(animation,parts);
+    morphs.set(animation,{frame:panel,folded,glass:glass??undefined,foldedGlass,openGlass,content:content??undefined,rows});
+    void animation.finished.then(()=>{
+      if(animation.playbackRate<=0||animation.playState!=='finished'||morphs.get(animation)?.frame.dataset.folding)return;
+      animation.cancel();parts.forEach(part=>part.cancel());
+    },()=>undefined);
+    return animation;
   }
+  const full:Keyframe={transform:'translateY(0px)'};
+  const folded:Keyframe={transform:'translateY(48px)'};
+  const foldedGlass=`inset(100% 0px 0px 0px round ${radius})`;
   // Never fade the glass's ancestor. Opacity below 1 creates a backdrop root,
   // cutting off the page from its blur until the entrance ends (a second step).
   // Reveal the constant-tint glass spatially and fade only its content sibling.
@@ -69,8 +92,6 @@ export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
     {clipPath:foldedGlass},
     {clipPath:`inset(0px 0px 0px 0px round ${radius})`},
   ],{...morphTiming,fill:'backwards'}));
-  // The photograph and text must share the glass's reveal boundary; fading
-  // full-size content alone exposes the photo before its panel has unfolded.
   if(content)parts.push(content.animate([
     {opacity:0,clipPath:foldedGlass},
     {opacity:1,clipPath:`inset(0px 0px 0px 0px round ${radius})`},
@@ -97,6 +118,33 @@ export function cancelPanel(animation:Animation) {
 }
 
 export function reversePanel(animation:Animation,companions:Animation[]) {
+  const morph=morphs.get(animation);
+  if(morph){
+    // Fold back into the card on a firmer spring, starting from wherever the
+    // box is now (a dismissal while it is still growing included).
+    const {frame,folded,glass,foldedGlass,openGlass,content,rows}=morph;
+    frame.dataset.folding='true';
+    const style=window.getComputedStyle(frame),now:Keyframe={transformOrigin:'0px 0px',transform:style.transform==='none'?'translate(0px, 0px) scale(1, 1)':style.transform};
+    const glassNow=glass?window.getComputedStyle(glass).clipPath:'';
+    panelParts.get(animation)?.forEach(part=>part.cancel());rows.forEach(row=>row.getAnimations?.().forEach(a=>a.cancel()));
+    animation.effect&&(animation.effect as KeyframeEffect).setKeyframes([now,folded]);
+    animation.effect?.updateTiming({duration:Number(foldTiming.duration),easing:String(foldTiming.easing),fill:'both',delay:0});
+    animation.currentTime=0;animation.playbackRate=1;animation.play();
+    const parts:Animation[]=[];
+    if(glass)parts.push(glass.animate([{clipPath:glassNow&&glassNow!=='none'?glassNow:openGlass},{clipPath:foldedGlass}],foldTiming));
+    if(content)parts.push(content.animate([{opacity:1},{opacity:0,offset:.35},{opacity:0}],{duration:foldTiming.duration,easing:'linear',fill:'both'}));
+    panelParts.set(animation,parts);
+    const duration=Number(foldTiming.duration);
+    for(const companion of companions){
+      companion.effect?.updateTiming({fill:'both'});
+      const end=Number(companion.effect?.getComputedTiming().endTime)||320;
+      const time=companion.currentTime==null?end:Math.min(end,Number(companion.currentTime));
+      companion.currentTime=time;
+      companion.playbackRate=-Math.max(.6,time/duration);
+      companion.play();
+    }
+    return;
+  }
   const completedTime=completedEntrances.get(animation);
   const time=completedTime??animation.currentTime;
   completedEntrances.delete(animation);

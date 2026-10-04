@@ -51,6 +51,9 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
   // spring and the trailing edge follows on a soft one, so the fill stretches
   // toward the new tab, then gathers itself there.
   const tabsNav=useRef<HTMLElement|null>(null);
+  const swipe=useRef(false);
+  const island=useRef<LiveSpring|null>(null);
+  island.current??=new LiveSpring(1,value=>{const nav=tabsNav.current;if(nav)nav.style.scale=Math.abs(value-1)<.0005?'':`${(2-value).toFixed(4)} ${value.toFixed(4)}`;},{stiffness:600,damping:18});
   const edges=useRef<{left:LiveSpring;right:LiveSpring}|null>(null);
   const target=preview??selected;
   useLayoutEffect(()=>{
@@ -70,8 +73,16 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
   const monthDrag=useRef<{id:number;x:number;y:number;dragging:boolean;armed:boolean}|null>(null);
   const monthSpring=useRef<LiveSpring|null>(null);
   const swallowMonthClick=useRef(false);
-  const monthOffset=(value:number)=>{const label=monthLabel.current?.querySelector<HTMLElement>('.dock-month-value');if(label){label.style.translate=value?`${value.toFixed(2)}px 0`:'';label.style.opacity=value?String(1-Math.min(.5,Math.abs(value)/88)):'';}};
-  monthSpring.current??=new LiveSpring(0,monthOffset,'boing');
+  const monthOffset=(value:number)=>{const label=monthLabel.current?.querySelector<HTMLElement>('.dock-month-value');if(label)label.style.translate=value?`${value.toFixed(2)}px 0`:'';};
+  monthSpring.current??=new LiveSpring(0,monthOffset,{stiffness:520,damping:26});
+  const monthStretch=useRef<LiveSpring|null>(null);
+  monthStretch.current??=new LiveSpring(1,value=>{const pill=monthLabel.current;if(pill)pill.style.scale=Math.abs(value-1)<.0005?'':`${value.toFixed(4)} 1`;},{stiffness:520,damping:16});
+  const shownMonth=useRef(month);
+  useLayoutEffect(()=>{
+    const before=shownMonth.current;shownMonth.current=month;
+    if(!before||!month||before===month)return;
+    monthSpring.current!.set(month>before?-40:40);monthSpring.current!.to(0,{stiffness:420,damping:16});
+  },[month]);
   function monthDown(event:PointerEvent<HTMLDivElement>){
     if(event.button!==0||!event.isPrimary||(event.target as HTMLElement).closest('button'))return;
     monthDrag.current={id:event.pointerId,x:event.clientX,y:event.clientY,dragging:false,armed:false};
@@ -82,7 +93,8 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
     if(!drag.dragging){if(Math.abs(dx)<8||Math.abs(dx)<Math.abs(event.clientY-drag.y))return;drag.dragging=true;event.currentTarget.setPointerCapture(event.pointerId);}
     const armed=Math.abs(dx)>36;
     if(armed!==drag.armed){drag.armed=armed;if(armed)haptic();}
-    monthSpring.current!.set(Math.sign(dx)*Math.min(44,Math.abs(dx)*.55));
+    monthSpring.current!.set(Math.sign(dx)*Math.min(70,Math.abs(dx)*.55));
+    monthStretch.current!.set(1+Math.min(Math.abs(dx),90)/520);
   }
   function monthUp(event:PointerEvent<HTMLDivElement>){
     const drag=monthDrag.current;if(drag?.id!==event.pointerId)return;monthDrag.current=null;
@@ -90,12 +102,10 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
     if(!drag.dragging)return;
     swallowMonthClick.current=true;window.setTimeout(()=>{swallowMonthClick.current=false;},0);
     const dx=event.clientX-drag.x;
+    monthStretch.current!.to(1,{stiffness:420,damping:10});
     if(Math.abs(dx)>36&&event.type==='pointerup'){
-      // The new month arrives from the side the finger pulled toward.
-      monthSpring.current!.set(dx<0?40:-40);
       if(dx<0)onNextMonth();else onPrevMonth();
-    }
-    monthSpring.current!.to(0,'boing');
+    }else monthSpring.current!.to(0,{stiffness:420,damping:14});
   }
   useEffect(()=>{if(context||add?.disabled)setMenuPhase('closed');},[!!context,add?.disabled]);
   function hit(event:PointerEvent<HTMLElement>) {
@@ -104,6 +114,7 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
     return dockTabAt(event.clientX,event.clientY,Array.from(buttons,button=>button.getBoundingClientRect()));
   }
   function release() {
+    if(!swipe.current)island.current?.to(1,{stiffness:420,damping:12});
     const held=pointer.current;
     pointer.current=null;setPreview(null);
     if(held?.target.hasPointerCapture(held.id))held.target.releasePointerCapture(held.id);
@@ -120,21 +131,30 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
     // Capture only once the finger slides: a plain tap must reach the tab's
     // haptic switch, which pointer capture would redirect to the nav.
     pointer.current={id:event.pointerId,target:event.currentTarget,x:event.clientX,y:event.clientY};
+    swipe.current=false;island.current!.to(.97,{stiffness:600,damping:18});
     setPreview(hit(event));
   }
   function move(event:PointerEvent<HTMLElement>) {
     const held=pointer.current;if(held?.id!==event.pointerId)return;
     const dy=event.clientY-held.y;
-    // Swiping up on the tab island stretches it into the space list.
-    if(space&&dy<-28&&Math.abs(event.clientX-held.x)<-dy*.8){
-      const nav=held.target;release();swallowClick.current=true;window.setTimeout(()=>{swallowClick.current=false;},0);
-      haptic();space.onOpen(nav);return;
+    // Pulling up on the tab island stretches it like taffy; let go past the
+    // mark and it grows into the space list.
+    if(space&&(swipe.current||(dy<-6&&Math.abs(event.clientX-held.x)<-dy*.8))){
+      if(!swipe.current){swipe.current=true;if(!held.target.hasPointerCapture(held.id))held.target.setPointerCapture(held.id);setPreview(null);}
+      island.current!.set(1+Math.min(.18,Math.max(0,-dy)/260));
+      return;
     }
     if(!held.target.hasPointerCapture(held.id)&&Math.hypot(event.clientX-held.x,dy)>6)held.target.setPointerCapture(held.id);
     setPreview(hit(event));
   }
   function up(event:PointerEvent<HTMLElement>) {
     const held=pointer.current;if(held?.id!==event.pointerId)return;
+    island.current!.to(1,{stiffness:420,damping:12});
+    if(swipe.current){
+      swipe.current=false;const nav=held.target;release();swallowClick.current=true;window.setTimeout(()=>{swallowClick.current=false;},0);
+      if(space&&event.clientY-held.y<-24){haptic();space.onOpen(nav);}
+      return;
+    }
     // A plain tap selects through the tab's own click, which on iPhone first
     // passes through its haptic switch. Switching tabs here would change the
     // page before that click, and iOS then drops the click and its tick.
@@ -170,7 +190,7 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
           {context.secondaryAction&&separateSecondary&&<div className="context-island context-delete"><button aria-label={context.secondaryAction.label} onClick={context.secondaryAction.onAction} disabled={context.secondaryAction.disabled}><Trash2 size={22} aria-hidden="true"/></button></div>}
           {context.trailingEdit&&<div className="context-island context-edit"><button aria-label={context.trailingEdit.label} onClick={context.trailingEdit.onAction} disabled={context.trailingEdit.disabled}><Pencil size={22} aria-hidden="true"/></button></div>}
         </nav>
-          :<div className={`browse-dock${add?' has-add':''}${showMonth?'':' no-month'}`}><nav ref={tabsNav} className="safari-dock" data-wide="true" data-liquid="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={event=>{if(pointer.current?.id===event.pointerId)release();}} onLostPointerCapture={event=>{if(pointer.current?.id===event.pointerId)release();}} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
+          :<div className={`browse-dock${add?' has-add':''}${showMonth?'':' no-month'}`}><nav ref={tabsNav} className="safari-dock" data-wide="true" data-liquid="true" aria-label="メインメニュー" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={event=>{if(pointer.current?.id===event.pointerId)release();}} onLostPointerCapture={event=>{if(event.target===event.currentTarget&&pointer.current?.id===event.pointerId)release();}} onClickCapture={event=>{if(swallowClick.current){event.preventDefault();event.stopPropagation();swallowClick.current=false;}}} style={{'--selection-tab':preview??selected} as CSSProperties}>
             <span className="dock-selection" aria-hidden="true"/>
             {dockTabs.map((item,index)=>item.key==='settings'&&space
               ?<button key={item.key} data-dock-index={index} className="dock-space-tab" aria-current={tab===item.key?'page':undefined} aria-label={`スペース：${space.name}。切り替えと設定`} aria-haspopup="dialog" aria-expanded={!!space.open} onClick={event=>space.onOpen(event.currentTarget.closest('nav')??event.currentTarget)}><DockFaces faces={space.faces} spaceName={space.name}/></button>

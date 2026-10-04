@@ -34,11 +34,13 @@ const {render}=await import('data:text/javascript;base64,'+Buffer.from(bundle).t
 
 function fixture(t,tab='home') {
   globalThis.window={setTimeout};
+  // The island's press spring only needs frames to be requested.
+  globalThis.requestAnimationFrame??=()=>0;globalThis.cancelAnimationFrame??=()=>{};
   const selected=[],capture=new Set();
   const content=render({tab,onSelect:value=>selected.push(value),month:'2026-09',onMonthChange:()=>assert.fail('must not change month'),onPrevMonth(){},onNextMonth(){}});
   const nav=content.props.children.find(child=>child?.type==='nav').props;
   const target={querySelectorAll:()=>bounds.map(rect=>({getBoundingClientRect:()=>rect})),setPointerCapture:id=>capture.add(id),hasPointerCapture:id=>capture.has(id),releasePointerCapture:id=>capture.delete(id)};
-  const event=(x,y=900,id=1)=>({button:0,isPrimary:true,pointerId:id,clientX:x,clientY:y,currentTarget:target});
+  const event=(x,y=900,id=1)=>({button:0,isPrimary:true,pointerId:id,clientX:x,clientY:y,target,currentTarget:target});
   return {nav,event,selected,capture};
 }
 

@@ -1,70 +1,139 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { haptic } from './haptics';
-import { LiveSpring, reducedMotion, springAnimate } from './cartoon-motion';
-import { Money } from './money';
+import { LiveSpring, reducedMotion } from './cartoon-motion';
+import { NumberTicker } from './number-ticker';
 
 export type SplitPerson={id:string;name:string;amount:number};
 
-const STEP=5;
-const percents=(people:SplitPerson[])=>{
+const STEP=.05;
+const initial=(name:string)=>Array.from(name.trim())[0]??'';
+const shares=(people:SplitPerson[])=>{
   const total=people.reduce((sum,person)=>sum+Math.max(0,person.amount),0);
-  if(!total)return people.map(()=>Math.round(100/Math.max(1,people.length)));
-  const raw=people.map(person=>Math.max(0,person.amount)/total*100);
-  const rounded=raw.map(Math.floor);let rest=100-rounded.reduce((a,b)=>a+b,0);
-  raw.map((value,index)=>[value-Math.floor(value),index] as const).sort((a,b)=>b[0]-a[0]).forEach(([,index])=>{if(rest-->0)rounded[index]++;});
-  return rounded;
+  return people.map(person=>total?Math.max(0,person.amount)/total:1/Math.max(1,people.length));
 };
 
-// Who carries what, as one bar. Joined, it still names everyone and their
-// share. A tap tears it apart into each person's amount; with two people the
-// seam between the pieces can be dragged in 5% steps to change the split.
+// Who carries what, as one gooey bar. Joined, it still names everyone and
+// their share. A tap stretches it until it tears in two: the hero amount
+// squashes away and each person's amount springs out in its place. With two
+// people the seam can then be pulled in 5% steps to change the split.
 export function SplitBar({people,editable,onCommit}:{people:SplitPerson[];editable:boolean;onCommit?:(firstPercent:number)=>void}) {
-  const [torn,setTorn]=useState(false);
-  const [drag,setDrag]=useState<number|null>(null);
+  const filter=`split-goo-${useId().replace(/:/g,'')}`;
   const root=useRef<HTMLDivElement>(null);
-  const gap=useRef<LiveSpring|null>(null);
-  const press=useRef<{id:number;x:number;start:number;width:number;moved:boolean}|null>(null);
-  const base=percents(people);
-  const shown=drag===null||people.length!==2?base:[drag,100-drag];
+  const [split,setSplit]=useState(false);
+  const [slot,setSlot]=useState<HTMLElement|null>(null);
+  const base=shares(people);
+  const pair=people.length===2;
+  const [ratio,setRatio]=useState(base[0]);
   const total=people.reduce((sum,person)=>sum+person.amount,0);
-  gap.current??=new LiveSpring(0,value=>root.current?.style.setProperty('--split-gap',`${Math.max(0,value).toFixed(2)}px`),'boing');
-  useEffect(()=>()=>gap.current?.stop(),[]);
-  useEffect(()=>{gap.current?.to(torn?6:0,torn?{stiffness:380,damping:12}:'squish');},[torn]);
+  const shown=pair?[ratio,1-ratio]:base;
+  const amounts=pair&&Math.abs(ratio-base[0])>.001?[Math.round(total*ratio),total-Math.round(total*ratio)]:people.map(person=>person.amount);
+  const springs=useRef<{gap:LiveSpring;ratio:LiveSpring;squash:LiveSpring;heroX:LiveSpring;heroY:LiveSpring;heroOpacity:LiveSpring;nums:LiveSpring[]}|null>(null);
+  const shapes=useRef(base);shapes.current=base;
+  const drag=useRef<{id:number;left:number;width:number;moved:boolean}|null>(null);
+
+  function draw(){
+    const node=root.current,s=springs.current;if(!node||!s)return;
+    const width=node.clientWidth,gap=Math.max(0,s.gap.value),squash=s.squash.value;
+    const pieces=[...node.querySelectorAll<HTMLElement>('.split-bar-piece')],labels=[...node.querySelectorAll<HTMLElement>('.split-bar-label')];
+    const parts=pair?[s.ratio.value,1-s.ratio.value]:shapes.current;
+    const gaps=Math.max(0,parts.length-1)*gap;let left=0;
+    parts.forEach((part,index)=>{
+      const w=Math.max(0,part*(width-gaps)),piece=pieces[index],label=labels[index];
+      if(piece){piece.style.left=`${left}px`;piece.style.width=`${w}px`;piece.style.transform=`scaleY(${squash})`;}
+      if(label){
+        const edge=index===0?-1:index===parts.length-1?1:0;
+        label.style.left=`${left}px`;label.style.width=`${w}px`;label.style.transform=`translateX(${edge*gap*.15}px)`;
+        label.style.opacity=w>(index===0?96:112)?'1':'0';
+      }
+      left+=w+gap;
+    });
+    const seam=node.querySelector<HTMLElement>('.split-bar-seam');
+    if(seam)seam.style.left=`${s.ratio.value*(width-gap)+gap/2}px`;
+    const hero=node.closest('.settlement-hero')?.querySelector<HTMLElement>('.hero-money');
+    if(hero){hero.style.transform=s.heroX.value===1&&s.heroY.value===1?'':`scale(${s.heroX.value},${s.heroY.value})`;hero.style.opacity=s.heroOpacity.value>=.999?'':String(Math.max(0,s.heroOpacity.value));}
+    const nums=slot?[...slot.querySelectorAll<HTMLElement>('.hero-split-person')]:[];
+    nums.forEach((num,index)=>{const v=s.nums[index]?.value??1;num.style.opacity=String(Math.max(0,Math.min(1,1-v)));num.style.transform=`translateY(${v*22}px) scale(${1-v*.35})`;});
+  }
+  const drawRef=useRef(draw);drawRef.current=draw;
+  springs.current??={
+    gap:new LiveSpring(0,()=>drawRef.current(),{stiffness:260,damping:12}),
+    ratio:new LiveSpring(base[0],()=>drawRef.current(),{stiffness:500,damping:30}),
+    squash:new LiveSpring(1,()=>drawRef.current(),{stiffness:500,damping:16}),
+    heroX:new LiveSpring(1,()=>drawRef.current(),{stiffness:520,damping:15}),
+    heroY:new LiveSpring(1,()=>drawRef.current(),{stiffness:520,damping:15}),
+    heroOpacity:new LiveSpring(1,()=>drawRef.current(),{stiffness:300,damping:26}),
+    nums:[0,1,2,3,4,5].map(()=>new LiveSpring(1,()=>drawRef.current(),{stiffness:380,damping:13})),
+  };
+  useLayoutEffect(()=>{setSlot(root.current?.closest('.settlement-hero')?.querySelector<HTMLElement>('.hero-split-slot')??null);},[]);
+  useLayoutEffect(()=>{draw();});
+  useEffect(()=>{
+    const node=root.current;if(!node)return;
+    const observer=new ResizeObserver(()=>drawRef.current());observer.observe(node);
+    return()=>{observer.disconnect();const s=springs.current!;[s.gap,s.ratio,s.squash,s.heroX,s.heroY,s.heroOpacity,...s.nums].forEach(spring=>spring.stop());
+      const hero=node.closest('.settlement-hero')?.querySelector<HTMLElement>('.hero-money');if(hero){hero.style.transform='';hero.style.opacity='';}};
+  },[]);
+  // A new month or a saved split moves the seam to the stored shares.
+  useEffect(()=>{if(drag.current)return;setRatio(base[0]);springs.current!.ratio.to(base[0]);},[base.map(v=>v.toFixed(4)).join()]);
+
+  const later=(ms:number,fn:()=>void)=>window.setTimeout(fn,reducedMotion()?0:ms);
   function toggle(){
-    haptic();setTorn(value=>!value);
-    const bar=root.current?.querySelector('.split-bar-track');
-    if(bar&&!reducedMotion())springAnimate(bar,{transform:'scale(1.04,.86)'},{transform:'scale(1,1)'},{stiffness:420,damping:10});
+    const s=springs.current!,next=!split;setSplit(next);haptic();
+    if(next){
+      s.squash.set(.6);s.squash.to(1,{stiffness:500,damping:16});
+      s.gap.to(14,{stiffness:230,damping:10});
+      s.heroX.to(1.12);s.heroY.to(.7);
+      later(90,()=>{s.heroOpacity.to(0);s.nums.forEach((num,index)=>later(index*70,()=>num.to(0,{stiffness:380,damping:13})));});
+    }else{
+      s.gap.to(0,{stiffness:420,damping:20});
+      if(pair){setRatio(base[0]);s.ratio.to(base[0]);}
+      s.nums.forEach(num=>num.to(1,{stiffness:500,damping:30}));
+      s.heroOpacity.to(1);s.heroX.set(.9);s.heroY.set(1.12);s.heroX.to(1,{stiffness:420,damping:12});s.heroY.to(1,{stiffness:420,damping:12});
+    }
   }
-  const canDrag=editable&&torn&&people.length===2;
-  function seamDown(event:PointerEvent<HTMLSpanElement>){
-    if(!canDrag||event.button!==0)return;
-    event.stopPropagation();event.preventDefault();
-    const width=root.current?.querySelector('.split-bar-track')?.getBoundingClientRect().width??1;
-    press.current={id:event.pointerId,x:event.clientX,start:shown[0],width,moved:false};
-    event.currentTarget.setPointerCapture(event.pointerId);setDrag(shown[0]);
+  const canDrag=editable&&split&&pair;
+  function down(event:PointerEvent<HTMLDivElement>){
+    if(event.button!==0)return;
+    const rect=event.currentTarget.getBoundingClientRect(),x=event.clientX-rect.left;
+    if(canDrag&&Math.abs(x-springs.current!.ratio.value*rect.width)<34){
+      drag.current={id:event.pointerId,left:rect.left,width:rect.width,moved:false};
+      event.currentTarget.setPointerCapture(event.pointerId);springs.current!.squash.to(.82);
+    }else drag.current={id:-1-event.pointerId,left:0,width:0,moved:false};
   }
-  function seamMove(event:PointerEvent<HTMLSpanElement>){
-    const current=press.current;if(current?.id!==event.pointerId)return;
-    const next=Math.max(STEP,Math.min(100-STEP,Math.round((current.start+(event.clientX-current.x)/current.width*100)/STEP)*STEP));
-    if(Math.abs(event.clientX-current.x)>3)current.moved=true;
-    if(next!==drag){haptic();setDrag(next);}
+  function move(event:PointerEvent<HTMLDivElement>){
+    const current=drag.current;if(current?.id!==event.pointerId)return;current.moved=true;
+    const raw=Math.max(.2,Math.min(.8,(event.clientX-current.left)/current.width)),snapped=Math.round(raw/STEP)*STEP;
+    if(Math.abs(snapped-ratio)>.001){haptic();const squash=springs.current!.squash;squash.set(.9);squash.to(1);setRatio(snapped);}
+    springs.current!.ratio.to(snapped,{stiffness:700,damping:34});
   }
-  function seamUp(event:PointerEvent<HTMLSpanElement>){
-    const current=press.current;if(current?.id!==event.pointerId)return;press.current=null;
-    if(drag!==null&&drag!==base[0]&&event.type==='pointerup')onCommit?.(drag);
-    else setDrag(null);
+  function up(event:PointerEvent<HTMLDivElement>){
+    const current=drag.current;drag.current=null;
+    if(current&&current.id===event.pointerId){
+      springs.current!.squash.to(1,{stiffness:420,damping:12});
+      if(current.moved){if(event.type==='pointerup'&&Math.abs(ratio-base[0])>.001)onCommit?.(Math.round(ratio*100));return;}
+    }
+    if(event.type==='pointerup'&&current)toggle();
   }
-  useEffect(()=>{setDrag(null);},[base.join()]);
-  return <div ref={root} className="split-bar" data-torn={torn||undefined} data-dragging={drag!==null||undefined} style={{'--split-gap':'0px'} as CSSProperties}>
-    <button type="button" className="split-bar-track" aria-expanded={torn} aria-label={`負担の割合：${people.map((person,index)=>`${person.name} ${shown[index]}%`).join('、')}。${torn?'タップでまとめる':'タップで金額を表示'}`} onClick={()=>{if(!press.current)toggle();}}>
-      {people.map((person,index)=><span key={person.id} className="split-bar-piece" data-tone={index%3} style={{flexGrow:Math.max(1,shown[index])}}>
-        <span className="split-bar-name">{person.name}</span>
-        <span className="split-bar-share">{shown[index]}%</span>
-        <span className="split-bar-amount" aria-hidden={!torn}>{drag===null?<Money value={person.amount}/>:<Money value={Math.round(total*shown[index]/100)}/>}</span>
+  function key(event:KeyboardEvent<HTMLDivElement>){
+    if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle();return;}
+    if(!canDrag||(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'))return;
+    event.preventDefault();
+    const next=Math.max(.2,Math.min(.8,Math.round(ratio/STEP)*STEP+(event.key==='ArrowLeft'?-STEP:STEP)));
+    setRatio(next);springs.current!.ratio.to(next);onCommit?.(Math.round(next*100));
+  }
+  const percent=(value:number)=>Math.round(value*100);
+  return <>
+    <div ref={root} className="split-bar" data-split={split||undefined} role="button" tabIndex={0} aria-expanded={split}
+      aria-label={`負担の割合：${people.map((person,index)=>`${person.name} ${percent(shown[index])}%`).join('、')}。${split?'タップでまとめる':'タップで金額を表示'}`}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onKeyDown={key}>
+      <svg className="split-bar-filter" aria-hidden="true" width="0" height="0"><filter id={filter}><feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/><feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></svg>
+      <div className="split-bar-goo" style={{filter:`url(#${filter})`}} aria-hidden="true">{people.map((person,index)=><i key={person.id} className="split-bar-piece" data-tone={index%3}/>)}</div>
+      {people.map((person,index)=><span key={person.id} className="split-bar-label" data-tone={index%3} data-edge={index===people.length-1&&index>0?'end':undefined} aria-hidden="true">
+        <i>{initial(person.name)}</i><span className="split-bar-name">{person.name}</span><span className="split-bar-share">{percent(shown[index])}%</span>
       </span>)}
-    </button>
-    {canDrag&&<span className="split-bar-seam" role="slider" aria-label={`${people[0].name}の割合`} aria-valuemin={STEP} aria-valuemax={100-STEP} aria-valuenow={shown[0]} tabIndex={0} style={{left:`calc(${shown[0]}% + (var(--split-gap) * ${(50-shown[0])/100}))`}}
-      onPointerDown={seamDown} onPointerMove={seamMove} onPointerUp={seamUp} onPointerCancel={seamUp}
-      onKeyDown={event=>{const delta=event.key==='ArrowLeft'?-STEP:event.key==='ArrowRight'?STEP:0;if(!delta)return;event.preventDefault();const next=Math.max(STEP,Math.min(100-STEP,shown[0]+delta));setDrag(next);onCommit?.(next);}}/>}
-  </div>;
+      {canDrag&&<span className="split-bar-seam" aria-hidden="true"><span/></span>}
+    </div>
+    <p className="split-bar-hint">{split?(canDrag?'継ぎ目を左右に引くと、負担割合が変わります':'もう一度タップでまとまります'):`${pair?'ふたり':'みんな'}の負担。タップすると、ちぎれて金額が出ます`}</p>
+    {slot&&createPortal(<span className="hero-split-nums" aria-live="polite" aria-hidden={!split}>{people.map((person,index)=><span key={person.id} className="hero-split-person"><small>{person.name}</small><b><NumberTicker value={amounts[index]}/></b></span>)}</span>,slot)}
+  </>;
 }

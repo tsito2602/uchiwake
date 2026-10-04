@@ -11,7 +11,8 @@ import { springEasing } from './cartoon-motion';
 // out of the island, keeping its bottom edge on the dock.
 export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{title:string;children:ReactNode;onClose:()=>void;closing:boolean;onExited:()=>void;anchor?:DOMRect}) {
  const root=useRef<HTMLDivElement>(null),close=useRef(onClose),exit=useRef(onExited);
- const animations=useRef<Animation[]>([]);close.current=onClose;exit.current=onExited;
+ const animations=useRef<Animation[]>([]);
+ const fold=useRef<{sheet:HTMLElement;list:HTMLElement;inset:string;grow:Animation;rise:Animation;island?:HTMLElement;hide?:Animation}|null>(null);close.current=onClose;exit.current=onExited;
  useLayoutEffect(()=>{
   const node=root.current!,previous=document.activeElement as HTMLElement|null;
   const layers=[...document.querySelectorAll<HTMLElement>('main.shell,.floating-nav-host,.space-switcher')];
@@ -26,16 +27,22 @@ export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{ti
   if(sheet&&anchor&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const bounds=sheet.getBoundingClientRect(),radius=getComputedStyle(sheet).borderRadius||'28px';
    const inset=`inset(${Math.max(0,anchor.top-bounds.top)}px ${Math.max(0,bounds.right-anchor.right)}px ${Math.max(0,bounds.bottom-anchor.bottom)}px ${Math.max(0,anchor.left-bounds.left)}px round ${anchor.height/2}px)`;
-   const stretch=springEasing({stiffness:300,damping:21});
+   const stretch=springEasing({stiffness:300,damping:20});
    const fade:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
    animations.current=[
     node.querySelector('.space-veil')!.animate([{opacity:0,backdropFilter:'blur(0px)'},{opacity:1,backdropFilter:'blur(8px)'}],fade),
     sheet.animate([{clipPath:inset},{clipPath:`inset(0px 0px 0px 0px round ${radius})`}],{duration:stretch.duration,easing:stretch.easing,fill:'both'}),
    ];
    const main=layers.find(l=>l.matches('main.shell'));if(main)animations.current.push(animatePanelBackground(main,false));
-   const rows=[...sheet.querySelectorAll<HTMLElement>('.space-sheet-title, .space-sheet-row, hr')];
-   const rise=springEasing('boing');
-   rows.reverse().forEach((row,index)=>animations.current.push(row.animate([{opacity:0,transform:'translateY(18px) scale(.96)'},{opacity:1,transform:'none'}],{duration:rise.duration,easing:rise.easing,fill:'both',delay:60+index*22})));
+   // The island itself becomes the sheet, so it steps aside while the sheet is out.
+   const island=document.querySelector<HTMLElement>('.browse-dock .safari-dock');
+   const hide=island?.animate([{opacity:1},{opacity:0,offset:.02},{opacity:0}],{duration:stretch.duration,fill:'both'});
+   if(hide)animations.current.push(hide);
+   // The list shows once the sheet is more than half open, rising 20px.
+   const list=sheet.querySelector<HTMLElement>('.space-sheet-list')??sheet;
+   const rise=list.animate([{opacity:0,transform:'translateY(20px)'},{opacity:0,transform:'translateY(14px)',offset:.3},{opacity:1,transform:'translateY(0px)'}],{duration:stretch.duration,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'});
+   animations.current.push(rise);
+   fold.current={sheet,list,inset,grow:animations.current[1],rise,island:island??undefined,hide};
   }else if(!sheet&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const timing:KeyframeAnimationOptions={duration:300,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'both'};
    animations.current=[node.querySelector('.space-veil')!.animate([{opacity:0,backdropFilter:'blur(0px)'},{opacity:1,backdropFilter:'blur(8px)'}],timing)];
@@ -66,10 +73,24 @@ export function SpaceDialog({title,children,onClose,closing,onExited,anchor}:{ti
   root.current!.inert=true;
   if(!animations.current.length){exit.current();return;}
   let active=true;const finish=()=>{if(active){active=false;exit.current();}};
-  // Everything retreats together: the veil lifts as the sheet folds back into the island.
-  animations.current.forEach(animation=>{const end=Number(animation.effect?.getComputedTiming().endTime)||300;animation.playbackRate=anchor?-Math.max(.6,end/420):-1.5;animation.play();});
+  const folding=fold.current;
+  if(folding){
+   // The sheet folds back into the island on a firmer spring (k420/c28) from
+   // wherever it is; the veil and the page come back over the same time.
+   const back=springEasing({stiffness:420,damping:28}),clip=getComputedStyle(folding.sheet).clipPath;
+   folding.grow.cancel();folding.rise.cancel();folding.hide?.cancel();
+   const gone=[folding.grow,folding.rise,folding.hide];
+   const parts=[
+    folding.sheet.animate([{clipPath:clip&&clip!=='none'?clip:'inset(0px 0px 0px 0px round 28px)'},{clipPath:folding.inset}],{duration:back.duration,easing:back.easing,fill:'both'}),
+    folding.list.animate([{opacity:1},{opacity:0}],{duration:120,fill:'both'}),
+    // The island takes over again as soon as the sheet is back at its size.
+    ...(folding.island?[folding.island.animate([{opacity:0},{opacity:0,offset:.3},{opacity:1,offset:.42},{opacity:1}],{duration:back.duration,fill:'both'})]:[]),
+   ];
+   animations.current.filter(animation=>!gone.includes(animation)).forEach(animation=>{const end=Number(animation.effect?.getComputedTiming().endTime)||300;animation.playbackRate=-Math.max(.6,end/back.duration);animation.play();});
+   animations.current=[...animations.current.filter(animation=>!gone.includes(animation)),...parts];
+  }else animations.current.forEach(animation=>{animation.playbackRate=-1.5;animation.play();});
   void Promise.all(animations.current.map(animation=>animation.finished)).then(finish,()=>undefined);
-  const timer=window.setTimeout(finish,450);
+  const timer=window.setTimeout(finish,fold.current?560:450);
   return()=>{active=false;clearTimeout(timer);};
  },[closing]);
  return createPortal(<div className="space-overlay" ref={root}><div className="space-veil" onClick={onClose}><HapticTouch/></div>{anchor

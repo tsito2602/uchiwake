@@ -12,7 +12,7 @@ export const SPRINGS={
 export type SpringName=keyof typeof SPRINGS;
 export const SQUISH={press:.94,release:1.05} as const;
 
-export const reducedMotion=()=>typeof window!=='undefined'&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const reducedMotion=()=>typeof window!=='undefined'&&typeof window.matchMedia==='function'&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Samples a unit spring (0→1) so CSS and WAAPI can play it as a linear() easing. */
 export function springSamples({stiffness,damping,mass=1}:Spring,velocity=0,step=1/120,limit=2){
@@ -86,4 +86,33 @@ export function squishPress(element:HTMLElement){
   if(reducedMotion())return()=>{};
   const press=springAnimate(element,{scale:'1'},{scale:String(SQUISH.press)},'squish',{fill:'forwards'});
   return()=>{press?.cancel();springAnimate(element,{scale:String(SQUISH.press)},{scale:'1'},{stiffness:420,damping:11});};
+}
+
+/** The mock's press: under the finger a control spreads and flattens
+ *  (scale 2-v, v), and on release it springs back past its size once. */
+const SQUISH_TARGETS:[string,number][]=[
+  ['.category-chart-row, .space-sheet-row, .ledger-row, .import-review-item',.97],
+  ['.safari-dock button, .dock-add, .fuse-add-options button, .settlement-item, .chart-ranges button, .dock-month button, .context-primary button, .card-panel-close, .category-chart-switch button',.92],
+];
+export function installSquish(root:Document=document){
+  const springs=new WeakMap<HTMLElement,LiveSpring>();
+  let pressed:HTMLElement|null=null;
+  const spring=(element:HTMLElement)=>{
+    let s=springs.get(element);
+    if(!s){s=new LiveSpring(1,v=>{element.style.scale=Math.abs(v-1)<.0005?'':`${(2-v).toFixed(4)} ${v.toFixed(4)}`;},{stiffness:600,damping:22});springs.set(element,s);}
+    return s;
+  };
+  const down=(event:PointerEvent)=>{
+    if(reducedMotion()||event.button!==0)return;
+    const target=event.target instanceof Element?event.target:null;if(!target)return;
+    for(const [selector,amount] of SQUISH_TARGETS){
+      const element=target.closest<HTMLElement>(selector);
+      if(element&&!(element as HTMLButtonElement).disabled){pressed=element;spring(element).to(amount,{stiffness:600,damping:22});return;}
+    }
+  };
+  const up=()=>{if(!pressed)return;spring(pressed).to(1,{stiffness:420,damping:13});pressed=null;};
+  root.addEventListener('pointerdown',down,true);
+  root.addEventListener('pointerup',up,true);
+  root.addEventListener('pointercancel',up,true);
+  return()=>{root.removeEventListener('pointerdown',down,true);root.removeEventListener('pointerup',up,true);root.removeEventListener('pointercancel',up,true);};
 }

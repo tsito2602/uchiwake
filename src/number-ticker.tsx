@@ -10,7 +10,7 @@ const HEIGHT=1.1;
 const ROLL=springSamples({stiffness:260,damping:17}).values;
 const DURATION=Math.round(ROLL.length/120*1000);
 const roll=(t:number)=>ROLL[Math.min(ROLL.length-1,Math.round(t*(ROLL.length-1)))];
-const STAGGER=45;
+const STAGGER=28;
 
 export function NumberTicker({value}:{value:number}) {
   const text=Math.round(value).toLocaleString('ja-JP');
@@ -23,7 +23,8 @@ export function NumberTicker({value}:{value:number}) {
     if(!node)return;
     node.dataset.settled='true';
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-    if(before===text||reduced.matches)return;
+    // Like the mock: a change in shape (one more or fewer digit) redraws at once.
+    if(before===text||reduced.matches||(before!==null&&before.replace(/[0-9]/g,'0')!==text.replace(/[0-9]/g,'0')))return;
     const bounds=node.getBoundingClientRect();
     if(bounds.bottom<0||bounds.top>window.innerHeight)return;
     const reels=[...node.querySelectorAll<HTMLElement>('.number-ticker-reel')].map(reel=>{

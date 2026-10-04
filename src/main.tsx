@@ -21,7 +21,7 @@ import { streamStatement } from './statement-import-stream';
 import { readStatementFile, mergeStatementFiles, type StatementFile } from './statement-files';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { installSpringTokens } from './cartoon-motion';
+import { installSpringTokens, installSquish, springAnimate } from './cartoon-motion';
 import { Money } from './money';
 import { SplitBar } from './split-bar';
 import { PullRefresh } from './pull-refresh';
@@ -167,6 +167,23 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [chartMonths,setChartMonths]=useState<6|12|36|60>(6);
   // Scrubbing the bar chart: the hero figure follows the bar under the finger.
   const [scrub,setScrub]=useState<HistoryPoint|null>(null);
+  // The month-on-month chip puffs up when spending rose and sinks when it fell.
+  const deltaSeen=useRef(false);
+  const playDelta=useCallback((node:HTMLElement|null)=>{
+    if(!node)return;
+    if(!deltaSeen.current){deltaSeen.current=true;return;}
+    if(node.dataset.trend==='up')springAnimate(node,{scale:'.7'},{scale:'1'},{stiffness:420,damping:9});
+    else if(node.dataset.trend==='down')springAnimate(node,{scale:'1.08 .72',translate:'0 5px'},{scale:'1 1',translate:'0 0'},{stiffness:300,damping:16});
+  },[]);
+  // Switching space slides the page in from the side of the space chosen.
+  const shownSpaceId=useRef(space.id);
+  useLayoutEffect(()=>{
+    const before=shownSpaceId.current;shownSpaceId.current=space.id;
+    if(before===space.id)return;
+    const from=spaces.findIndex(item=>item.id===before),to=spaces.findIndex(item=>item.id===space.id),d=to>=from?1:-1;
+    const page=document.getElementById('main-content');
+    if(page)springAnimate(page,{translate:`${d*-60}px 0`,opacity:.5},{translate:'0px 0',opacity:1},{stiffness:300,damping:22});
+  },[space.id]);
   async function load() {
     const request=++requestId.current;
     loadRequest.current?.abort();
@@ -522,11 +539,11 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         <p className="space-current-name">{space.name}</p>
         <section className="hero settlement-hero">
           <button type="button" className="settlement-amount-toggle" aria-label={personal?'今月の支出合計':`現在は${showTotalFirst?'支払い合計':'あなたの負担額'}を大きく表示。タップして切り替え`} aria-pressed={showTotalFirst} onClick={()=>{if(!personal)setShowTotalFirst(value=>!value);}}>
-            <span className="hero-label">{showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{personal?'支出合計':showTotalFirst?'支払い合計':'あなたの負担額'}{!personal&&<><span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></>}</span>
-            <span className="hero-money" data-scrub={scrub?'true':undefined}>{scrub?<NumberTicker value={personal||showTotalFirst?scrub.total:scrub.amount}/>:hasSettlementData?<NumberTicker value={personal||showTotalFirst?totals.total:totals.perPerson}/>: '—'}{scrub&&<small className="hero-scrub-month">{Number(scrub.month.slice(5))}月</small>}</span>
+            <span className="hero-label">{showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{scrub?`${Number(scrub.month.slice(5))}月の`:''}{personal?'支出合計':showTotalFirst?'支払い合計':'あなたの負担額'}{!personal&&<><span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></>}</span>
+            <span className="hero-stage"><span className="hero-money" data-scrub={scrub?'true':undefined}>{scrub?<NumberTicker value={personal||showTotalFirst?scrub.total:scrub.amount}/>:hasSettlementData?<NumberTicker value={personal||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span><span className="hero-split-slot"/></span>
             <span className="hero-secondary" hidden={personal}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
           </button>
-          {monthDelta!==null&&<p className="hero-delta" key={`${displayedMonth}-${showTotalFirst}`} data-trend={monthDelta<0?'down':monthDelta>0?'up':'flat'}>{monthDelta<0?<ArrowDown size={13} aria-hidden="true"/>:monthDelta>0?<ArrowUp size={13} aria-hidden="true"/>:<Equal size={13} aria-hidden="true"/>}{monthDelta===0?'先月と同じ':`先月より${yen(Math.abs(monthDelta))}${monthDelta<0?'少ない':'多い'}`}</p>}
+          {monthDelta!==null&&<p className="hero-delta" key={`${displayedMonth}-${showTotalFirst}`} data-trend={monthDelta<0?'down':monthDelta>0?'up':'flat'} ref={playDelta}>{monthDelta<0?<ArrowDown size={13} aria-hidden="true"/>:monthDelta>0?<ArrowUp size={13} aria-hidden="true"/>:<Equal size={13} aria-hidden="true"/>}{monthDelta===0?'先月と同じ':`先月より${yen(Math.abs(monthDelta))}${monthDelta<0?'少ない':'多い'}`}</p>}
           {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)}/>}
           {!personal&&!demoView&&hasSettlementData&&<button className="allocation-breakdown-trigger" onClick={event=>setAllocationBreakdown({origin:panelOrigin(event.currentTarget)})}><UsersRound size={16}/><span>負担の内訳</span><small>{Object.keys(allocations).length}人{!!roundingRemainder&&` · 端数${roundingRemainder.toLocaleString('ja-JP')}円${roundingUnassigned?'（未選択）':''}`}</small><ChevronRight size={15}/></button>}
           <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth} onPreview={setScrub}/>
@@ -597,5 +614,5 @@ function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string})
 function EmptySymbol() {return <svg className="empty-symbol" viewBox="0 0 64 64" aria-hidden="true"><path className="empty-slip" d="M18 8h28a4 4 0 0 1 4 4v42l-6-4-6 4-6-4-6 4-6-4-6 4V12a4 4 0 0 1 4-4Z"/><path className="empty-line" d="M24 22h16"/><path className="empty-line" d="M24 30h10"/><path className="empty-line" d="M24 38h13"/></svg>}
 function BillRow({bill,onEdit}:{bill:Bill;onEdit:()=>void}) {return <div className="row"><div className="row-symbol">{bill.kind==='card'?<CreditCard size={19}/>:bill.kind==='rent'?<Home size={19}/>:<ArrowDownLeft size={19}/>}</div><div className="row-content"><strong>{bill.title}</strong><small>{billKinds[bill.kind]}{bill.note?` · ${bill.note}`:''}</small></div><strong className="row-money">{yen(bill.amount)}</strong><button className="row-edit" onClick={onEdit} aria-label={`${bill.title}を編集`}>編集</button></div>}
 hapticEverywhere();
-installSpringTokens();
+installSpringTokens();installSquish();
 createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut,updateProfile)=><SpaceApp key={user.id} user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>}</AuthGate>);

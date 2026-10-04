@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { reducedMotion } from './cartoon-motion';
+import { LiveSpring, reducedMotion, springAnimate } from './cartoon-motion';
 import { displayColor } from './display-color';
 import { NativeMonthPicker } from './native-month-picker';
 import { Check, ChevronDown, CreditCard, FileImage, FileText, Files, Table2, Plus, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
@@ -54,7 +54,7 @@ export function ImportEntryLine({entry,settings}:{entry:EntryDraft;settings:Cate
   const appearance=categoryAppearance(entry.category,settings);
   const label=entry.import_meta?.status==='pending'?'仕分け待ち':entry.import_meta?.status==='classifying'?'仕分け中…':entry.category;
   const causes=entry.import_meta?.status==='review'?entry.import_meta.review_causes:undefined;
-  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color)}}>{label}</span>{!!causes?.length&&<small>{causes.map(reviewCauseLabel).join('・')}</small>}</span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
+  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color),'--tag-color':displayColor(appearance.color)} as React.CSSProperties}>{label}</span>{!!causes?.length&&<small>{causes.map(reviewCauseLabel).join('・')}</small>}</span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
 }
 
 export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {
@@ -95,70 +95,103 @@ const sorted=(entry:EntryDraft)=>!entry.import_meta||entry.import_meta.status===
 
 // The breakdown grows as rows are sorted: one stacked bar in proportion to
 // each category's amount, with a legend that wraps however many categories
-// there are. Rows still waiting for a decision show as a hatched piece.
+// there are. Each time a category gains a row its piece springs wider and
+// bounces, and its legend count pops. Rows waiting for a decision are hatched.
+function MixPiece({amount,color,review}:{amount:number;color?:string;review:boolean}) {
+  const node=useRef<HTMLSpanElement>(null);
+  const springs=useRef<{grow:LiveSpring;squash:LiveSpring}|null>(null);
+  springs.current??={
+    grow:new LiveSpring(0,value=>{if(node.current)node.current.style.flexGrow=String(Math.max(0,value));},{stiffness:260,damping:20}),
+    squash:new LiveSpring(1,value=>{if(node.current)node.current.style.transform=`scaleY(${value.toFixed(3)})`;},{stiffness:520,damping:12}),
+  };
+  useLayoutEffect(()=>{const s=springs.current!;s.grow.to(amount);s.squash.set(1.9);s.squash.to(1);},[amount]);
+  useEffect(()=>()=>{springs.current?.grow.stop();springs.current?.squash.stop();},[]);
+  return <span ref={node} data-review={review||undefined} style={{background:color,flexGrow:0}}/>;
+}
+function MixLegend({label,count,color,review}:{label:string;count:number;color?:string;review:boolean}) {
+  const node=useRef<HTMLLIElement>(null);
+  const pop=useRef<LiveSpring|null>(null);
+  pop.current??=new LiveSpring(0,value=>{if(node.current)node.current.style.transform=`scale(${Math.max(0,value).toFixed(3)})`;},{stiffness:420,damping:13});
+  const seen=useRef(false);
+  useLayoutEffect(()=>{if(!seen.current){seen.current=true;pop.current!.to(1);}else{pop.current!.set(1.25);pop.current!.to(1);}},[count]);
+  useEffect(()=>()=>pop.current?.stop(),[]);
+  return <li ref={node} data-review={review||undefined}><i style={{background:color}}/>{label}<b>{count}</b></li>;
+}
 function ImportMix({entries,settings}:{entries:EntryDraft[];settings:CategoryAppearance[]}) {
-  const sums=new Map<string,{amount:number;color?:string;review:boolean}>();
+  const sums=new Map<string,{amount:number;count:number;color?:string;review:boolean}>();
   for(const entry of entries){
     if(!sorted(entry)||entry.amount<=0)continue;
     const review=entry.import_meta?.status==='review';
     const key=review?'要確認':entry.category;
-    const current=sums.get(key)??{amount:0,color:review?undefined:displayColor(categoryAppearance(entry.category,settings).color),review};
-    current.amount+=entry.amount;sums.set(key,current);
+    const current=sums.get(key)??{amount:0,count:0,color:review?undefined:displayColor(categoryAppearance(entry.category,settings).color),review};
+    current.amount+=entry.amount;current.count++;sums.set(key,current);
   }
-  const parts=[...sums.entries()].sort((a,b)=>Number(a[1].review)-Number(b[1].review)||b[1].amount-a[1].amount);
-  const total=parts.reduce((sum,[,part])=>sum+part.amount,0);
+  // Pieces keep the order they first appeared in, so the bar only ever grows.
+  const order=useRef<string[]>([]);
+  for(const key of sums.keys())if(!order.current.includes(key))order.current.push(key);
+  const parts=order.current.filter(key=>sums.has(key)).map(key=>[key,sums.get(key)!] as const);
   if(!parts.length)return null;
   return <div className="import-mix" aria-label="費目ごとの内訳">
-    <div className="import-mix-bar" aria-hidden="true">{parts.map(([category,part])=><span key={category} data-review={part.review||undefined} style={{flexGrow:part.amount,background:part.color}}/>)}</div>
-    <ul className="import-mix-legend">{parts.map(([category,part])=><li key={category} data-review={part.review||undefined}><i style={{background:part.color}}/>{category}<b>{Math.round(part.amount/total*100)}%</b></li>)}</ul>
+    <div className="import-mix-bar" aria-hidden="true">{parts.map(([category,part])=><MixPiece key={category} amount={part.amount} color={part.color} review={part.review}/>)}</div>
+    <ul className="import-mix-legend">{parts.map(([category,part])=><MixLegend key={category} label={category} count={part.count} color={part.color} review={part.review}/>)}</ul>
   </div>;
 }
 
-// Each category tag is stamped onto its row: it leaves the Soft Orbit card
-// (the AI at work), arcs to the row and lands with a squash.
+// Each category tag is stamped onto its row: a coloured tag leaves the AI
+// card (the Soft Orbit), arcs 40px up on its way, shrinks from 1.5x as it
+// lands, and the row's own tag takes the hit with a squash.
 function useCategoryStamps(entries:EntryDraft[],list:React.RefObject<HTMLDivElement|null>) {
   const seen=useRef(new Map<string,string>());
   const mounted=useRef(false);
   useLayoutEffect(()=>{
-    const fresh:HTMLElement[]=[];
+    const fresh:HTMLElement[]=[],arrived:HTMLElement[]=[],review:HTMLElement[]=[];
     const first=!mounted.current;mounted.current=true;
     entries.forEach((entry,index)=>{
-      const id=entry.import_meta?.id??String(index),status=sorted(entry)?'sorted':entry.import_meta?.status??'new';
+      const id=entry.import_meta?.id??String(index),status=sorted(entry)?(entry.import_meta?.status==='review'?'review':'sorted'):entry.import_meta?.status??'new';
       const before=seen.current.get(id);seen.current.set(id,status);
-      // A row is stamped the moment it is sorted, whether it arrived sorted or was sorted later.
-      if(!first&&status==='sorted'&&before!=='sorted'){
-        const tag=list.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(id)}"] .import-category-tag`);
-        if(tag)fresh.push(tag);
-      }
+      const row=list.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(id)}"]`);
+      if(first||!row)return;
+      if(before===undefined)arrived.push(row);
+      if(status==='sorted'&&before!=='sorted'){const tag=row.querySelector<HTMLElement>('.import-category-tag');if(tag)fresh.push(tag);}
+      if(status==='review'&&before!=='review')review.push(row);
     });
+    if(reducedMotion())return;
+    // New rows pop out of nothing.
+    arrived.forEach(row=>springAnimate(row,{transform:'scale(0)'},{transform:'scale(1)'},{stiffness:380,damping:13}));
+    // Rows that need a person shake and stop instead of bouncing.
+    review.forEach(row=>shake(row));
     const source=document.querySelector('.import-phase-status')?.getBoundingClientRect();
-    if(!fresh.length||!source||reducedMotion())return;
+    if(!fresh.length||!source)return;
     const scroller=list.current?.closest<HTMLElement>('.card-panel-scroll')??list.current?.parentElement;
     const box=scroller?.getBoundingClientRect(),dock=document.querySelector('.kondo-floating-dock')?.getBoundingClientRect();
     const view={top:Math.max(0,box?.top??0),bottom:Math.min(window.innerHeight,box?.bottom??window.innerHeight,dock&&dock.height?dock.top-4:Infinity)};
     fresh.slice(0,6).forEach((tag,order)=>{
-      const target=tag.getBoundingClientRect();
-      // Only rows the eye can see get a flyer: not ones scrolled out of the
-      // panel, nor ones sitting under the dock.
-      if(target.top<view.top||target.bottom>view.bottom||!target.width){tag.animate([{transform:'scale(1.25,.75)'},{transform:'scale(1)'}],{duration:280,easing:'ease-out'});return;}
-      const flyer=tag.cloneNode(true) as HTMLElement;
-      flyer.classList.add('import-stamp-flyer');
-      Object.assign(flyer.style,{left:`${target.left}px`,top:`${target.top}px`,width:`${target.width}px`});
-      document.body.appendChild(flyer);
-      tag.style.visibility='hidden';
-      const dx=source.left+source.width/2-(target.left+target.width/2),dy=source.bottom-12-(target.top+target.height/2);
-      const delay=order*70;
-      const flight=flyer.animate([
-        {transform:`translate(${dx}px,${dy}px) scale(.55)`,opacity:0},
-        {transform:`translate(${dx*.45}px,${dy*.45-46}px) scale(1.15) rotate(-6deg)`,opacity:1,offset:.5},
-        {transform:'translate(0px,0px) scale(1.35,.6)',opacity:1,offset:.86},
-        {transform:'translate(0px,0px) scale(1)',opacity:1},
-      ],{duration:540,delay,easing:'cubic-bezier(.45,0,.25,1)',fill:'both'});
-      const land=()=>{flyer.remove();tag.style.visibility='';tag.animate([{transform:'scale(1.25,.75)'},{transform:'scale(.94,1.08)'},{transform:'scale(1)'}],{duration:320,easing:'ease-out'});};
-      void flight.finished.then(land,land);
+      window.setTimeout(()=>{
+        const target=tag.getBoundingClientRect();
+        // Only rows the eye can see get a flyer.
+        if(target.top<view.top||target.bottom>view.bottom||!target.width){land(tag);return;}
+        const flyer=tag.cloneNode(true) as HTMLElement;
+        flyer.classList.add('import-stamp-flyer');
+        document.body.appendChild(flyer);
+        tag.style.visibility='hidden';
+        const x0=source.left+source.width/2-target.width/2,y0=source.bottom-18,x1=target.left,y1=target.top;
+        const started=performance.now(),D=460;
+        const step=(now:number)=>{
+          const u=Math.min(1,(now-started)/D),e=1-Math.pow(1-u,3);
+          const x=x0+(x1-x0)*e,y=y0+(y1-y0)*e-Math.sin(u*Math.PI)*40,scale=1.5-.5*e;
+          flyer.style.transform=`translate(${x.toFixed(1)}px,${y.toFixed(1)}px) scale(${scale.toFixed(3)})`;
+          if(u<1)requestAnimationFrame(step);else{flyer.remove();tag.style.visibility='';land(tag);}
+        };
+        requestAnimationFrame(step);
+      },(arrived.some(row=>row.contains(tag))?260:0)+order*70);
     });
-    fresh.slice(6).forEach(tag=>tag.animate([{transform:'scale(1.25,.75)'},{transform:'scale(1)'}],{duration:280,easing:'ease-out'}));
+    fresh.slice(6).forEach(land);
   });
+}
+function land(tag:HTMLElement){springAnimate(tag,{transform:'scale(1.35,.6)'},{transform:'scale(1,1)'},{stiffness:520,damping:13});}
+function shake(row:HTMLElement){
+  const spring=new LiveSpring(0,value=>{row.style.translate=Math.abs(value)<.05?'':`${value.toFixed(2)}px 0`;},{stiffness:900,damping:9});
+  spring.to(0,undefined,420);
 }
 
 export function ImportProcessing({progress,settings}:{progress:ImportProgress;settings:CategoryAppearance[]}) {
