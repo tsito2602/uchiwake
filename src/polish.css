@@ -57,3 +57,24 @@
 .empty .secondary { border-radius: 999px; padding-inline: 24px; }
 @keyframes empty-arrive { from { opacity: 0; transform: translateY(14px) scale(.98); filter: blur(6px); } to { opacity: 1; transform: none; filter: blur(0); } }
 @media (prefers-reduced-motion: reduce) { .empty:not(.loading) { animation: none; } }
+
+/* Scroll edge: a progressive blur under the status bar while the page is
+   scrolled, so content softens into the canvas instead of cutting under it. */
+.scroll-edge { position: fixed; z-index: 40; top: 0; left: 0; right: 0; height: calc(env(safe-area-inset-top) + 76px); pointer-events: none; opacity: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--canvas) 86%, transparent), color-mix(in srgb, var(--canvas) 0%, transparent)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent); mask-image: linear-gradient(to bottom, #000 45%, transparent); transition: opacity 280ms ease; }
+.scroll-edge[data-visible] { opacity: 1; }
+body:has(.card-panel-backdrop, .fuse-add-overlay, .space-overlay) .scroll-edge { opacity: 0; }
+
+/* Changing month: if the next month takes a moment, the current one steps
+   back quietly instead of sitting there as if it were already the answer. */
+main.shell #main-content { transition: opacity 240ms ease, filter 240ms ease; }
+main.shell[aria-busy='true'] #main-content { opacity: .45; filter: saturate(.6) blur(1px); transition-delay: 160ms; }
+
+/* The yen sign is set smaller than the figures, like a printed statement. */
+.settlement-hero .hero-money :is(.number-ticker-glyphs, .number-ticker-static) > span:first-child { align-self: flex-end; font-size: .58em; line-height: 1.5; margin-right: .1em; letter-spacing: 0; }
+@media (prefers-reduced-motion: reduce) { .scroll-edge, main.shell #main-content { transition: none; } }
+
+/* The dock's month rolls in the direction it moved. */
+.dock-month-value[data-direction] { display: inline-block; animation: month-roll 340ms cubic-bezier(.22,.72,.18,1) both; }
+.dock-month-value[data-direction='prev'] { --month-from: -70%; }
+@keyframes month-roll { from { opacity: 0; transform: translateY(var(--month-from, 70%)); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+@media (prefers-reduced-motion: reduce) { .dock-month-value[data-direction] { animation: none; } }

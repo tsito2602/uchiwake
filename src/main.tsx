@@ -25,6 +25,7 @@ import { haptic } from './haptics';
 import { HapticTouch } from './haptic-touch';
 import { hapticEverywhere } from './haptic-everywhere';
 import { SegmentSelection } from './segment-selection';
+import { ScrollEdge } from './scroll-edge';
 import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
@@ -479,6 +480,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const dockContext=importConfirmationDock||spaceDock||allocationDock||(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||breakdownDock||settingsDock||undefined;
   return <>
     <SpaceControls space={space} spaces={spaces} disabled={busy||!!(spaceSettings||allocationBreakdown||spaceDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onSettings={()=>openSpaceSettings(document.querySelector<HTMLElement>('.space-switcher')??undefined)} onRefresh={refreshSpaces} onDockChange={setSpaceDock}/>
+    <ScrollEdge/>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button></nav>
       <div id="main-content">
