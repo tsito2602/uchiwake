@@ -112,7 +112,7 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPrevie
   const grown=useRef(false);
   useEffect(()=>{const timer=window.setTimeout(()=>{grown.current=true;},900);return()=>clearTimeout(timer);},[]);
   const barHeight=(item:HistoryPoint)=>item.total?Math.max(5,Math.abs(item.total)/maximum*132):3;
-  const bubbleX=Math.max(48,Math.min(plotWidth-48,(index+.5)*slotWidth-scrollLeft));
+  const bubbleX=Math.max(80,Math.min(plotWidth-80,(index+.5)*slotWidth-scrollLeft));
   const bubbleY=displayPoint?156-barHeight(displayPoint)-8:0;
   function keyDown(event:KeyboardEvent<HTMLDivElement>) {
     const next=event.key==='ArrowLeft'?index-1:event.key==='ArrowRight'?index+1:event.key==='Home'?0:event.key==='End'?data.length-1:null;
@@ -144,7 +144,7 @@ export function SettlementChart({data,month,visibleMonths,onSelectMonth,onPrevie
     <motion.div className="history-bubble" aria-hidden="true" initial={false}
       animate={{x:bubbleX,y:bubbleY,scale:point?1:0}}
       transition={reduce?{duration:0}:{x:{type:'spring',stiffness:700,damping:40},y:{type:'spring',stiffness:700,damping:40},scale:point?{type:'spring',stiffness:520,damping:20}:{type:'spring',stiffness:500,damping:30}}}>
-      {displayPoint&&<span key={displayPoint.month}>{Number(displayPoint.month.slice(5))}月 <strong>{yen(displayPoint.total)}</strong></span>}
+      {displayPoint&&<span key={displayPoint.month}>{monthLabel(displayPoint.month)} <strong>{yen(displayPoint.total)}</strong></span>}
     </motion.div>
   </div>;
 }

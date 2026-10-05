@@ -177,7 +177,6 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [history,setHistory]=useState<HistoryPoint[]>([]);
   const [chartMonths,setChartMonths]=useState<6|12|36|60>(6);
   // Scrubbing the bar chart: the hero figure follows the bar under the finger.
-  const [scrub,setScrub]=useState<HistoryPoint|null>(null);
   // Switching space slides the page in from the side of the space chosen.
   const shownSpaceId=useRef(space.id);
   useLayoutEffect(()=>{
@@ -548,13 +547,13 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         <p className="space-current-name">{space.name}<span>{Number(displayedMonth.slice(0,4))}年{Number(displayedMonth.slice(5,7))}月の{personal?'支出':'精算'}</span></p>
         <section className="hero settlement-hero">
           <div className="settlement-amount-toggle">
-            <span className="hero-label"><UsersRound size={18} aria-hidden="true"/>{scrub?`${Number(scrub.month.slice(5))}月の`:''}{personal?'支出合計':splitOpen?'それぞれの負担額':'支払い合計'}{!single&&<span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span>}</span>
-            <span className="hero-stage"><span className="hero-money" data-scrub={scrub?'true':undefined}>{scrub?<NumberTicker value={scrub.total}/>:hasSettlementData?<NumberTicker value={totals.total}/>: '—'}</span><span className="hero-split-slot"/></span>
+            <span className="hero-label"><UsersRound size={18} aria-hidden="true"/>{personal?'支出合計':splitOpen?'それぞれの負担額':'支払い合計'}{!single&&<span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span>}</span>
+            <span className="hero-stage"><span className="hero-money">{hasSettlementData?<NumberTicker value={totals.total}/>: '—'}</span><span className="hero-split-slot"/></span>
             {/* Joined, your share sits under the total; torn apart, the total sits small under the two shares. */}
-            {!single&&<span className="hero-secondary" key={splitOpen?'total':'share'}><span>{splitOpen?'支払い合計':'あなたの負担額'}</span><strong>{hasSettlementData?<NumberTicker value={splitOpen?(scrub?.total??totals.total):(scrub?scrub.amount:totals.perPerson)}/>: '—'}</strong></span>}
+            {!single&&<span className="hero-secondary" key={splitOpen?'total':'share'}><span>{splitOpen?'支払い合計':'あなたの負担額'}</span><strong>{hasSettlementData?<NumberTicker value={splitOpen?totals.total:totals.perPerson}/>: '—'}</strong></span>}
           </div>
           {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)} onSplitChange={setSplitOpen} remainder={roundingRemainder} unassigned={roundingUnassigned} onDecide={demoView?undefined:origin=>setAllocationBreakdown({origin})}/>}
-          <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth} onPreview={setScrub}/>
+          <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
         </section>
         <section className="section settlement-section"><div className="settlement-list">

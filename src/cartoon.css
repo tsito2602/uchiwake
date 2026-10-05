@@ -282,3 +282,7 @@ div.settlement-amount-toggle[data-tears] { position: relative; }
 .split-bar-rounding[data-settled] > em { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ink) 25%, transparent); }
 @keyframes rounding-settle { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
 .rounding-option-amount { margin-inline-start: auto; color: var(--muted); font-size: 13px; font-style: normal; font-variant-numeric: tabular-nums; }
+/* Each person gets a full row so their name and resulting amount both fit. */
+.rounding-options .rounding-option { grid-column: 1 / -1; }
+.rounding-option > span:not(.space-member-avatar) { overflow: hidden; overflow-wrap: normal; white-space: nowrap; text-overflow: ellipsis; }
+.rounding-option small { display: inline; margin: 0 0 0 6px; }
