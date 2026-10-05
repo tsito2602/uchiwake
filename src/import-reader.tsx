@@ -3,7 +3,7 @@ import { FileText, Table2 } from 'lucide-react';
 import type { EntryDraft } from './domain';
 import type { ImportProgress } from './statement-import-flow';
 import type { StatementFile } from './statement-files';
-import { reducedMotion, springAnimate } from './cartoon-motion';
+import { reducedMotion } from './cartoon-motion';
 import { NumberTicker } from './number-ticker';
 import { entryKey, peelStore, usePeel } from './import-peel-store';
 
@@ -39,19 +39,30 @@ function decode(cell:HTMLElement,text:string,ms:number){
 // The waiting stage: the person's own photos (or a sheet for PDF/CSV/demo)
 // lie on the desk while a scan bar sweeps the front one up and down. The AI
 // sends nothing until it starts writing rows, so there is no progress to show.
+// Every 20 seconds the front sheet slides off to the back of the pile.
+const PLACES=['rotate(-1.5deg)','rotate(-7deg) translate(-10px,6px)','rotate(6deg) translate(12px,8px)'];
 function Desk({files,demo}:{files:StatementFile[];demo:boolean}) {
   const sheets=(demo||!files.length?[null]:files.slice(0,3));
   const [front,setFront]=useState(0);
+  const desk=useRef<HTMLDivElement>(null);
+  const shown=useRef(0);
   useEffect(()=>{
     if(sheets.length<2)return;
     const timer=window.setInterval(()=>setFront(current=>(current+1)%sheets.length),20000);
     return()=>window.clearInterval(timer);
   },[sheets.length]);
-  return <div className="import-desk" aria-hidden="true">
+  useLayoutEffect(()=>{
+    const previous=shown.current;shown.current=front;
+    if(previous===front||reducedMotion())return;
+    const old=desk.current?.querySelector<HTMLElement>(`[data-sheet="${previous}"]`);
+    old?.animate([{transform:PLACES[0]},{transform:'rotate(-14deg) translate(-120px,10px)',offset:.45},{transform:PLACES[(previous-front+sheets.length)%sheets.length]}],{duration:800,easing:'cubic-bezier(.3,1.1,.5,1)'});
+    desk.current?.querySelector('.import-desk-page')?.animate([{transform:'scale(1.4)'},{transform:'none'}],{duration:400,easing:'cubic-bezier(.3,1.8,.5,1)'});
+  },[front,sheets.length]);
+  return <div ref={desk} className="import-desk" aria-hidden="true">
     {sheets.map((file,index)=>{
       const place=(index-front+sheets.length)%sheets.length;
-      return <div key={index} className="import-desk-photo" data-place={place} data-kind={file?.kind??'paper'}>
-        {file?.kind==='image'?<img src={file.data} alt=""/>:<div className="import-desk-paper">{file?.kind==='pdf'?<FileText size={16}/>:file?.kind==='csv'?<Table2 size={16}/>:null}{Array.from({length:11},(_,line)=><i key={line}/>)}</div>}
+      return <div key={index} className="import-desk-photo" data-sheet={index} data-place={place} data-kind={file?.kind??'paper'}>
+        {file?.kind==='image'?<img src={file.data} alt=""/>:<div className="import-desk-paper">{file?.kind==='pdf'?<FileText size={16}/>:file?.kind==='csv'?<Table2 size={16}/>:null}{Array.from({length:14},(_,line)=><i key={line}/>)}</div>}
         {place===0&&<i className="import-scan-bar"/>}
       </div>;
     })}
@@ -59,14 +70,17 @@ function Desk({files,demo}:{files:StatementFile[];demo:boolean}) {
   </div>;
 }
 
+type Item={key:string;entry:EntryDraft;line?:HTMLElement;typed?:Promise<void>};
+const SKELETONS=9,SHEET_HEIGHT=200;
+
 export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?:StatementFile[]}) {
   const peel=usePeel();
   const stage=useRef<HTMLDivElement>(null);
   const lines=useRef<HTMLDivElement>(null);
   const scan=useRef<HTMLElement>(null);
-  const [mode,setMode]=useState<'waiting'|'sheet'|'folded'>('waiting');
+  const [mode,setMode]=useState<'waiting'|'opening'|'sheet'|'folded'>('waiting');
   const [motion]=useState(()=>typeof window!=='undefined'&&!reducedMotion());
-  const engine=useRef({alive:true,running:false,open:false,flights:0,seen:new Set<string>(),queue:[] as {key:string;entry:EntryDraft}[]});
+  const engine=useRef({alive:true,running:false,open:null as Promise<void>|null,flights:0,typing:0,seen:new Set<string>(),queue:[] as Item[]});
   const [seconds,setSeconds]=useState(0);
   useEffect(()=>{const started=Date.now();const timer=window.setInterval(()=>setSeconds(Math.floor((Date.now()-started)/1000)),1000);return()=>window.clearInterval(timer);},[]);
   useLayoutEffect(()=>{
@@ -77,77 +91,123 @@ export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?
 
   const panel=()=>stage.current?.closest('.statement-import-panel');
   const rowFor=(key:string)=>panel()?.querySelector<HTMLElement>(`.import-sorting-list [data-entry-id="${CSS.escape(key)}"]`)??null;
+  // A landing nudges the whole panel, the way a dropped card jolts a table.
+  const tick=()=>panel()?.closest<HTMLElement>('.card-panel-frame')?.animate([{translate:'0 0'},{translate:'0 .8px'},{translate:'0 -.5px'},{translate:'0 0'}],{duration:110});
 
-  function addLine(entry:EntryDraft,instant:boolean){
-    const host=lines.current;if(!host)return null;
-    const line=document.createElement('div');line.className='import-sheet-line';
-    const cells=lineCells(entry);
-    cells.forEach(text=>{const cell=document.createElement('span');cell.textContent=instant?text:'';line.appendChild(cell);});
-    if(!instant)line.dataset.skeleton='';
-    host.appendChild(line);
-    // Keep the newest line in view: the sheet feeds up like paper in a printer.
-    const shift=Math.max(0,line.offsetTop+line.offsetHeight-host.parentElement!.clientHeight+28);
-    host.style.transform=`translateY(${-shift}px)`;
-    if(scan.current)scan.current.style.top=`${line.offsetTop-shift+line.offsetHeight-1}px`;
+  function skeleton(){
+    const line=document.createElement('div');line.className='import-sheet-line';line.dataset.skeleton='';
+    for(let cell=0;cell<3;cell++)line.appendChild(document.createElement('span'));
+    lines.current?.appendChild(line);
     return line;
   }
 
-  async function openSheet(){
-    const state=engine.current;state.open=true;
-    setMode('sheet');
-    await nextFrame();
-    const sheet=stage.current?.querySelector<HTMLElement>('.import-sheet');
-    sheet?.animate([{transform:'scale(.2,.3) rotate(-5deg)',opacity:.4},{transform:'scale(1.04,.92) rotate(.6deg)',opacity:1,offset:.5},{transform:'scale(.99,1.025)',offset:.78},{transform:'none'}],{duration:620,easing:'cubic-bezier(.25,.9,.4,1)'});
-    await sleep(560);
+  // 1 The photos spring open into one statement sheet: the front photo
+  // straightens, the pile bursts into a sheet that stretches and settles,
+  // and grey bars wait on it for the rows the AI is about to write.
+  function openSheet(){
+    const state=engine.current;
+    state.open??=(async()=>{
+      const node=stage.current;if(!node)return;
+      const front=node.querySelector<HTMLElement>('.import-desk-photo[data-place="0"]');
+      front?.animate([{transform:PLACES[0]},{transform:'rotate(0) scale(1.25,1.1)',offset:.6},{transform:'rotate(0) scale(1.18,1.06)'}],{duration:600,easing:'cubic-bezier(.3,1.3,.5,1)',fill:'forwards'});
+      node.querySelector('.import-scan-bar')?.animate([{opacity:1},{opacity:0}],{duration:300,fill:'forwards'});
+      await sleep(520);
+      // The pile keeps its size while the stage closes up around the sheet.
+      const from=node.offsetHeight,width=node.offsetWidth;
+      node.style.height=`${from}px`;
+      const desk=node.querySelector<HTMLElement>('.import-desk');
+      if(desk)desk.style.height=`${from}px`;
+      setMode('opening');
+      await nextFrame();
+      node.style.height='';
+      node.animate([{height:`${from}px`},{height:`${SHEET_HEIGHT}px`}],{duration:620,easing:'cubic-bezier(.3,1.1,.5,1)'});
+      node.querySelectorAll<HTMLElement>('.import-desk-photo').forEach((photo,index)=>{
+        // Each photo stretches sideways and flattens into the sheet's shape.
+        const sx=width/photo.offsetWidth,sy=SHEET_HEIGHT/photo.offsetHeight,dy=SHEET_HEIGHT/2-from/2;
+        photo.animate([{opacity:1},{opacity:.9,transform:`translate(0,${dy*.6}px) scale(${sx*.8},${sy*1.1})`,offset:.55},{opacity:0,transform:`translate(0,${dy}px) scale(${sx},${sy})`}],{duration:300,delay:index*20,fill:'forwards',easing:'cubic-bezier(.4,0,.6,1)'});
+      });
+      node.querySelector('.import-sheet')?.animate([{transform:'scale(.16,.3) rotate(-5deg)',opacity:.4},{transform:'scale(1.04,.92) rotate(.6deg)',opacity:1,offset:.5},{transform:'scale(.99,1.025)',offset:.78},{transform:'none'}],{duration:620,easing:'cubic-bezier(.25,.9,.4,1)'});
+      node.querySelector('.import-sheet-crease')?.animate([{opacity:.9},{opacity:.9,offset:.35},{opacity:0}],{duration:700,fill:'forwards'});
+      tick();
+      for(let count=0;count<SKELETONS;count++)skeleton();
+      await sleep(320);
+      setMode('sheet');
+      await sleep(360);
+      node.querySelectorAll<HTMLElement>('.import-sheet-head > span').forEach(cell=>void decode(cell,cell.textContent??'',260));
+    })();
+    return state.open;
   }
 
-  async function fly(item:{key:string;entry:EntryDraft}){
-    const state=engine.current;state.flights++;
+  // 2 Each row the AI writes takes the next grey bar: a reading frame lights
+  // up and the characters spin until they settle on the real text.
+  function type(item:Item){
+    const state=engine.current,host=lines.current;
+    const line=host?.querySelector<HTMLElement>('.import-sheet-line[data-skeleton]')??skeleton();
+    delete line.dataset.skeleton;line.dataset.reading='';item.line=line;
+    while((host?.querySelectorAll('.import-sheet-line[data-skeleton]').length??SKELETONS)<SKELETONS-2)skeleton();
+    const delay=Math.min(state.typing++,7)*70;
+    item.typed=(async()=>{
+      await sleep(delay);
+      const cells=lineCells(item.entry);
+      await Promise.all([...line.children].map((cell,index)=>decode(cell as HTMLElement,cells[index],300)));
+      state.typing=Math.max(0,state.typing-1);
+      await sleep(120);delete line.dataset.reading;
+    })();
+  }
+
+  // 3 The scan line moves onto the row and the sheet feeds up; the row
+  // peels from its top-left corner, falls with gravity, turns into its list
+  // row on the way down and lands with a squash.
+  async function fly(item:Item,D=900){
+    const state=engine.current,line=item.line!;
+    state.flights++;
     try{
-      const line=addLine(item.entry,false);
-      if(!line){peelStore.land([item.key]);return;}
-      await Promise.all([...line.children].map((cell,index)=>decode(cell as HTMLElement,lineCells(item.entry)[index],240)));
-      delete line.dataset.skeleton;line.dataset.hit='';
-      // The list makes room while the line is still lit, before it lets go.
-      peelStore.admit([item.key]);
-      await sleep(130);
-      if(!state.alive)return;
-      let row:HTMLElement|null=null;
-      for(let frame=0;frame<10&&!row;frame++){await nextFrame();row=rowFor(item.key);}
       const from=box(line.getBoundingClientRect());
-      line.dataset.peeled='';delete line.dataset.hit;
-      const viewport=row?.closest('.card-panel-scroll')?.getBoundingClientRect();
-      const target=row?.getBoundingClientRect();
-      if(!row||!viewport||!target||target.top>viewport.bottom||target.bottom<viewport.top){peelStore.land([item.key]);return;}
-      // A piece of the statement lifts off, falls, and turns into the row it
-      // becomes; the fall chases the row's live place as rows above make room.
       const piece=document.createElement('div');piece.className='import-peel-fly';
       const strip=line.cloneNode(true) as HTMLElement;strip.className='import-peel-strip';
-      const face=row.cloneNode(true) as HTMLElement;face.classList.add('import-peel-face');face.removeAttribute('data-entry-id');
-      piece.appendChild(strip);piece.appendChild(face);document.body.appendChild(piece);
+      for(const name of ['hit','reading'])delete strip.dataset[name];
+      piece.appendChild(strip);document.body.appendChild(piece);
+      line.dataset.peeled='';delete line.dataset.hit;
       const up={left:from.left-3,top:from.top-9,width:from.width+4,height:from.height};
-      const D=780,started=performance.now();
+      const started=performance.now();
       piece.animate([
         {transform:'perspective(420px) rotateX(0) rotate(0) scale(1)',boxShadow:'0 0 0 #0000'},
-        {transform:'perspective(420px) rotateX(34deg) rotate(-3deg) scale(1.05)',boxShadow:'0 16px 18px -10px #0005',offset:.28},
+        {transform:'perspective(420px) rotateX(34deg) rotate(-3deg) scale(1.05)',boxShadow:'0 16px 18px -10px #0005',offset:.29},
         {transform:'perspective(420px) rotateX(6deg) rotate(2deg) scale(1)',boxShadow:'0 14px 22px -12px #0004',offset:.66},
         {transform:'perspective(420px) rotateX(0) rotate(0) scale(1.03,.84)',boxShadow:'0 2px 4px -2px #0002',offset:.86},
         {transform:'perspective(420px) rotateX(0) rotate(0) scale(.99,1.03)',offset:.94},
         {transform:'none',boxShadow:'0 0 0 #0000'}],{duration:D,easing:'linear',fill:'forwards'});
       strip.animate([{opacity:1},{opacity:1,offset:.42},{opacity:0,offset:.66},{opacity:0}],{duration:D,fill:'forwards'});
-      face.animate([{opacity:0},{opacity:0,offset:.44},{opacity:1,offset:.68},{opacity:1}],{duration:D,fill:'forwards'});
+      // Only when the strip lets go does the list open a slot for it (the
+      // rows below step down); the fall chases that live slot.
+      let row:HTMLElement|null=null,face:HTMLElement|null=null,away=false;
       await new Promise<void>(resolve=>{
         const step=(now:number)=>{
-          if(!state.alive||!row!.isConnected){resolve();return;}
-          const t=Math.min(1,(now-started)/D),to=box(row!.getBoundingClientRect()),low={...to,top:to.top+5};
-          const at=t<.28?mix(from,up,lift(t/.28)):t<.84?mix(up,low,fall((t-.28)/.56)):mix(low,to,settle((t-.84)/.16));
+          if(!state.alive){resolve();return;}
+          const t=Math.min(1,(now-started)/D);
+          if(t>=.29&&!row){
+            peelStore.admit([item.key]);
+            row=rowFor(item.key);
+            if(row){
+              const viewport=row.closest('.card-panel-scroll')?.getBoundingClientRect(),rect=row.getBoundingClientRect();
+              away=!viewport||rect.top>viewport.bottom||rect.bottom<viewport.top;
+              face=row.cloneNode(true) as HTMLElement;face.classList.add('import-peel-face');face.removeAttribute('data-entry-id');
+              piece.appendChild(face);
+              face.animate([{opacity:0},{opacity:0,offset:.44},{opacity:1,offset:.68},{opacity:1}],{duration:D,delay:-(now-started),fill:'forwards'});
+              if(away)piece.animate([{opacity:1},{opacity:0}],{duration:200,fill:'forwards'});
+            }
+          }
+          const to=row?.isConnected&&!away?box(row.getBoundingClientRect()):null;
+          const low=to&&{...to,top:to.top+5};
+          const at=t<.29||!to||!low?mix(from,up,lift(Math.min(1,t/.29))):t<.84?mix(up,low,fall((t-.29)/.55)):mix(low,to,settle((t-.84)/.16));
           Object.assign(piece.style,{left:`${at.left}px`,top:`${at.top}px`,width:`${at.width}px`,height:`${at.height}px`});
-          if(t<1)requestAnimationFrame(step);else resolve();
+          if(t<1&&!(away&&t>.55))requestAnimationFrame(step);else resolve();
         };
         requestAnimationFrame(step);
       });
       piece.remove();
       peelStore.land([item.key]);
+      if(!away)tick();
     }finally{state.flights--;}
   }
 
@@ -156,19 +216,25 @@ export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?
     if(state.running)return;
     state.running=true;
     try{
+      await openSheet();
       while(state.alive&&state.queue.length){
-        if(!state.open)await openSheet();
-        // A burst of rows (or a re-read that replaces them) would leave the
-        // list waiting behind a long queue: everything but the last few
-        // lands at once and only those few peel.
-        if(state.queue.length>6){
-          const rush=state.queue.splice(0,state.queue.length-3);
-          rush.forEach(item=>{const line=addLine(item.entry,true);if(line)line.dataset.peeled='';});
-          peelStore.land(rush.map(item=>item.key));
-        }
-        const item=state.queue.shift()!;
-        void fly(item);
-        await sleep(state.queue.length>2?260:480);
+        const item=state.queue[0];
+        await item.typed;
+        if(!state.alive)return;
+        state.queue.shift();
+        // A long backlog keeps the same beats, only closer together, so
+        // every row still peels and falls on its own.
+        const pace=state.queue.length<2?1:Math.max(.34,2.4/(state.queue.length+1));
+        const line=item.line!,host=lines.current!;
+        const shift=Math.max(0,line.offsetTop-line.offsetHeight*2);
+        host.style.transitionDuration=`${Math.round(420*Math.max(pace,.6))}ms`;
+        host.style.transform=`translateY(${-shift}px)`;
+        if(scan.current){scan.current.style.opacity='1';scan.current.style.top=`${line.offsetTop-shift+line.offsetHeight-2}px`;}
+        line.dataset.hit='';
+        await sleep(260*pace);
+        void fly(item,900*Math.max(pace,.75));
+        await sleep(340*pace);
+        while(state.alive&&state.flights>=3)await sleep(30);
       }
     }finally{state.running=false;}
   }
@@ -176,8 +242,11 @@ export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?
   useEffect(()=>{
     if(!motion)return;
     const state=engine.current;
-    progress.entries.forEach((entry,index)=>{const key=entryKey(entry,index);if(!state.seen.has(key)){state.seen.add(key);state.queue.push({key,entry});}});
-    void pump();
+    const fresh:Item[]=[];
+    progress.entries.forEach((entry,index)=>{const key=entryKey(entry,index);if(!state.seen.has(key)){state.seen.add(key);fresh.push({key,entry});}});
+    if(!fresh.length)return;
+    state.queue.push(...fresh);
+    void (async()=>{await openSheet();if(!state.alive)return;fresh.forEach(type);void pump();})();
   },[progress.entries,motion]);
 
   // Once reading is over and every strip has landed, the emptied sheet folds
@@ -186,21 +255,23 @@ export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?
   const readingDone=progress.phase==='checking'||(!reading&&progress.count!==null&&progress.entries.length>=progress.count);
   useEffect(()=>{
     if(!motion||!readingDone||mode==='folded')return;
+    if(!progress.entries.length){peelStore.settle();return;}
     const state=engine.current;
     let stop=false;
     void (async()=>{
-      while(!stop&&(state.queue.length||state.flights||state.running))await sleep(120);
+      while(!stop&&(!state.open||state.queue.length||state.flights||state.running))await sleep(120);
       if(stop)return;
       await sleep(350);
       const node=stage.current;if(!node||stop)return;
       if(scan.current)scan.current.style.opacity='0';
       const height=node.offsetHeight;
+      const sheet=node.querySelector<HTMLElement>('.import-sheet');if(sheet)sheet.style.transformOrigin='50% 0';
       node.querySelector('.import-sheet')?.animate([{transform:'none'},{transform:'scale(1.02,.96)',offset:.25},{transform:'scale(.9,0)',opacity:.4}],{duration:520,easing:'cubic-bezier(.5,0,.75,0)',fill:'forwards'});
       await node.animate([{height:`${height}px`},{height:'0px',marginBottom:'-12px',opacity:.6}],{duration:620,delay:120,easing:'cubic-bezier(.3,1.1,.5,1)',fill:'forwards'}).finished.catch(()=>undefined);
       if(!stop){setMode('folded');peelStore.settle();}
     })();
     return()=>{stop=true;};
-  },[readingDone,motion,mode]);
+  },[readingDone,motion,mode,progress.entries.length]);
 
   const keyed=progress.entries.map((entry,index)=>({entry,key:entryKey(entry,index)}));
   const visible=peel.active?keyed.filter(({key})=>peel.landed.has(key)):keyed;
@@ -209,11 +280,13 @@ export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?
   const checking=progress.phase==='checking';
   const title=progress.activity?.rechecking?'明細を再確認中':reading?'明細を読み取り中':checking?'金額を確認中':'費目ごとに仕分け中';
   const stageMode=motion?mode:(reading&&!progress.entries.length?'waiting':'folded');
+  const sheetShown=stageMode==='opening'||stageMode==='sheet';
   return <section className="import-phase-status import-reader" aria-label="取り込みの進行">
     <div className="import-phase-title" role="status" aria-live="polite"><strong key={title} className="import-phase-title-content">{title}</strong>{progress.demo&&<small>デモ</small>}<span className="import-elapsed" aria-label={`経過時間 ${seconds}秒`}>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span></div>
     {progress.activity?.rechecking&&<p className="import-reader-note">{progress.activity.text}</p>}
     {stageMode!=='folded'&&<div ref={stage} className="import-reader-stage" data-mode={stageMode}>
-      {stageMode==='waiting'?<Desk files={files} demo={progress.demo}/>:<div className="import-sheet" aria-hidden="true"><div className="import-sheet-head"><span>ご利用明細</span><span>AIが読み取った行</span></div><div className="import-sheet-window"><div ref={lines} className="import-sheet-lines"/><i ref={scan} className="import-sheet-scan"/></div></div>}
+      {sheetShown&&<div className="import-sheet" aria-hidden="true"><div className="import-sheet-head"><span>ご利用明細</span><span>AIが読み取った行</span></div><div className="import-sheet-window"><div ref={lines} className="import-sheet-lines"/><i ref={scan} className="import-sheet-scan"/></div><i className="import-sheet-crease"/></div>}
+      {(stageMode==='waiting'||stageMode==='opening')&&<Desk files={files} demo={progress.demo}/>}
     </div>}
     <div className="import-phase-summary"><span className="import-lanes"><span data-live={!readingDone||undefined}>読み取り <b>{readCount}</b>件</span><span data-live={!!readCount&&sortedCount<readCount||undefined}>仕分け <b>{sortedCount}</b>件</span></span><span className="import-phase-total"><small>利用合計</small><strong><NumberTicker value={checking&&progress.checkedTotal!==undefined?progress.checkedTotal:total}/></strong></span></div>
   </section>;

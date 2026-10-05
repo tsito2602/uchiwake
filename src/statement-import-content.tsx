@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
-import { LiveSpring, reducedMotion, springAnimate } from './cartoon-motion';
+import { LiveSpring, reducedMotion } from './cartoon-motion';
 import { displayColor } from './display-color';
 import { NativeMonthPicker } from './native-month-picker';
 import { ChevronDown, CreditCard, FileImage, FileText, Files, Table2, Plus, Pencil, Sparkles, X } from 'lucide-react';
@@ -65,8 +65,8 @@ export function ImportPhaseStatus({progress,files}:{progress:ImportProgress;file
 const sorted=(entry:EntryDraft)=>!entry.import_meta||entry.import_meta.status==='classified'||entry.import_meta.status==='review';
 function stamp(row:HTMLElement){
   const tag=row.querySelector<HTMLElement>('.import-category-tag'),icon=row.querySelector<SVGElement|HTMLElement>(':scope > svg');
-  if(tag)springAnimate(tag,{transform:'scale(1.8,.4) rotate(-6deg)',opacity:'0'},{transform:'none',opacity:'1'},{stiffness:520,damping:13});
-  if(icon)springAnimate(icon,{transform:'scale(.5)'},{transform:'none'},{stiffness:420,damping:11});
+  tag?.animate([{transform:'scale(1.8,.4) rotate(-6deg)',opacity:0},{opacity:1,offset:.6},{transform:'none',opacity:1}],{duration:460,easing:'cubic-bezier(.3,1.7,.5,1)'});
+  icon?.animate([{transform:'scale(.5)'},{transform:'scale(1.2)',offset:.6},{transform:'none'}],{duration:380,easing:'cubic-bezier(.3,1.6,.5,1)'});
 }
 function shake(row:HTMLElement){
   const spring=new LiveSpring(0,value=>{row.style.translate=Math.abs(value)<.05?'':`${value.toFixed(2)}px 0`;},{stiffness:900,damping:9});
@@ -92,13 +92,13 @@ export function ImportProcessing({progress,settings}:{progress:ImportProgress;se
     for(const row of rows){
       const key=row.dataset.entryId!,top=row.offsetTop,before=places.current.get(key);
       places.current.set(key,top);
-      if(motion&&before!==undefined&&Math.abs(before-top)>1)springAnimate(row,{translate:`0 ${before-top}px`},{translate:'0 0'},{stiffness:560,damping:30});
+      // Rows already in the list glide down to make room, with a small dip.
+      if(motion&&before!==undefined&&Math.abs(before-top)>.5)row.animate([{translate:`0 ${before-top}px`},{translate:'0 2px',offset:.7},{translate:'0 0'}],{duration:460,easing:'cubic-bezier(.3,1.2,.5,1)'});
       if(!peel.active||!row.hasAttribute('data-landed'))continue;
       const entry=keyed.find(item=>item.key===key)?.entry;if(!entry)continue;
       const status=sorted(entry)?(entry.import_meta?.status==='review'?'review':'sorted'):'waiting';
       const before2=seen.current.get(key);seen.current.set(key,status);
       if(!motion||before2===status)continue;
-      if(before2===undefined)springAnimate(row,{scale:'1.02 .86'},{scale:'1 1'},{stiffness:420,damping:12});
       if(status!=='waiting'&&before2!==status)stamp(row);
       if(status==='review'&&before2!=='review')shake(row);
     }
