@@ -67,7 +67,7 @@ export function AllocationBreakdownPanel({origin,onClose,onDockChange,month,spac
  const context:DockContext={label:'端数の負担',backOnly:!editable,commit:changed,actionLabel:busy?'保存中…':drawing?'抽選中…':changed?'保存':'ランダムで決める',actionIcon:changed?undefined:'shuffle',disabled,onAction:changed?()=>void save():startDraw,onBack:dismiss,
   auxiliaryAction:editable&&changed?{icon:'shuffle',label:'ランダムで決める',disabled,onAction:startDraw}:undefined};
  const winner=draw?candidates[draw.index]:undefined;
- return <SpacePanel title="端数の負担" icon={UsersRound} origin={origin} closing={closing} onExited={onClose} onDockChange={onDockChange} context={context}>
+ return <SpacePanel fit title="端数の負担" icon={UsersRound} origin={origin} closing={closing} onExited={onClose} onDockChange={onDockChange} context={context}>
   {editable&&<section className="rounding-choice" aria-labelledby="rounding-title">
    <div className="rounding-heading"><h3 id="rounding-title">端数 <strong>{roundingLabel(base.remainder)}</strong></h3><span>{changed?'未保存':selected?'保存済み':'未選択'}</span></div>
    <p className="rounding-description">{base.remainder<0?'端数の返金を受け取る人を選べます。':'端数を払う人を選べます。'}未選択のままでも大丈夫です。</p>

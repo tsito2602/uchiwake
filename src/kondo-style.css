@@ -614,3 +614,8 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .color-picker:disabled { opacity: .5; }
 .color-picker:disabled .color-swatch { cursor: default; }
 @media (prefers-reduced-motion: reduce) { .color-swatch > span, .swatch-check { transition: none; } }
+@media (max-width: 759px) {
+  /* Short forms rest on the dock (and ride up with the keyboard) at their own height. */
+  .card-panel-frame[data-fit] { height: auto; }
+  .card-panel-frame[data-fit] > .card-panel { height: auto; }
+}

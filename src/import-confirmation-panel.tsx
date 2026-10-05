@@ -25,7 +25,7 @@ export function ImportConfirmationPanel({spaceName,card,month,files,mode,demoVie
     if(choice==='start')onStart();
   };
   const context:DockContext={label:'取り込みの確認',commit:true,actionAppearance:'studio',actionLabel:demo?'デモで仕分ける':'取り込みを始める',disabled:disabled||closing,onBack:()=>dismiss('back'),onAction:()=>dismiss('start')};
-  return <SpacePanel title="取り込みの確認" icon={Files} context={context} origin={origin} closing={closing} onExited={exited} onDockChange={onDockChange}>
+  return <SpacePanel fit title="取り込みの確認" icon={Files} context={context} origin={origin} closing={closing} onExited={exited} onDockChange={onDockChange}>
     <div className="import-confirmation">
       <div className="import-confirmation-cost">{demo?<Sparkles size={22} aria-hidden="true"/>:<Coins size={22} aria-hidden="true"/>}<div><strong>{demo?'デモは無料です':'AI利用枠を使用します'}</strong><p>{demo?'AI利用枠を消費せず、利用料もかかりません。':'取り込みにはAI利用料がかかります。'}</p></div></div>
       <dl className="import-confirmation-summary" aria-label="取り込み内容">
