@@ -16,14 +16,15 @@ export function SpaceControls({space,spaces,disabled,api,onSelect,onSettings,onR
  const [view,setView]=useState<View|null>(null),[name,setName]=useState(''),[code,setCode]=useState(()=>sessionStorage.getItem('uchiwake-invite-code')||''),[preview,setPreview]=useState<{space_id:string;name:string;inviter:string|null}|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const [origin,setOrigin]=useState<PanelOrigin>(),[closing,setClosing]=useState(false);
- const exitAction=useRef<()=>void>(()=>setView('menu'));
+ const exitAction=useRef<()=>void>(()=>setView(null));
  const change=(next:View|null,source?:HTMLElement)=>{setError('');setClosing(false);if(source)setOrigin(panelOrigin(source));setView(next);};
  const dismiss=(after:()=>void=()=>change('menu'))=>{exitAction.current=after;setClosing(true);};
  const enter=(next:View,source:HTMLElement)=>{setOrigin(panelOrigin(source));dismiss(()=>change(next));};
  const run=async(action:()=>Promise<void>)=>{if(busy||closing)return;setBusy(true);setError('');try{await action();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}};
  async function create(){if(!name.trim())return;await run(async()=>{const {space:created}=await api<{space:Space}>('/spaces',{method:'POST',body:JSON.stringify({name})});await onRefresh();dismiss(()=>{change(null);onSelect(created.id);});});}
  async function join(){if(!code.trim())return;await run(async()=>{if(!preview){setPreview(await api('/spaces/invite-preview',{method:'POST',body:JSON.stringify({code})}));return;}const {space:joined}=await api<{space:Space}>('/spaces/join',{method:'POST',body:JSON.stringify({code,space_id:preview.space_id})});sessionStorage.removeItem('uchiwake-invite-code');await onRefresh();dismiss(()=>{change(null);onSelect(joined.id);});});}
- const back=()=>{if(busy||closing)return;if(view==='join'&&preview){setPreview(null);return;}dismiss();};
+ // Back from creating or joining folds the panel away; the space list stays closed.
+ const back=()=>{if(busy||closing)return;if(view==='join'&&preview){setPreview(null);return;}dismiss(()=>change(null));};
  const blocked=busy||closing;
  // The dock's face tab asks for the list; it then grows out of the tab island.
  const [anchor,setAnchor]=useState<DOMRect|null>(null);

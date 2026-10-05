@@ -19,7 +19,7 @@ const growSpring=springCurve(300,23),foldSpring=springCurve(420,30);
 export const growTiming:KeyframeAnimationOptions={duration:growSpring.duration,easing:linearEasing?growSpring.easing:'cubic-bezier(.3, 1.25, .42, 1)',fill:'both'};
 export const foldTiming:KeyframeAnimationOptions={duration:foldSpring.duration,easing:linearEasing?foldSpring.easing:'cubic-bezier(.3, 1.1, .42, 1)',fill:'both'};
 const CARD_RADIUS=20;
-type Morph={frame:HTMLElement;folded:Keyframe;round?:boolean;glass?:HTMLElement;foldedGlass?:string;openGlass?:string;content?:HTMLElement;rows:HTMLElement[]};
+type Morph={frame:HTMLElement;folded:Keyframe;glass?:HTMLElement;foldedGlass?:string;openGlass?:string;content?:HTMLElement;rows:HTMLElement[]};
 const morphs=new WeakMap<Animation,Morph>();
 const completedEntrances=new WeakMap<Animation,CSSNumberish>();
 const panelParts=new WeakMap<Animation,Animation[]>();
@@ -90,7 +90,7 @@ export function animatePanel(panel:HTMLElement,source?:PanelOrigin) {
     rows.forEach((row,index)=>parts.push(row.animate([{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'translateY(0px)'}],{duration:220,delay:Number(growTiming.duration)*.3+index*40,easing:'cubic-bezier(.22, 1, .36, 1)',fill:'backwards'})));
     const animation=panel.animate([folded,full],{...growTiming,fill:'backwards'});
     panelParts.set(animation,parts);
-    morphs.set(animation,{frame:panel,folded,round:source.round,glass:glass??undefined,foldedGlass,openGlass,content:content??undefined,rows});
+    morphs.set(animation,{frame:panel,folded,glass:glass??undefined,foldedGlass,openGlass,content:content??undefined,rows});
     void animation.finished.then(()=>{
       if(animation.playbackRate<=0||animation.playState!=='finished'||morphs.get(animation)?.frame.dataset.folding)return;
       animation.cancel();parts.forEach(part=>part.cancel());
@@ -137,7 +137,7 @@ export function reversePanel(animation:Animation,companions:Animation[]) {
   if(morph){
     // Fold back into the card on a firmer spring, starting from wherever the
     // box is now (a dismissal while it is still growing included).
-    const {frame,folded,round,glass,foldedGlass,openGlass,content,rows}=morph;
+    const {frame,folded,glass,foldedGlass,openGlass,content,rows}=morph;
     frame.dataset.folding='true';
     const style=window.getComputedStyle(frame),now:Keyframe={transformOrigin:'0px 0px',transform:style.transform==='none'?'translate(0px, 0px) scale(1, 1)':style.transform};
     const glassNow=glass?window.getComputedStyle(glass).clipPath:'';
@@ -148,10 +148,10 @@ export function reversePanel(animation:Animation,companions:Animation[]) {
     const parts:Animation[]=[];
     if(glass)parts.push(glass.animate([{clipPath:glassNow&&glassNow!=='none'?glassNow:openGlass},{clipPath:foldedGlass}],foldTiming));
     if(content)parts.push(content.animate([{opacity:1},{opacity:0,offset:.35},{opacity:0}],{duration:foldTiming.duration,easing:'linear',fill:'both'}));
-    // A round drop (a donut piece) melts into its piece as it lands instead of
-    // stopping on top of it: the glass itself (never its ancestor, which would
-    // cut its blur) fades over the last stretch of the fold.
-    if(round&&glass)parts.push(glass.animate([{opacity:1},{opacity:1,offset:.3},{opacity:0,offset:.62},{opacity:0}],{duration:foldTiming.duration,easing:'linear',fill:'both'}));
+    // The box melts into whatever it came from as it lands instead of stopping
+    // on top of it: the glass itself (never its ancestor, which would cut its
+    // blur) fades over the last stretch of the fold.
+    if(glass)parts.push(glass.animate([{opacity:1},{opacity:1,offset:.3},{opacity:0,offset:.62},{opacity:0}],{duration:foldTiming.duration,easing:'linear',fill:'both'}));
     panelParts.set(animation,parts);
     const duration=Number(foldTiming.duration);
     for(const companion of companions){

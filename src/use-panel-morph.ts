@@ -78,10 +78,13 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     reversePanel(animation,companions.current);
     let active=true;
     // Back in its place, the card gives a small squish like the mock.
-    // A donut piece instead swells as the drop sinks into it, then settles.
+    // Whatever it came from shows again under the folding box and swells as
+    // the box sinks into it, then settles (a round drop into a donut piece
+    // swells it more than a wide card).
     const round=!!origin?.round,end=Number(animation.effect?.getComputedTiming().endTime)||500;
-    const gulp=round?window.setTimeout(()=>{if(source?.isConnected)springAnimate(source,{scale:'1.1 1.1'},{scale:'1 1'},{stiffness:380,damping:11});},end*.42):0;
-    const finish=()=>{if(active){active=false;exited.current();if(!round&&source?.isConnected)springAnimate(source,{scale:'1.06 .94'},{scale:'1 1'},{stiffness:420,damping:12});}};
+    if(source instanceof HTMLElement||source instanceof SVGElement)source.style.visibility='visible';
+    const gulp=window.setTimeout(()=>{if(source?.isConnected)springAnimate(source,round?{scale:'1.1 1.1'}:{scale:'1.04 1.06'},{scale:'1 1'},{stiffness:380,damping:11});},end*.42);
+    const finish=()=>{if(active){active=false;exited.current();if(source instanceof HTMLElement||source instanceof SVGElement)requestAnimationFrame(()=>requestAnimationFrame(()=>{source.style.visibility='';}));}};
     const timer=window.setTimeout(finish,end+120);
     void animation.finished.then(finish,()=>undefined);
     return()=>{active=false;window.clearTimeout(timer);window.clearTimeout(gulp);};
