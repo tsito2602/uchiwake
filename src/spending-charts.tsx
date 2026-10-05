@@ -191,10 +191,13 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
   // A tap anywhere but the donut's pieces, its centre and its list lets go of
   // the picked piece (the space around the ring included).
   const chartRoot=useRef<HTMLElement>(null);
+  const panelOpen=useRef(false);panelOpen.current=!!openCategory;
   useEffect(()=>{
     if(activeCategory===null)return;
+    // While its statements are open the piece stays picked, so the panel folds
+    // back into the piece it came from.
     const away=(event:PointerEvent)=>{const target=event.target as Element|null,root=chartRoot.current;
-      if(!root||target?.closest?.('.category-pie-slice, .category-pie-open, .category-pie-haptic, .category-chart ul'))return;setActiveCategory(null);};
+      if(!root||panelOpen.current||target?.closest?.('.category-pie-slice, .category-pie-open, .category-pie-haptic, .category-chart ul'))return;setActiveCategory(null);};
     document.addEventListener('pointerdown',away,true);
     return()=>document.removeEventListener('pointerdown',away,true);
   },[activeCategory]);

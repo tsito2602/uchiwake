@@ -271,3 +271,5 @@ div.settlement-amount-toggle { cursor: auto; }
 @keyframes rounding-wobble { 0% { opacity: 0; transform: translateY(6px) scale(.92); } 30% { opacity: 1; transform: none; } 45% { transform: rotate(-1.4deg); } 60% { transform: rotate(1.1deg); } 75% { transform: rotate(-.5deg); } 100% { transform: none; } }
 @keyframes rounding-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent); } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 0%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .split-bar-rounding, .split-bar-rounding > i { animation: none; } }
+/* A piece stays on show under its panel: the panel melts back into it. */
+.category-pie-slice.panel-source[data-panel-source='true'] { visibility: visible; }

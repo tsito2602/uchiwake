@@ -28,15 +28,18 @@ export function FuseAddMenu({options,closing,onClose,onSelect,onExited}:{options
     const center=plus?{x:plus.left+plus.width/2,y:plus.top+plus.height/2}:null;
     const drops=buttons.map(button=>button.querySelector<HTMLElement>('.fuse-drop')!.getBoundingClientRect());
     // Mock timing: each icon rides its own spring out of the +, 55ms apart,
-    // and its name shows once it is more than half way.
+    // and its name rides the same spring right behind it, stretching out of
+    // the icon's side as it lands.
     const draws=buttons.map((button,index)=>{
       const r=drops[index],dx=center?center.x-(r.left+r.width/2):0,dy=center?center.y-(r.top+r.height/2):0;
       const drop=button.querySelector<HTMLElement>('.fuse-drop')!,label=button.querySelector<HTMLElement>('span')!;
       return (v:number)=>{
         const q=Math.max(0,v);
         const shown=Math.max(0,Math.min(1,(v-.55)*3));
-        drop.style.opacity=String(shown);drop.style.transform=`translate(${dx*(1-q)}px,${dy*(1-q)}px) scale(${Math.max(.3,Math.min(1.2,v))})`;
-        label.style.opacity=String(shown);label.style.transform=`translateX(${(1-shown)*8}px)`;
+        const fly=`translate(${dx*(1-q)}px,${dy*(1-q)}px)`;
+        drop.style.opacity=String(shown);drop.style.transform=`${fly} scale(${Math.max(.3,Math.min(1.2,v))})`;
+        label.style.opacity=String(Math.max(0,Math.min(1,(v-.35)*2.5)));label.style.transformOrigin='right center';
+        label.style.transform=`${fly} scale(${Math.max(.2,Math.min(1.15,v)).toFixed(4)}, ${Math.max(.4,Math.min(1.1,.4+v*.6)).toFixed(4)})`;
       };
     });
     droplets.current=draws.map(draw=>new LiveSpring(0,draw,{stiffness:300,damping:15}));

@@ -116,7 +116,7 @@ export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{item
   return <div className="category-pie" ref={root} data-selected={current?'true':undefined}>
     {total>0?<svg viewBox="-130 -130 260 260" role="group" aria-label="カテゴリ別の支払い割合。片をタップすると金額を確認できます。">
       {slices.map((item,index)=><g key={item.category} ref={node=>{groups.current[index]=node;}}>
-        <path className={`category-pie-slice${onOpen?' panel-source':''}`} data-panel-source={opened===item.category?'true':undefined} data-category={item.category} data-dim={current&&current.category!==item.category?'true':undefined} d={item.path} fillRule="evenodd" role="button" tabIndex={0} aria-pressed={item.category===selected}
+        <path className={`category-pie-slice${onOpen?' panel-source':''}`} data-panel-source={opened===item.category?'true':undefined} data-category={item.category} data-mid={item.mid} data-radius={(INNER+OUTER)/2} data-dim={current&&current.category!==item.category?'true':undefined} d={item.path} fillRule="evenodd" role="button" tabIndex={0} aria-pressed={item.category===selected}
           aria-label={`${item.category}：${yen(item.amount)}`} fill={displayColor(categoryAppearance(item.category,settings).color)}
           onClick={event=>press(item.category,event.currentTarget)}
           onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();press(item.category,event.currentTarget);}if(event.key==='Escape')onPick(null);}}/>
