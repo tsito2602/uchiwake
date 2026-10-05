@@ -20,11 +20,11 @@ const {outputFiles}=await build({stdin:{contents:`
   export const defaultOrb=()=>renderToStaticMarkup(createElement(ThinkingOrb,{state:'breathing',size:20,theme:'dark','aria-hidden':'true'}));
   export const setup=props=>renderToStaticMarkup(createElement(ImportSetup,props));
   export const review=props=>renderToStaticMarkup(createElement(ImportReview,props));
-  export const processing=props=>renderToStaticMarkup(createElement(ImportPhaseStatus,{progress:props.progress}))+renderToStaticMarkup(createElement(ImportProcessing,props));
+  export const processing=props=>renderToStaticMarkup(createElement(ImportPhaseStatus,{progress:props.progress,files:props.files??[]}))+renderToStaticMarkup(createElement(ImportProcessing,props));
   const context=appearance=>({onBack:()=>{},onAction:()=>{},actionLabel:appearance==='breathing'?'Thinking...':'デモで仕分ける',actionAppearance:appearance,disabled:appearance==='breathing',commit:true});
   export const panel=(active,appearance)=>renderToStaticMarkup(createElement(StatementImportPanel,{processing:active,progress:active?{phase:'sorting',entries:[],count:3,demo:true}:null,reviewing:false,onExited:()=>{},context:context(appearance)},'明細'));
   export const dock=(appearance,overrides={})=>renderToStaticMarkup(createElement(FloatingDock,{tab:'home',onSelect:()=>{},panelActive:true,month:'2026-09',onMonthChange:()=>{},onPrevMonth:()=>{},onNextMonth:()=>{},context:{...context(appearance),...overrides}}));
-`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external'});
+`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external',loader:{'.css':'empty'}});
 // Resolve external React imports from the project, not from a data URL.
 const bundle=outputFiles[0].text.replace(/from "(react(?:-dom(?:\/server)?|\/jsx-runtime)?|lucide-react|border-beam|thinking-orbs|motion\/react)"/g,(_match,name)=>`from ${JSON.stringify(import.meta.resolve(name))}`);
 const {setup,review,processing,panel,dock,defaultOrb,withDraftEntries,diagnostics}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
@@ -52,17 +52,15 @@ test('保存操作のないパネルでも削除を独立した島に表示し�
   assert.ok(!dock(undefined,{backOnly:true,commit:false}).includes('context-delete'));
 });
 
-test('読取中はゲージを1行の要約に置き換え、未着時・デモを区別してHTMLを実行しない',()=>{
+test('最初の行が届くまでは取り込んだ写真をスキャン表示し、文言や架空の進捗を出さない',()=>{
   const render=extra=>processing({progress:{phase:'reading',entries:[],count:null,demo:false,...extra},settings:[]});
-  const pending=render({});
-  assert.ok(pending.includes('Thinking...'));
-  assert.ok(pending.includes('import-thinking-text'));
-  assert.ok(!pending.includes('import-working-line'));
-  const summary=render({reasoning:'金額を確認中 <img src=x onerror=alert(1)>'});
-  assert.ok(summary.includes('金額を確認中 &lt;img'));
-  assert.ok(!summary.includes('<img src=x'));
-  assert.ok(!summary.includes('Thinking...'));
-  assert.ok(render({demo:true}).includes('サンプル明細を準備中…'));
+  const pending=render({reasoning:'金額を確認中 <img src=x onerror=alert(1)>'});
+  assert.ok(pending.includes('data-mode="waiting"'));
+  assert.ok(pending.includes('import-scan-bar'));
+  assert.ok(!pending.includes('<img src=x'));assert.ok(!pending.includes('金額を確認中 &lt;img'));
+  assert.ok(!pending.includes('Thinking...'));assert.ok(!pending.includes('scaleX'));assert.ok(!pending.includes('先月'));
+  assert.ok(pending.includes('読み取り <b>0</b>件'));
+  assert.ok(render({demo:true}).includes('<small>デモ</small>'));
 });
 
 test('仕分け後も同じ明細行で日付・費目・金額を表示し、編集フォームは閉じている',()=>{
@@ -103,14 +101,14 @@ test('利用合計を唯一の登録先編集入口にし、重複金額と明�
 
 test('フェーズはスクロール領域の外に固定し、仕分け済みの全行を保持する',()=>{
   const markup=panel(true);
-  const phase=markup.indexOf('class="import-phase-status"');
+  const phase=markup.indexOf('class="import-phase-status import-reader"');
   const viewport=markup.indexOf('class="card-panel-scroll"');
   assert.ok(phase>0&&phase<viewport);
   assert.ok(markup.slice(phase,viewport).includes('</section>'));
   assert.ok(markup.includes('data-import-list-viewport=""'));
   assert.ok(markup.includes('data-processing="true"'));
   assert.ok(!panel(false).includes('data-import-list-viewport'));
-  assert.ok(markup.includes('aria-label="読み取りと仕分けの並行処理"'));
+  assert.ok(markup.includes('aria-label="取り込みの進行"'));
   const entries=Array.from({length:12},(_,i)=>({...sample.entries[0],title:`店舗${i+1}`}));
   const list=processing({progress:{phase:'sorting',entries,count:12,demo:true},settings:[]});
   assert.equal((list.match(/data-import-entry=""/g)||[]).length,12);
@@ -190,35 +188,33 @@ test('Studioの発光SVG・マスク・透明度・速度を参照ページか�
   assert.ok(!oldCSS.includes('.studio-action'));
 });
 
- test('仕分けゲージは完了件数に連動し、金額確認は別の工程として表示する',()=>{
+ test('読み取りと仕分けの件数を別々に数え、金額確認中は確認済みの合計を表示する',()=>{
  for(const count of [1,7,15]){
-   const markup=processing({progress:{phase:'sorting',entries:sample.entries.slice(0,count),count:15,demo:true},settings:[]});
-   assert.ok(markup.includes(`transform:scaleX(${count/15})`));
-   assert.ok(markup.includes('class="import-verification" data-active="false"'));assert.ok(markup.includes('読み取り・仕分けの完了後'));
-   const checking=processing({progress:{phase:'checking',entries:sample.entries,count:15,demo:true,checkedCount:count},settings:[]});
-   assert.ok(checking.includes('class="import-verification" data-active="true"'));
+   const entries=sample.entries.slice(0,count);
+   const markup=processing({progress:{phase:'sorting',entries,count:15,demo:true},settings:[]});
+   assert.ok(markup.includes(`読み取り <b>${count}</b>件`));assert.ok(markup.includes(`仕分け <b>${count}</b>件`));
+   assert.ok(!markup.includes('scaleX'));
  }
- });
+ const checking=processing({progress:{phase:'checking',entries:sample.entries,count:15,demo:true,checkedCount:3,checkedTotal:1234},settings:[]});
+ assert.ok(checking.includes('金額を確認中'));
+});
 
-test('実取り込みは全件数が不明な間、完了した仕分け件数を示して割合を表示しない',()=>{
- const markup=processing({progress:{phase:'sorting',entries:sample.entries.slice(0,2),count:null,demo:false},settings:[]});
+test('実取り込みは全件数が不明な間も、届いた行数と仕分け済みの行数だけを示す',()=>{
+ const entries=sample.entries.slice(0,2).map((entry,i)=>({...entry,import_meta:{id:String(i),status:i===0?'classified':'pending'}}));
+ const markup=processing({progress:{phase:'sorting',entries,count:null,demo:false},settings:[]});
  assert.ok(markup.includes('費目ごとに仕分け中'));
- assert.ok(markup.includes('仕分け済み <b>2</b>件'));
- assert.match(markup,/data-state="current" data-indeterminate="true"[\s\S]*?transform:scaleX\(0\)/);
+ assert.ok(markup.includes('読み取り <b>2</b>件'));assert.ok(markup.includes('仕分け <b>1</b>件'));
  assert.ok(!markup.includes(' / '));
 });
 
-test('工程ゲージ直下に現在の作業と経過時間を表示し、読取中も受信した行を見せる',()=>{
- const entries=sample.entries.slice(0,3).map((entry,i)=>({...entry,import_meta:{id:String(i),status:i===0?'classified':'pending'}}));
+test('経過時間を表示し、読取中も受信した行を新しい順に見せ、再確認中は理由を示す',()=>{
+ const entries=sample.entries.slice(0,3).map((entry,i)=>({...entry,title:`店舗${i+1}`,import_meta:{id:String(i),status:i===0?'classified':'pending'}}));
  const activity={phase:'reading',text:'読み取り 3件・仕分け 1件完了',count:null,rechecking:false};
  const markup=processing({progress:{phase:'reading',entries,count:null,demo:false,activity},settings:[]});
- assert.ok(markup.indexOf('import-live-status')>markup.indexOf('</ul>'));
- assert.ok(!markup.includes('<ol'));assert.ok(!markup.includes('aria-current="step"'));
- assert.ok(markup.includes(activity.text));assert.ok(markup.includes('経過時間 0秒'));assert.ok(markup.includes('0:00'));
- assert.ok(markup.includes('読み取りと仕分け中'));assert.equal((markup.match(/data-import-entry=""/g)||[]).length,3);
- assert.equal((markup.match(/data-state="current"/g)||[]).length,2);assert.ok(!markup.includes('data-state="done"'));
- const sorting=processing({progress:{phase:'sorting',entries,count:3,demo:false,activity:{...activity,phase:'sorting',count:3}},settings:[]});
- assert.ok(sorting.includes('transform:scaleX(0.3333333333333333)'));assert.ok(sorting.includes('仕分け済み <b>1</b> / 3件'));
+ assert.ok(markup.includes('経過時間 0秒'));assert.ok(markup.includes('0:00'));
+ assert.ok(markup.includes('明細を読み取り中'));assert.equal((markup.match(/data-import-entry=""/g)||[]).length,3);
+ assert.ok(markup.indexOf('店舗3')<markup.indexOf('店舗1'));
+ assert.ok(!markup.includes(activity.text));
  const recheck=processing({progress:{phase:'reading',entries:[],count:null,demo:false,activity:{...activity,rechecking:true,text:'原本との差額 ¥100を再確認しています…'}},settings:[]});
  assert.ok(recheck.includes('明細を再確認中'));assert.ok(recheck.includes('原本との差額 ¥100'));
 });
@@ -304,7 +300,7 @@ test('未解決の金額には原本との金額差・具体的な確認理由�
  assert.ok(markup.includes('以前の修正（今回だけ適用）'));assert.ok(markup.includes('正答率を示すものではありません'));
  assert.ok(markup.includes('元の明細：'));assert.ok(!markup.includes('日以降'));
  const progress=processing({settings:[],progress:{phase:'sorting',count:null,demo:false,entries:[{...entry,import_meta:{...entry.import_meta,status:'classifying'}}]}});
- assert.ok(progress.includes('仕分け中…'));assert.ok(progress.includes('仕分け済み <b>0</b>件'));
+ assert.ok(progress.includes('仕分け中…'));assert.ok(progress.includes('仕分け <b>0</b>件'));
 });
 
 test('要確認になった理由を処理中にも表示し、仕分け待ち・仕分け中と区別する',()=>{
