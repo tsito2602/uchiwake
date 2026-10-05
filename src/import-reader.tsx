@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { FileText, Table2 } from 'lucide-react';
+import { Check, FileText, Table2 } from 'lucide-react';
 import type { EntryDraft } from './domain';
 import type { ImportProgress } from './statement-import-flow';
 import type { StatementFile } from './statement-files';
@@ -71,9 +71,11 @@ function Desk({files,demo}:{files:StatementFile[];demo:boolean}) {
 }
 
 type Item={key:string;entry:EntryDraft;line?:HTMLElement;typed?:Promise<void>};
+// What the reading came to, once the rows are in the list and can be fixed.
+export type ReaderResult={count:number;total:number;matches:boolean|null};
 const SKELETONS=9,SHEET_HEIGHT=200;
 
-export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?:StatementFile[]}) {
+export function ImportReader({progress,files=[],result}:{progress:ImportProgress;files?:StatementFile[];result?:ReaderResult}) {
   const peel=usePeel();
   const stage=useRef<HTMLDivElement>(null);
   const lines=useRef<HTMLDivElement>(null);
@@ -82,7 +84,26 @@ export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?
   const [motion]=useState(()=>typeof window!=='undefined'&&!reducedMotion());
   const engine=useRef({alive:true,running:false,open:null as Promise<void>|null,flights:0,typing:0,seen:new Set<string>(),queue:[] as Item[]});
   const [seconds,setSeconds]=useState(0);
-  useEffect(()=>{const started=Date.now();const timer=window.setInterval(()=>setSeconds(Math.floor((Date.now()-started)/1000)),1000);return()=>window.clearInterval(timer);},[]);
+  const [finished,setFinished]=useState(!!result);
+  const summary=useRef<HTMLDivElement>(null);
+  const hadResult=useRef(!!result);
+  useEffect(()=>{if(finished)return;const started=Date.now()-seconds*1000;const timer=window.setInterval(()=>setSeconds(Math.floor((Date.now()-started)/1000)),1000);return()=>window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[finished]);
+  // The counters give way to the result: the lanes lift away, the match
+  // pops in, and the title says the rows can now be fixed.
+  useLayoutEffect(()=>{
+    if(!result||hadResult.current)return;
+    hadResult.current=true;
+    if(reducedMotion()){setFinished(true);return;}
+    const node=summary.current;
+    node?.querySelector('.import-lanes')?.animate([{opacity:1,transform:'none'},{opacity:0,transform:'translateY(-8px)'}],{duration:220,fill:'forwards'});
+    node?.querySelector('.import-match')?.animate([{transform:'scale(.4)',opacity:0},{transform:'scale(1.12)',opacity:1,offset:.6},{transform:'none',opacity:1}],{duration:460,delay:120,easing:'cubic-bezier(.3,1.5,.5,1)',fill:'backwards'});
+    window.setTimeout(()=>tick(),300);
+    const timer=window.setTimeout(()=>setFinished(true),380);
+    return()=>window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[!!result]);
   useLayoutEffect(()=>{
     if(!motion)return;
     const state=engine.current;state.alive=true;peelStore.start();
@@ -278,16 +299,16 @@ export function ImportReader({progress,files=[]}:{progress:ImportProgress;files?
   const readCount=visible.length,sortedCount=visible.filter(({entry})=>sorted(entry)).length;
   const total=visible.reduce((sum,{entry})=>sum+entry.amount,0);
   const checking=progress.phase==='checking';
-  const title=progress.activity?.rechecking?'明細を再確認中':reading?'明細を読み取り中':checking?'金額を確認中':'費目ごとに仕分け中';
+  const title=finished?'読み取りました':progress.activity?.rechecking?'明細を再確認中':reading?'明細を読み取り中':checking?'金額を確認中':'費目ごとに仕分け中';
   const stageMode=motion?mode:(reading&&!progress.entries.length?'waiting':'folded');
   const sheetShown=stageMode==='opening'||stageMode==='sheet';
   return <section className="import-phase-status import-reader" aria-label="取り込みの進行">
-    <div className="import-phase-title" role="status" aria-live="polite"><strong key={title} className="import-phase-title-content">{title}</strong>{progress.demo&&<small>デモ</small>}<span className="import-elapsed" aria-label={`経過時間 ${seconds}秒`}>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span></div>
-    {progress.activity?.rechecking&&<p className="import-reader-note">{progress.activity.text}</p>}
+    <div className="import-phase-title" role="status" aria-live="polite"><strong key={title} className="import-phase-title-content">{title}</strong>{progress.demo&&<small>デモ</small>}{finished?<span className="import-elapsed import-reader-hint">タップして直せます</span>:<span className="import-elapsed" aria-label={`経過時間 ${seconds}秒`}>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span>}</div>
+    {!result&&progress.activity?.rechecking&&<p className="import-reader-note">{progress.activity.text}</p>}
     {stageMode!=='folded'&&<div ref={stage} className="import-reader-stage" data-mode={stageMode}>
       {sheetShown&&<div className="import-sheet" aria-hidden="true"><div className="import-sheet-head"><span>ご利用明細</span><span>AIが読み取った行</span></div><div className="import-sheet-window"><div ref={lines} className="import-sheet-lines"/><i ref={scan} className="import-sheet-scan"/></div><i className="import-sheet-crease"/></div>}
       {(stageMode==='waiting'||stageMode==='opening')&&<Desk files={files} demo={progress.demo}/>}
     </div>}
-    <div className="import-phase-summary"><span className="import-lanes"><span data-live={!readingDone||undefined}>読み取り <b>{readCount}</b>件</span><span data-live={!!readCount&&sortedCount<readCount||undefined}>仕分け <b>{sortedCount}</b>件</span></span><span className="import-phase-total"><small>利用合計</small><strong><NumberTicker value={checking&&progress.checkedTotal!==undefined?progress.checkedTotal:total}/></strong></span></div>
+    <div ref={summary} className="import-phase-summary" data-result={result?'':undefined}>{result&&<span className="import-match" data-matches={result.matches??undefined}>{result.matches!==false&&<Check size={13} strokeWidth={3} aria-hidden="true"/>}{result.count}件{result.matches===true?' · 明細の合計と一致':result.matches===false?' · 合計に差があります':'を読み取り'}</span>}<span className="import-lanes" aria-hidden={result?true:undefined}><span data-live={!readingDone||undefined}>読み取り <b>{readCount}</b>件</span><span data-live={!!readCount&&sortedCount<readCount||undefined}>仕分け <b>{sortedCount}</b>件</span></span><span className="import-phase-total"><small>利用合計</small><strong><NumberTicker value={result?result.total:checking&&progress.checkedTotal!==undefined?progress.checkedTotal:total}/></strong></span></div>
   </section>;
 }

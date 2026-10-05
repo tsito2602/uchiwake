@@ -7,7 +7,7 @@ import type { CategoryAppearance, SharedCard, EntryDraft } from './domain';
 import { categoryAppearance } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import type { ImportProgress } from './statement-import-flow';
-import { ImportReader } from './import-reader';
+import { ImportReader, type ReaderResult } from './import-reader';
 import { entryKey, usePeel } from './import-peel-store';
 import { statementFileAccept, statementFileSize, type StatementFile } from './statement-files';
 import { reviewCauseLabel } from './import-policy';
@@ -58,8 +58,8 @@ export function ImportEntryLine({entry,settings}:{entry:EntryDraft;settings:Cate
   return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color),'--tag-color':displayColor(appearance.color)} as React.CSSProperties}>{label}</span>{!!causes?.length&&<small>{causes.map(reviewCauseLabel).join('・')}</small>}</span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
 }
 
-export function ImportPhaseStatus({progress,files}:{progress:ImportProgress;files?:StatementFile[]}) {
-  return <ImportReader progress={progress} files={files}/>;
+export function ImportPhaseStatus({progress,files,result}:{progress:ImportProgress;files?:StatementFile[];result?:ReaderResult}) {
+  return <ImportReader progress={progress} files={files} result={result}/>;
 }
 
 const sorted=(entry:EntryDraft)=>!entry.import_meta||entry.import_meta.status==='classified'||entry.import_meta.status==='review';
@@ -105,7 +105,7 @@ export function ImportProcessing({progress,settings}:{progress:ImportProgress;se
   });
   return <div className="import-processing">
     <div ref={list} className="import-sorting-list" data-peel={peel.active||undefined} aria-label="仕分け結果">
-      {!shown.length&&progress.phase==='reading'?null:shown.map(({entry,key})=><div className="import-sorted-entry" data-import-entry="" data-entry-id={key} data-landed={!peel.active||peel.landed.has(key)?'':undefined} data-classification={entry.import_meta?.status} data-rule={entry.import_meta?.rule_id?'':undefined} key={key}><ImportEntryLine entry={entry} settings={settings}/></div>)}
+      {!shown.length&&progress.phase==='reading'?null:shown.map(({entry,key})=><div className="import-sorted-entry" data-import-entry="" data-entry-id={key} data-landed={!peel.active||peel.landed.has(key)?'':undefined} data-classification={entry.import_meta?.status} data-rule={entry.import_meta?.rule_id?'':undefined} key={key}><ImportEntryLine entry={entry} settings={settings}/><span className="import-entry-edit" data-hidden="" aria-hidden="true"><Pencil size={16}/></span></div>)}
     </div>
   </div>;
 }

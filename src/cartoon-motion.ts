@@ -91,7 +91,7 @@ export function squishPress(element:HTMLElement){
 /** The mock's press: under the finger a control spreads and flattens
  *  (scale 2-v, v), and on release it springs back past its size once. */
 const SQUISH_TARGETS:[string,number][]=[
-  ['.category-chart-row, .space-sheet-row, .ledger-row, .import-review-item',.97],
+  ['.category-chart-row, .space-sheet-row, .ledger-row, .import-review-row > .import-entry-button',.97],
   ['.safari-dock button, .dock-add, .fuse-add-options button, .settlement-item, .chart-ranges button, .dock-month button, .context-primary button, .card-panel-close, .category-chart-switch button',.92],
 ];
 export function installSquish(root:Document=document){

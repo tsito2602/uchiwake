@@ -6,6 +6,7 @@ import { CategoryIcon } from './category-icon';
 import { displayColor } from './display-color';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 import { sortEntries, type EntrySort } from './entry-sort';
+import { useReorderMotion } from './reorder-motion';
 import './category-entries-panel.css';
 
 type Props = Pick<State, 'entries' | 'statements' | 'cards' | 'category_settings' | 'month'> & {
@@ -25,6 +26,7 @@ const dateLabel=(date:string)=>{
 
 export function CategoryEntriesPanel({category,entries,statements,cards,category_settings,month,sort,groupByCard,origin,closing,onClose,onExited}:Props) {
   const panel=useRef<HTMLElement>(null);
+  useReorderMotion(panel,JSON.stringify(sort),String(groupByCard));
   usePanelMorph(panel,origin,closing,onExited,onClose);
   const appearance=categoryAppearance(category,category_settings);
   const statementCards=new Map(statements.filter(item=>item.due_month===month).map(item=>{
@@ -41,7 +43,7 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
   }).map(card=>({...card,entries:rows.filter(entry=>statementCards.get(entry.statement_id)!.id===card.id)}));
   const renderEntry=(entry:CardEntry)=>{
     const card=statementCards.get(entry.statement_id)!;
-    return <div className="card-panel-entry" key={entry.id}>
+    return <div className="card-panel-entry" data-reorder-key={entry.id} key={entry.id}>
       <div><strong>{entry.title}</strong><small>{entry.spent_on?<time dateTime={entry.spent_on}>{dateLabel(entry.spent_on)}</time>:'利用日不明'}</small>
         {!groupByCard&&<small className="category-entry-card"><CreditCard size={14} color={displayColor(card.color)} aria-hidden="true"/><span>{card.name}</span></small>}
       </div><span>{yen(entry.amount)}</span>

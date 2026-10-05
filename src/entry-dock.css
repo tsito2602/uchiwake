@@ -44,3 +44,4 @@
 @media (prefers-reduced-motion: reduce) {
   .thumb-dock .category-entries-modes::before, .thumb-dock .dock-selection { transition: none; }
 }
+.context-trailing-sorts .context-entry-sorts { margin-left: 0; }

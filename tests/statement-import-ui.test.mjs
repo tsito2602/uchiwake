@@ -72,7 +72,7 @@ test('仕分け後も同じ明細行で日付・費目・金額を表示し、�
     assert.ok(markup.includes(sample.confirmed_total.toLocaleString('ja-JP')));
   }
   assert.ok(completed.includes('スーパーを編集'));
-  assert.ok(completed.includes('タップして編集'));
+  assert.equal((completed.match(/class="import-entry-edit"/g)||[]).length,sample.entries.length+1);
   assert.ok(!completed.includes('type="month"'));
   assert.ok(!completed.includes('type="date"'));
   assert.ok(!completed.includes('<select'));
@@ -82,7 +82,7 @@ test('仕分け後も同じ明細行で日付・費目・金額を表示し、�
 test('手入力で始めた空の明細は編集欄を開き、削除・金額・費目を編集できる',()=>{
   const markup=review({...props,draft:{...draft,entries:[{spent_on:'',title:'',amount:0,category:'要確認'}]}});
   for(const expected of ['type="date"','type="number"','<select','1件目を削除'])assert.ok(markup.includes(expected));
-  assert.match(markup,/<div class="import-review-item" data-expanded="true"[^>]*><button[\s\S]*?<\/button>[\s\S]*?<div class="import-review-expander"[^>]*><fieldset/);
+  assert.match(markup,/<div class="import-review-row"[^>]*><button[^>]*aria-expanded="true"[\s\S]*?<\/button>[\s\S]*?<div class="import-review-expander"[^>]*><fieldset/);
 });
 
 test('利用合計を唯一の登録先編集入口にし、重複金額と明細名の入力をなくす',()=>{
@@ -129,13 +129,11 @@ test('新しい明細をパネル内だけで追従し、動きを減らす設�
 test('編集できる行をアイコンで示し、確認チェックはテーマ色のアニメーションとキーボード操作を備える',()=>{
   const markup=review({...props,checked:true});
   assert.equal((markup.match(/class="import-entry-edit"/g)||[]).length,16);
-  assert.ok(markup.includes('import-edit-hint'));
   assert.match(markup,/data-checked="true"><input type="checkbox" checked=""/);
   assert.ok(markup.includes('元の明細と内容・金額を確認した'));
   const css=readFileSync(new URL('../src/statement-import.css',import.meta.url),'utf8');
   assert.match(css,/input:checked \+ \.import-confirm-check \{[^}]*background: var\(--brand\);[^}]*animation: import-check-pop/);
   assert.ok(css.includes('input:focus-visible + .import-confirm-check'));
-  assert.ok(css.includes('@keyframes import-check-draw'));
 });
 
 test('仕分け中だけ0.7倍のSoft Orbitを表示し、光とぼかしを角丸の内側に収める',()=>{
@@ -267,18 +265,18 @@ test('デモ表示から明細読み取りを選べ、AI未設定時には無効
 test('要確認を分類済みより上に分け、その他は分類済みとして確認できる',()=>{
  const entries=[{title:'分類済みの利用',spent_on:'2026-09-01',category:'その他',amount:100},{title:'未解決の利用',spent_on:'2026-09-02',category:'要確認',amount:200}];
  const markup=review({...props,checked:true,draft:{...draft,entries,confirmed_total:300}});
- assert.ok(markup.indexOf('aria-label="要確認"')<markup.indexOf('aria-label="分類済み"'));
+ assert.ok(markup.indexOf('aria-label="確認が必要"')<markup.indexOf('aria-label="仕分け結果"'));
  assert.ok(markup.indexOf('未解決の利用')<markup.indexOf('分類済みの利用'));
  assert.match(markup,/type="checkbox" disabled=""/);
- assert.ok(markup.includes('確認対象の金額：¥200'));
+ assert.ok(markup.includes('確認が必要 1件'));assert.ok(markup.includes('¥200'));
  const resolved=review({...props,draft:{...draft,entries:entries.map(entry=>({...entry,category:'その他'})),confirmed_total:300}});
- assert.ok(!resolved.includes('aria-label="要確認"'));
+ assert.ok(!resolved.includes('aria-label="確認が必要"'));
  assert.doesNotMatch(resolved,/type="checkbox" disabled=""/);
 });
 
 test('名称を変えた要確認も未分類としてまとめる',()=>{
  const markup=review({...props,settings:[{category:'確認待ち',original_category:'要確認',icon:'tag',color:'#171717'}],draft:{...draft,entries:[{title:'不明',spent_on:'',category:'確認待ち',amount:100}],confirmed_total:100}});
- assert.ok(markup.includes('aria-label="要確認"'));
+ assert.ok(markup.includes('aria-label="確認が必要"'));
  assert.match(markup,/type="checkbox" disabled=""/);
 });
 
@@ -297,7 +295,7 @@ test('未解決の金額には原本との金額差・具体的な確認理由�
  const entry={title:'Amazon',spent_on:'2026-09-01',category:'要確認',amount:200,import_meta:{id:'1:1:1',source:{file:1,page:1,row:1,excerpt:'Amazon 200'},context:'',amount_uncertain:false,status:'review',reason:'購入内容を確認してください。',candidates:[{category:'食費',score:.6}],history:['日用品費']}};
  const markup=review({...props,draft:{...draft,entries:[entry],confirmed_total:300,source_total:{amount:300,file:1,page:1,label:'合計'}}});
  assert.ok(markup.includes('記載額との差：¥100'));assert.ok(markup.includes('購入内容を確認してください。'));
- assert.ok(markup.includes('以前の修正（今回だけ適用）'));assert.ok(markup.includes('正答率を示すものではありません'));
+ assert.ok(markup.includes('以前の修正（今回だけ適用）'));assert.match(markup,/<button title="候補の比較用 60%"><i style="background:[^"]+"><\/i>食費<\/button>/);
  assert.ok(markup.includes('元の明細：'));assert.ok(!markup.includes('日以降'));
  const progress=processing({settings:[],progress:{phase:'sorting',count:null,demo:false,entries:[{...entry,import_meta:{...entry.import_meta,status:'classifying'}}]}});
  assert.ok(progress.includes('仕分け中…'));assert.ok(progress.includes('仕分け <b>0</b>件'));

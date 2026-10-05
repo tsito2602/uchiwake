@@ -1,5 +1,5 @@
 import { EntryGroupTabs, EntrySortControls } from './entry-sort-controls';
-import type { EntrySort } from './entry-sort';
+import type { EntrySort, ListSort } from './entry-sort';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type CSSProperties } from 'react';
 import { Copy, Shuffle, RefreshCw, UserRoundPlus, Calculator, Check, ChevronLeft, ChevronRight, Pencil, Plus, ReceiptText, Settings, Trash2 } from 'lucide-react';
 import { FluidDockSurface, type FluidDockHandle } from './kondo-fluid-dock';
@@ -22,7 +22,7 @@ export const dockTabs = [
 ] as const;
 
 export type DockAction = {icon?:'invite'|'copy'|'refresh'|'shuffle';label:string;onAction:()=>void;disabled?:boolean;commit?:boolean};
-export type DockContext = { contentKey?:string; detailAction?:DockAction; entryControls?:{sort:EntrySort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'|'shuffle'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
+export type DockContext = { contentKey?:string; detailAction?:DockAction; entryControls?:{sort:ListSort;onSort:(value:EntrySort)=>void;groupByCard?:boolean;onGroupByCard?:(value:boolean)=>void;trailing?:boolean}; backOnly?:boolean;label:string; onBack:()=>void; actionLabel:string; onAction:()=>void; disabled?:boolean; compact?:boolean; actionIcon?:'edit'|'done'|'details'|'shuffle'; actionAppearance?:'studio'|'breathing'; commit?:boolean; secondaryAction?:DockAction; auxiliaryAction?:DockAction; trailingEdit?:DockAction; rentActions?:boolean };
 type DockAdd = {label:string;options:AddOption[];disabled?:boolean};
 export type DockSpace = {name:string;faces:DockFace[];open?:boolean;onOpen:(source:HTMLElement)=>void};
 type Props = {space?:DockSpace;personal?:boolean;tab:DockTab;onSelect:(tab:DockTab)=>void;add?:DockAdd;context?:DockContext;panelActive?:boolean;month:string;onMonthChange:(month:string)=>void;onPrevMonth:()=>void;onNextMonth:()=>void};
@@ -174,20 +174,21 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
   return <>
     {!context&&add&&menuPhase!=='closed'&&<FuseAddMenu options={add.options} closing={menuPhase==='closing'} onClose={closeMenu} onSelect={option=>{pendingAdd.current=option.onClick;closeMenu();}} onExited={exitMenu}/>}
 
-    <div className={`floating-nav-host${context?.entryControls?' has-entry-controls':''}${context||panelActive?' context-host':''}`}><div ref={root} className="kondo-floating-dock thumb-dock" data-mode={context?'context':'browse'}>
+    <div className={`floating-nav-host${context?.entryControls&&!context.entryControls.trailing?' has-entry-controls':''}${context||panelActive?' context-host':''}`}><div ref={root} className="kondo-floating-dock thumb-dock" data-mode={context?'context':'browse'}>
 
       <FluidDockSurface root={root} ref={morph} addOpen={menuOpen}/>
       <DockContent identity={context?.contentKey??(context?'context':'browse')} mode={context?'context':'browse'}>
-        {context?<nav className={`context-dock${context.entryControls?' context-entries':''}${context.rentActions?' context-rent':''}`} aria-label={context.label}>
+        {context?<nav className={`context-dock${context.entryControls?' context-entries':''}${context.entryControls?.trailing?' context-trailing-sorts':''}${context.rentActions?' context-rent':''}`} aria-label={context.label}>
           <div className="context-island context-back"><PanelBackButton onBack={context.onBack}/></div>
           {context.detailAction&&<div className="context-island context-detail"><button aria-label={context.detailAction.label} onClick={context.detailAction.onAction} disabled={context.detailAction.disabled}><DockActionIcon action={context.detailAction} fallback="details"/></button></div>}
           {context.entryControls?.onGroupByCard&&<div className="context-island context-entry-groups"><EntryGroupTabs groupByCard={!!context.entryControls.groupByCard} onChange={context.entryControls.onGroupByCard}/></div>}
-          {context.entryControls&&<div className="context-island context-entry-sorts"><EntrySortControls value={context.entryControls.sort} onChange={context.entryControls.onSort}/></div>}
+          {context.entryControls&&!context.entryControls.trailing&&<div className="context-island context-entry-sorts"><EntrySortControls value={context.entryControls.sort} onChange={context.entryControls.onSort}/></div>}
           {context.auxiliaryAction&&<div className="context-island context-auxiliary"><button aria-label={context.auxiliaryAction.label} onClick={context.auxiliaryAction.onAction} disabled={context.auxiliaryAction.disabled}>{context.rentActions?<><Pencil size={18} aria-hidden="true"/><span>基本家賃</span></>:<DockActionIcon action={context.auxiliaryAction} fallback="settings"/>}</button></div>}
           {!context.backOnly&&<div data-commit={context.commit||undefined} className={`context-island context-primary${context.compact?' context-compact':''}${context.secondaryAction&&!separateSecondary?' context-action-group':''}`}>
             <button className={`context-action${context.actionAppearance==='studio'?' studio-action':context.actionAppearance==='breathing'?' breathing-action':''}`} aria-label={context.actionLabel} onClick={context.onAction} disabled={context.disabled}>{context.actionIcon==='shuffle'?<><Shuffle size={20} aria-hidden="true"/><span>{context.actionLabel}</span></>:context.actionIcon==='edit'?<><Pencil size={context.rentActions?18:22} aria-hidden="true"/>{context.rentActions&&<span>この月の家賃</span>}</>:context.actionIcon==='details'?<ReceiptText size={22} aria-hidden="true"/>:context.actionIcon==='done'?<Check size={22} aria-hidden="true"/>:context.actionAppearance==='studio'?<StudioActionLabel label={context.actionLabel}/>:context.actionAppearance==='breathing'?<ImportProcessingLabel label={context.actionLabel}/>:context.actionLabel}</button>
             {context.secondaryAction&&!separateSecondary&&<button className="context-action context-delete-action" aria-label={context.secondaryAction.label} onClick={context.secondaryAction.onAction} disabled={context.secondaryAction.disabled}><Trash2 size={22} aria-hidden="true"/></button>}
           </div>}
+          {context.entryControls?.trailing&&<div className="context-island context-entry-sorts"><EntrySortControls value={context.entryControls.sort} onChange={context.entryControls.onSort}/></div>}
           {context.secondaryAction&&separateSecondary&&<div className="context-island context-delete"><button aria-label={context.secondaryAction.label} onClick={context.secondaryAction.onAction} disabled={context.secondaryAction.disabled}><Trash2 size={22} aria-hidden="true"/></button></div>}
           {context.trailingEdit&&<div className="context-island context-edit"><button aria-label={context.trailingEdit.label} onClick={context.trailingEdit.onAction} disabled={context.trailingEdit.disabled}><Pencil size={22} aria-hidden="true"/></button></div>}
         </nav>
