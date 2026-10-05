@@ -545,7 +545,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       {demoView&&<div className="demo-view-banner" role="status">デモ表示中 · サンプルデータ</div>}
       {!state?<div className="empty loading">{notice?'データを表示できませんでした。':'読み込んでいます…'}{notice&&<div><button className="secondary" onClick={()=>void load()}>再読み込み</button></div>}</div>:<>
       {tab==='home'&&<>
-        <p className="space-current-name">{space.name}</p>
+        <p className="space-current-name">{space.name}<span>{Number(displayedMonth.slice(0,4))}年{Number(displayedMonth.slice(5,7))}月の{personal?'支出':'精算'}</span></p>
         <section className="hero settlement-hero">
           <div className="settlement-amount-toggle">
             <span className="hero-label"><UsersRound size={18} aria-hidden="true"/>{scrub?`${Number(scrub.month.slice(5))}月の`:''}{personal?'支出合計':splitOpen?'それぞれの負担額':'支払い合計'}{!single&&<span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span>}</span>

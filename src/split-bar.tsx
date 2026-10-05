@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { haptic } from './haptics';
 import { LiveSpring, reducedMotion } from './cartoon-motion';
 import { NumberTicker } from './number-ticker';
+import { hapticLabel, ios, wire } from './haptic-touch';
 
 const H=32,R=H/2;
 type End={seam:number;round:number;neck:number}|null;
@@ -178,7 +179,9 @@ export function SplitBar({people,editable,onCommit,onSplitChange,unassigned=0,on
     const area=root.current?.closest('.settlement-hero')?.querySelector<HTMLElement>('.settlement-amount-toggle');if(!area)return;
     const tap=()=>toggleRef.current();
     area.dataset.tears='true';area.addEventListener('click',tap);
-    return()=>{area.removeEventListener('click',tap);delete area.dataset.tears;};
+    // iPhone ticks only through a native switch, so the amounts carry one too.
+    const label=ios?hapticLabel():null,unwire=label?(area.appendChild(label),wire(label)):undefined;
+    return()=>{area.removeEventListener('click',tap);delete area.dataset.tears;unwire?.();label?.remove();};
   },[]);
   const canDrag=editable&&split&&pair;
   function down(event:PointerEvent<HTMLDivElement>){
@@ -224,7 +227,6 @@ export function SplitBar({people,editable,onCommit,onSplitChange,unassigned=0,on
     {!!unassigned&&<button type="button" className="split-bar-rounding" data-split={split||undefined} disabled={!onDecide} onClick={event=>{haptic();const r=event.currentTarget.getBoundingClientRect();onDecide?.({left:r.left,top:r.top,width:r.width,height:r.height});}}>
       <i aria-hidden="true"/><span>端数 <b>{Math.abs(unassigned).toLocaleString('ja-JP')}円</b> を{unassigned<0?'受け取る':'払う'}人が未定</span>{onDecide&&<em>決める</em>}
     </button>}
-    <p className="split-bar-hint">{split?(canDrag?'継ぎ目を左右に引くと、負担割合が変わります':'もう一度タップでまとまります'):`${pair?'ふたり':'みんな'}の負担。タップすると、ちぎれて金額が出ます`}</p>
     {slot&&createPortal(<span className="hero-split-nums" aria-live="polite" aria-hidden={!split}>{people.map((person,index)=><span key={person.id} className="hero-split-person"><small>{person.name}</small><b><NumberTicker value={amounts[index]}/></b>{!!person.rounding&&<em className="hero-split-rounding">端数 {person.rounding>0?'+':'−'}{Math.abs(person.rounding).toLocaleString('ja-JP')}円込み</em>}</span>)}</span>,slot)}
   </>;
 }
