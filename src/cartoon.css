@@ -273,3 +273,8 @@ div.settlement-amount-toggle { cursor: auto; }
 @media (prefers-reduced-motion: reduce) { .split-bar-rounding, .split-bar-rounding > i { animation: none; } }
 /* A piece stays on show under its panel: the panel melts back into it. */
 .category-pie-slice.panel-source[data-panel-source='true'] { visibility: visible; }
+.split-bar-spark { fill: var(--brand-ink); transform-box: fill-box; transform-origin: center; }
+.split-bar-spark[data-tone='1'] { fill: var(--brand-mid); }
+.split-bar-spark[data-tone='2'] { fill: var(--brand-pale); }
+div.settlement-amount-toggle[data-tears] { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+div.settlement-amount-toggle[data-tears]:active .hero-stage { scale: .985; transition: scale .12s; }

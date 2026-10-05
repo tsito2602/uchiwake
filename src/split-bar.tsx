@@ -97,7 +97,10 @@ export function SplitBar({people,editable,onCommit,onSplitChange,unassigned=0,on
     const hero=node.closest('.settlement-hero')?.querySelector<HTMLElement>('.hero-money');
     if(hero){hero.style.transform=s.heroX.value===1&&s.heroY.value===1?'':`scale(${s.heroX.value},${s.heroY.value})`;hero.style.opacity=s.heroOpacity.value>=.999?'':String(Math.max(0,s.heroOpacity.value));}
     const nums=slot?[...slot.querySelectorAll<HTMLElement>('.hero-split-person')]:[];
-    nums.forEach((num,index)=>{const v=s.nums[index]?.value??1;num.style.opacity=String(Math.max(0,Math.min(1,1-v)));num.style.transform=`translateY(${v*22}px) scale(${1-v*.35})`;});
+    // Each amount is flung out of the tear: it starts at the middle, small,
+    // and springs out to its own side with a little tilt that settles.
+    nums.forEach((num,index)=>{const v=s.nums[index]?.value??1,side=nums.length>1&&index===nums.length-1?-1:1,x=num.offsetWidth?Math.min(70,num.offsetWidth*.45):46;
+      num.style.opacity=String(Math.max(0,Math.min(1,(1-v)*1.6)));num.style.transform=`translate(${(side*Math.max(0,v)*x).toFixed(2)}px, ${(v*14).toFixed(2)}px) rotate(${(-side*v*8).toFixed(2)}deg) scale(${(1-v*.5).toFixed(4)})`;});
   }
   const drawRef=useRef(draw);drawRef.current=draw;
   springs.current??={
@@ -122,21 +125,61 @@ export function SplitBar({people,editable,onCommit,onSplitChange,unassigned=0,on
   // A new month or a saved split moves the seam to the stored shares.
   useEffect(()=>{if(drag.current)return;setRatio(base[0]);springs.current!.ratio.to(base[0]);},[base.map(v=>v.toFixed(4)).join()]);
 
-  const later=(ms:number,fn:()=>void)=>window.setTimeout(fn,reducedMotion()?0:ms);
+  const timers=useRef<number[]>([]);
+  const later=(ms:number,fn:()=>void)=>{timers.current.push(window.setTimeout(fn,reducedMotion()?0:ms));};
+  useEffect(()=>()=>timers.current.forEach(clearTimeout),[]);
+  // The torn ends throw off a few drops from each seam as the thread snaps.
+  function sparks(){
+    const node=root.current,s=springs.current;if(!node||!s||reducedMotion())return;
+    const group=node.querySelector<SVGGElement>('.split-bar-sparks');if(!group)return;
+    const width=node.clientWidth,parts=pair?[s.ratio.value,1-s.ratio.value]:shapes.current;
+    let at=0;const seams=parts.slice(0,-1).map(part=>(at+=part*width));
+    group.replaceChildren();
+    seams.forEach((seam,seamIndex)=>[-1,1].forEach(side=>[0,1,2].forEach(n=>{
+      const drop=document.createElementNS('http://www.w3.org/2000/svg','circle'),size=[3.2,2.4,1.7][n];
+      drop.setAttribute('cx',String(seam));drop.setAttribute('cy','0');drop.setAttribute('r',String(size));
+      drop.setAttribute('class','split-bar-spark');drop.dataset.tone=String((seamIndex+(side>0?1:0))%3);group.appendChild(drop);
+      const dx=side*(16+n*11+Math.random()*6),dy=(n-1)*13+(Math.random()-.5)*8;
+      drop.animate([{transform:'translate(0px, 0px) scale(1)',opacity:1},{transform:`translate(${dx*.7}px, ${dy*.7-6}px) scale(1.1)`,opacity:1,offset:.45},{transform:`translate(${dx}px, ${dy+4}px) scale(.2)`,opacity:0}],{duration:420+n*60,easing:'cubic-bezier(.2,.8,.3,1)',fill:'forwards'}).finished.then(()=>drop.remove(),()=>undefined);
+    })));
+  }
   function toggle(){
     const s=springs.current!,next=!split;setSplit(next);onSplitChange?.(next);haptic();
+    timers.current.forEach(clearTimeout);timers.current=[];
     if(next){
-      s.squash.set(.6);s.squash.to(1,{stiffness:500,damping:16});
-      s.gap.to(14,{stiffness:230,damping:10});
-      s.heroX.to(1.12);s.heroY.to(.7);
-      later(90,()=>{s.heroOpacity.to(0);s.nums.forEach((num,index)=>later(index*70,()=>num.to(0,{stiffness:380,damping:13})));});
+      // 1. Pull: the bar thins and its middle draws out into a thread while
+      //    the total stretches sideways with it.
+      s.squash.to(.8,{stiffness:260,damping:20});
+      s.gap.to(8.6,{stiffness:110,damping:15});
+      s.heroX.to(1.16,{stiffness:260,damping:18});s.heroY.to(.72,{stiffness:260,damping:18});
+      // 2. Snap: the thread breaks, both halves recoil past their rest and
+      //    wobble like jelly, drops fly off the torn ends, the total pops and
+      //    each person's amount is flung out to their side.
+      later(230,()=>{
+        haptic();sparks();
+        s.gap.to(15,{stiffness:340,damping:8});
+        s.squash.set(.58);s.squash.to(1,{stiffness:380,damping:7});
+        s.heroX.to(1.32,{stiffness:600,damping:22});s.heroY.to(.35,{stiffness:600,damping:22});s.heroOpacity.to(0,{stiffness:520,damping:30});
+        s.nums.forEach((num,index)=>later(30+index*60,()=>num.to(0,{stiffness:330,damping:11})));
+      });
     }else{
-      s.gap.to(0,{stiffness:420,damping:20});
+      // Back together: the halves rush in, smack into one bar and jiggle, and
+      // the total drops back in where the amounts were.
+      s.gap.to(0,{stiffness:520,damping:22});
       if(pair){setRatio(base[0]);s.ratio.to(base[0]);}
-      s.nums.forEach(num=>num.to(1,{stiffness:500,damping:30}));
-      s.heroOpacity.to(1);s.heroX.set(.9);s.heroY.set(1.12);s.heroX.to(1,{stiffness:420,damping:12});s.heroY.to(1,{stiffness:420,damping:12});
+      s.nums.forEach(num=>num.to(1,{stiffness:520,damping:30}));
+      later(120,()=>{haptic();s.squash.set(1.25);s.squash.to(1,{stiffness:420,damping:8});
+        s.heroOpacity.to(1);s.heroX.set(.82);s.heroY.set(1.2);s.heroX.to(1,{stiffness:420,damping:11});s.heroY.to(1,{stiffness:420,damping:11});});
     }
   }
+  // The amounts above the bar tear it too: a tap anywhere on them toggles.
+  const toggleRef=useRef(toggle);toggleRef.current=toggle;
+  useEffect(()=>{
+    const area=root.current?.closest('.settlement-hero')?.querySelector<HTMLElement>('.settlement-amount-toggle');if(!area)return;
+    const tap=()=>toggleRef.current();
+    area.dataset.tears='true';area.addEventListener('click',tap);
+    return()=>{area.removeEventListener('click',tap);delete area.dataset.tears;};
+  },[]);
   const canDrag=editable&&split&&pair;
   function down(event:PointerEvent<HTMLDivElement>){
     if(event.button!==0)return;
@@ -172,7 +215,7 @@ export function SplitBar({people,editable,onCommit,onSplitChange,unassigned=0,on
     <div ref={root} className="split-bar" data-split={split||undefined} role="button" tabIndex={0} aria-expanded={split}
       aria-label={`負担の割合：${people.map((person,index)=>`${person.name} ${percent(shown[index])}%`).join('、')}。${split?'タップでまとめる':'タップで金額を表示'}`}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onKeyDown={key}>
-      <svg className="split-bar-shape" aria-hidden="true" preserveAspectRatio="none"><g>{people.map((person,index)=><path key={person.id} className="split-bar-piece" data-tone={index%3}/>)}</g></svg>
+      <svg className="split-bar-shape" aria-hidden="true" preserveAspectRatio="none"><g>{people.map((person,index)=><path key={person.id} className="split-bar-piece" data-tone={index%3}/>)}</g><g className="split-bar-sparks"/></svg>
       {people.map((person,index)=><span key={person.id} className="split-bar-label" data-tone={index%3} data-edge={index===people.length-1&&index>0?'end':undefined} data-pair={pair||undefined} aria-hidden="true">
         <Avatar person={person}/><span className="split-bar-share">{percent(shown[index])}%</span>
       </span>)}
