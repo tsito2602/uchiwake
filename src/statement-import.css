@@ -284,3 +284,8 @@
 .import-glow[data-leaving] { opacity: 0; }
 @keyframes import-confirm-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .import-review .import-review-confirm { animation: none; } .import-glow { transition: none; } }
+/* An open editor belongs to its row: no rule between them, one rule after the form. */
+.import-review-list .import-review-row:has(> .import-review-expander) > .import-entry-button { border-bottom-color: transparent; }
+.import-review-list .import-review-row:has(> .import-review-expander) { border-bottom: 1px solid var(--line); }
+.import-review-list .import-review-editor { margin: 0; padding-top: 4px; border-top: 0; }
+.import-review-box .import-review-row:last-child { border-bottom: 0; }

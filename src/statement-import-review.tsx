@@ -274,7 +274,8 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
     </div></section>}
     {box!=='closed'&&<div className="import-review-sec"><span>仕分け済み <b>{draft.entries.length-inBox.length}</b>件</span><span>タップして直せます</span></div>}
     <div className="import-sorting-list import-review-list" aria-label="仕分け結果">{listRows.map(item=>row(item,'list'))}</div>
-    <button className="import-review-add" disabled={busy} onClick={()=>{const entry={spent_on:'',title:'',amount:0,category:fallbackCategory(settings)};const key=entryKey(entry,draft.entries.length);setEditing(key);onChange(withDraftEntries(draft,[...draft.entries,entry]));requestAnimationFrame(()=>root.current?.querySelector(rowSelector(key))?.scrollIntoView({block:'center',behavior:reducedMotion()?'auto':'smooth'}));}}><Plus size={16}/> 明細を追加</button>
+    {/* The list shows the newest read row first, so a row put at the front lands last. */}
+    <button className="import-review-add" disabled={busy} onClick={()=>{const entry={spent_on:'',title:'',amount:0,category:fallbackCategory(settings)};const key=entryKey(entry,0);setEditing(key);onChange(withDraftEntries(draft,[entry,...draft.entries]));requestAnimationFrame(()=>root.current?.querySelector(rowSelector(key))?.scrollIntoView({block:'center',behavior:reducedMotion()?'auto':'smooth'}));}}><Plus size={16}/> 明細を追加</button>
     <ImportOriginalFiles files={files}/>
     <div className="import-review-summary" data-expanded={metadataOpen}>
     <button className="import-processing-foot import-review-total" disabled={busy} aria-label="利用合計：登録先・引落額を編集" aria-expanded={metadataOpen} aria-controls={`${id}-metadata`} onClick={()=>setMetadataOpen(!metadataOpen)}><span>利用合計</span><strong>¥{total.toLocaleString('ja-JP')}</strong><span className="import-entry-edit" aria-hidden="true">{metadataOpen?<X size={16}/>:<Pencil size={16}/>}</span></button>
