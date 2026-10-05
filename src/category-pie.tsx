@@ -86,6 +86,8 @@ export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{item
   useEffect(()=>()=>{timers.current.forEach(clearTimeout);segments.current.forEach(s=>{s.out.stop();s.rot.stop();s.scale.stop();});},[]);
 
   const current=slices.find(item=>item.category===selected)??null;
+  // The centre figure shrinks with its digits so it never runs onto the ring.
+  const figure=yen(current?current.amount:total).length,figureSize=figure<=7?24:figure<=8?21:figure<=10?18:15;
   // A tap ticks, picks the piece, and on the picked piece opens its statements.
   const press=(category:Category,source:Element)=>{
     haptic();
@@ -123,7 +125,7 @@ export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{item
       </g>)}
     </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
     {total>0&&<div className="category-pie-center" role="status" aria-live="polite">
-      <small>{current?current.category:'カード合計'}</small><b><NumberTicker value={current?current.amount:total}/></b><span>{current?`${Math.round(current.amount/total*100)}%`:`${items.length}つの費目`}{current&&onOpen&&<ChevronRight size={12} aria-hidden="true"/>}</span>
+      <small>{current?current.category:'カード合計'}</small><b style={{fontSize:figureSize}}><NumberTicker value={current?current.amount:total}/></b><span>{current?`${Math.round(current.amount/total*100)}%`:`${items.length}つの費目`}{current&&onOpen&&<ChevronRight size={12} aria-hidden="true"/>}</span>
     </div>}
     {total>0&&current&&onOpen&&<button type="button" className="category-pie-open" aria-label={`${current.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>{haptic();onOpen(current.category,event.currentTarget);}}/>}
     {total>0&&ios&&<label ref={label} className="haptic-touch category-pie-haptic" aria-hidden="true"><input type="checkbox" {...{switch:''}} tabIndex={-1}/></label>}
