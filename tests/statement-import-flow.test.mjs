@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { demoImportResult, importPause, runStatementImport } from '../src/statement-import-flow.ts';
 
-test('デモは選択月の15件を順に仕分け、10秒間のプレビュー後に一致する合計を返す',async()=>{
+test('デモは選択月の15件を1件ずつ見える間隔で仕分け、一致する合計を返す',async()=>{
   const frames=[],waits=[];
   const sample=demoImportResult('2026-10');
   const result=await runStatementImport({demo:true,signal:new AbortController().signal,
     analyze:async()=>sample,onProgress:progress=>frames.push(progress),pause:async ms=>{waits.push(ms);}});
   assert.deepEqual(frames.map(frame=>[frame.phase,frame.entries.length]),[['reading',0],...Array.from({length:15},(_,i)=>['sorting',i+1]),...Array.from({length:16},()=>['checking',15])]);
-  assert.ok(Math.abs(waits.reduce((sum,ms)=>sum+ms,0)-10000)<.001);
+  assert.deepEqual(waits.slice(1,16),Array(15).fill(700));assert.ok(Math.abs(waits.reduce((sum,ms)=>sum+ms,0)-14500)<.001);
   assert.equal(frames.at(-1).checkedCount,15);
   assert.equal(frames.at(-1).checkedTotal,result.confirmed_total);
   assert.ok(result.entries.every(entry=>entry.spent_on.startsWith('2026-10-')));

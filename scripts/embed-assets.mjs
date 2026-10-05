@@ -12,12 +12,12 @@ async function collect(dir) {
   }
 }
 await collect(root);
-const types = { '.json':'application/json; charset=utf-8', '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png' };
+const types = { '.json':'application/json; charset=utf-8', '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png', '.woff2':'font/woff2' };
 const map = {};
 for (const path of files) {
   const ext = extname(path);
   if (!types[ext]) throw new Error(`Unsupported asset: ${path}`);
-  const binary = ext === '.png';
+  const binary = ext === '.png' || ext === '.woff2';
   map['/'+relative(root,path).replaceAll('\\','/')] = {body:await readFile(path,binary ? 'base64' : 'utf8'),mime:types[ext],...(binary ? {encoding:'base64'} : {})};
 }
 await writeFile(out, `// Generated from dist by scripts/embed-assets.mjs.\nexport const embeddedAssets: Record<string, { body: string; mime: string; encoding?: 'base64' }> = ${JSON.stringify(map)};\n`);

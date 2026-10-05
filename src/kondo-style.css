@@ -268,7 +268,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .confirm-line input { width: 20px; height: 20px; flex: none; margin: 0; }
 .reconcile-section .primary { width: 100%; font-size: 15px; }
 @media (max-width: 759px) {
-  .shell { padding-top: 24px; }
+  .shell { padding-top: max(24px, calc(env(safe-area-inset-top) + 12px)); }
   .page-top { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
   .page-top h1 { font-size: 27px; }
   .month-switch { margin: 0; height: 42px; font-size: 14px; }
@@ -367,7 +367,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .settlement-list .settlement-item > svg { flex: 0 0 auto; margin-top: 12px; color: var(--muted); }
 .settlement-list .settlement-item:hover { background: var(--soft); }
 .demo-view-banner { width: fit-content; margin-bottom: 20px; padding: 8px 13px; border-radius: 999px; background: var(--soft); color: var(--ink); font-size: 12px; font-weight: 650; }
-.demo-settings .mode-options { margin-top: 17px; }
+
 .card-panel-backdrop { position: fixed; z-index: calc(60 + var(--panel-depth, 0)); inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; isolation: isolate; }
 .card-panel-scrim { position: absolute; z-index: -1; inset: 0; background: #00000014; pointer-events: none; }
 .card-panel-backdrop[data-panel-nested='true'] > .card-panel-scrim { visibility: hidden; }
@@ -504,7 +504,7 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 
 @media (max-width: 759px) {
   .context-host { z-index: 70; }
-  .card-panel-backdrop { top: 0; bottom: auto; height: var(--panel-viewport-height, 100dvh); align-items: flex-end; padding: 12px max(12px,env(safe-area-inset-right)) calc(var(--dock-bottom-gap) + var(--dock-height) + var(--dock-safe-bottom) + 16px) max(12px,env(safe-area-inset-left)); }
+  .card-panel-backdrop { top: 0; bottom: auto; height: var(--panel-viewport-height, 100dvh); align-items: flex-end; padding: max(12px, calc(env(safe-area-inset-top) + 16px)) max(12px,env(safe-area-inset-right)) calc(var(--dock-bottom-gap) + var(--dock-height) + var(--dock-safe-bottom) + 16px) max(12px,env(safe-area-inset-left)); }
   .card-panel-frame { width: 100%; height: 100%; max-height: 100%; }
   .card-panel { height: 100%; scroll-padding-bottom: calc(24px + var(--panel-keyboard-inset, 0px)); }
   .card-panel-scroll { padding-bottom: calc(24px + var(--panel-keyboard-inset, 0px)); }
@@ -614,3 +614,8 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .color-picker:disabled { opacity: .5; }
 .color-picker:disabled .color-swatch { cursor: default; }
 @media (prefers-reduced-motion: reduce) { .color-swatch > span, .swatch-check { transition: none; } }
+@media (max-width: 759px) {
+  /* Short forms rest on the dock (and ride up with the keyboard) at their own height. */
+  .card-panel-frame[data-fit] { height: auto; }
+  .card-panel-frame[data-fit] > .card-panel { height: auto; }
+}

@@ -77,7 +77,8 @@ export async function runStatementImport({analyze,onProgress,signal,demo,reduced
   for(let count=Math.min(batch,result.entries.length);count>0;count=Math.min(count+batch,result.entries.length)){
     signal.throwIfAborted();
     onProgress({phase:'sorting',entries:result.entries.slice(0,count),count:result.entries.length,demo});
-    if(!reducedMotion)await pause(6000/steps,signal);
+    // One row about every 0.7s, so each strip peels off the sheet on its own.
+    if(!reducedMotion)await pause(Math.max(6000/steps,700),signal);
     if(count===result.entries.length)break;
   }
   signal.throwIfAborted();

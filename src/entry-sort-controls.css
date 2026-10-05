@@ -11,3 +11,9 @@
 @media (prefers-reduced-motion: reduce) {
   .entry-sort-button, .entry-sort-arrow, .entry-sort-bar { transition: none; }
 }
+/* A re-sort: rows that move up lift over the ones moving down. */
+.card-panel-entry[data-reordering] { position: relative; z-index: 2; border-radius: 12px; background: var(--paper); }
+/* The import list's sort control arrives once the rows can be edited. */
+.context-trailing-sorts .entry-sort-controls { transform-origin: 100% 50%; animation: entry-sorts-arrive 420ms cubic-bezier(.3,1.4,.5,1) both; }
+@keyframes entry-sorts-arrive { 0% { transform: scale(.4,.8); opacity: 0; } 60% { transform: scale(1.06,.96); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .context-trailing-sorts .entry-sort-controls { animation: none; } }

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { CreditCard, X } from 'lucide-react';
 import type { CardEntry, Category, State } from './domain';
 import { categoryAppearance } from './category-appearance';
@@ -6,6 +6,7 @@ import { CategoryIcon } from './category-icon';
 import { displayColor } from './display-color';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 import { sortEntries, type EntrySort } from './entry-sort';
+import { useReorderMotion } from './reorder-motion';
 import './category-entries-panel.css';
 
 type Props = Pick<State, 'entries' | 'statements' | 'cards' | 'category_settings' | 'month'> & {
@@ -25,6 +26,7 @@ const dateLabel=(date:string)=>{
 
 export function CategoryEntriesPanel({category,entries,statements,cards,category_settings,month,sort,groupByCard,origin,closing,onClose,onExited}:Props) {
   const panel=useRef<HTMLElement>(null);
+  useReorderMotion(panel,JSON.stringify(sort),String(groupByCard));
   usePanelMorph(panel,origin,closing,onExited,onClose);
   const appearance=categoryAppearance(category,category_settings);
   const statementCards=new Map(statements.filter(item=>item.due_month===month).map(item=>{
@@ -41,7 +43,7 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
   }).map(card=>({...card,entries:rows.filter(entry=>statementCards.get(entry.statement_id)!.id===card.id)}));
   const renderEntry=(entry:CardEntry)=>{
     const card=statementCards.get(entry.statement_id)!;
-    return <div className="card-panel-entry" key={entry.id}>
+    return <div className="card-panel-entry" data-reorder-key={entry.id} key={entry.id}>
       <div><strong>{entry.title}</strong><small>{entry.spent_on?<time dateTime={entry.spent_on}>{dateLabel(entry.spent_on)}</time>:'利用日不明'}</small>
         {!groupByCard&&<small className="category-entry-card"><CreditCard size={14} color={displayColor(card.color)} aria-hidden="true"/><span>{card.name}</span></small>}
       </div><span>{yen(entry.amount)}</span>
@@ -49,7 +51,7 @@ export function CategoryEntriesPanel({category,entries,statements,cards,category
   };
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
-    <div className="card-panel-frame">
+    <div className="card-panel-frame" data-toned style={{'--panel-tone':displayColor(appearance.color)} as CSSProperties}>
       <div className="card-panel-glass" aria-hidden="true"/>
       <section className="card-panel category-entries-panel" role="dialog" aria-modal="true" aria-labelledby="category-entries-title" ref={panel}>
         <header className="card-panel-header"><span className="card-panel-icon"><CategoryIcon name={appearance.icon} color={appearance.color} size={24}/></span><div><h2 id="category-entries-title" tabIndex={-1}>{category}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月 · {appearance.include_in_settlement===false?'精算対象外':'精算対象'}</span></div><button className="card-panel-close" aria-label="カテゴリの明細を閉じる" onClick={onClose}><X size={20}/></button></header>

@@ -37,7 +37,7 @@ export function BillPanel({bill,view,onView,deleteAction,origin,closing,onExited
 
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
-    <div className="card-panel-frame">
+    <div className="card-panel-frame" data-fit>
       <div className="card-panel-glass" aria-hidden="true"/>
       <section className="card-panel bill-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="bill-panel-title" ref={panel}>
         <header className="card-panel-header"><span className="card-panel-icon">{isRent?<Home size={22}/>:<ArrowDownLeft size={22}/>}</span><div><h2 tabIndex={-1} id="bill-panel-title">{view==='fixed'?'基本家賃':title}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</span></div><button className="card-panel-close" aria-label="閉じる" onClick={onClose}><X size={20}/></button></header>

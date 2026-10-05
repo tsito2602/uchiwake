@@ -1,7 +1,7 @@
 import { ClassificationSettings } from './classification-settings';
 import { ImportDiagnostics } from './import-diagnostics';
 import { spaceApi, type Api } from './space-api';
-import { SpaceControls } from './space-controls';
+import { SpaceControls, type SpaceMenuRequest } from './space-controls';
 import { SpaceSwitchScreen } from './space-switch-screen';
 import { SpacePanel } from './space-panel';
 import { AllocationBreakdownPanel } from './allocation-breakdown';
@@ -11,7 +11,7 @@ import { SettingsToggle } from './settings-toggle';
 import { SettlementSettingsPanel } from './settlement-settings';
 import { defaultConfig, settlementItems, settlementDetails, type Space, type SpaceData } from './spaces';
 import './spaces.css';
-import type { EntrySort } from './entry-sort';
+import type { EntrySort, ListSort } from './entry-sort';
 import { CategoryEntriesPanel } from './category-entries-panel';
 import { displayColor } from './display-color';
 import { AppUpdateSettings, AppInfo } from './app-update-settings';
@@ -21,7 +21,17 @@ import { streamStatement } from './statement-import-stream';
 import { readStatementFile, mergeStatementFiles, type StatementFile } from './statement-files';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowDownLeft, ArrowRight, LogOut, Calculator, ArrowLeftRight, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
+import { installSpringTokens, installSquish, springAnimate } from './cartoon-motion';
+import { Money } from './money';
+import { SplitBar } from './split-bar';
+import { PullRefresh } from './pull-refresh';
+import { haptic } from './haptics';
+import { HapticTouch } from './haptic-touch';
+import { hapticEverywhere } from './haptic-everywhere';
+import { SegmentSelection } from './segment-selection';
+import { ScrollEdge } from './scroll-edge';
+import { landImport, type ImportLanding } from './import-landing';
+import { ArrowDownLeft, ArrowRight, LogOut, Calculator, UserRound, UsersRound, ReceiptText, Settings, Tags, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Plus, Trash2, X, Sparkles, Database } from 'lucide-react';
 import { billKinds, statementSettlementAmount, categoryTotals, rentForMonth, type Bill, type Category, type CategoryAppearance, type EntryDraft, type SharedCard, type State } from './domain';
 import { FloatingDock, dockTabs, type DockContext, type DockTab } from './floating-dock';
 import { CardStatementPanel } from './card-statement-panel';
@@ -30,12 +40,13 @@ import { defaultCardColor } from './card-colors';
 import { StatementImportPanel } from './statement-import-panel';
 import { ImportConfirmationPanel } from './import-confirmation-panel';
 import { ImportSetup, ImportProcessing } from './statement-import-content';
-import { ImportReview, type ImportDraft } from './statement-import-review';
+import { peelStore } from './import-peel-store';
+import { ImportReview, ARRIVAL_SORT, unresolvedEntries, type ImportDraft } from './statement-import-review';
 import { demoImportResult, runStatementImport, type ImportProgress } from './statement-import-flow';
 import { BillPanel } from './bill-panel';
 import { CardSettingsPanel } from './card-settings-panel';
 import { CategorySettingsPanel } from './category-settings-panel';
-import { allCategoryAppearances, isReviewCategory, fallbackCategory, normalizeCategoryName, validCategoryName } from './category-appearance';
+import { allCategoryAppearances, categoryAppearance, isReviewCategory, fallbackCategory, normalizeCategoryName, validCategoryName } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import { SettlementChart, CategoryChart, type HistoryPoint } from './spending-charts';
 import { historyEndMonth } from './chart-interaction';
@@ -52,6 +63,8 @@ import './palette.css';
 import './settings.css';
 import './entry-sort-controls.css';
 import './entry-dock.css';
+import './polish.css';
+import './cartoon.css';
 
 type Tab = DockTab;
 type Editing = { type:'bill'; data:Partial<Bill>; view:'summary'|'edit'|'fixed'; initialView:'summary'|'fixed'; rentRuleMonth?:string; origin?:PanelOrigin; closing?:boolean };
@@ -63,6 +76,17 @@ const monthText = (month:string) => `${Number(month.slice(0,4))}年${Number(mont
 const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const bump = (month:string,diff:number) => { const [year,m]=month.split('-').map(Number); const date=new Date(Date.UTC(year,m-1+diff,1)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}`; };
 type SpaceAppProps=AccountProps&{space:Space;spaces:Space[];onSelectSpace:(id:string,settingsOrigin?:PanelOrigin)=>void;onReady:(id:string)=>void;initialSettingsOrigin?:PanelOrigin;refreshSpaces:()=>Promise<void>;month:string;setMonth:(month:string)=>void;tab:Tab;setTab:(tab:Tab)=>void};
+// Staging only: a shared space with just you gets a stand-in partner, so the
+// two-person screens (split bar, faces, shares) can be tried alone. It lives
+// only in what the screen shows; nothing about it is saved.
+const STAGING_PARTNER='staging-partner';
+function withStagingPartner<T extends State&Partial<SpaceData>>(result:T,space:Space):T {
+  if(!result.demo_enabled||space.kind!=='shared'||!result.members||!result.settlement)return result;
+  if(result.members.filter(member=>member.active).length!==1)return result;
+  const members=[...result.members,{user_id:STAGING_PARTNER,name:'パートナー（仮）',active:true}];
+  return {...result,members,settlement:{...result.settlement,config:defaultConfig(members.filter(member=>member.active))}};
+}
+
 function SpaceApp(account:AccountProps) {
  const [spaces,setSpaces]=useState<Space[]>([]),[selected,setSelected]=useState(()=>localStorage.getItem(`uchiwake-space:${account.user.id}`)||''),[error,setError]=useState('');
  const [month,setMonth]=useState(today().slice(0,7)),[tab,setTab]=useState<Tab>('home');
@@ -88,6 +112,8 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const personal=space.kind==='personal';
   const [allocationOpen,setAllocationOpen]=useState<'month'|'default'|null>(null);
   const [spaceDock,setSpaceDock]=useState<DockContext>();
+  const [spaceMenu,setSpaceMenu]=useState<SpaceMenuRequest|null>(null);
+  const [spaceMenuOpen,setSpaceMenuOpen]=useState(false);
   const [spaceSettings,setSpaceSettings]=useState<{origin?:PanelOrigin;closing?:boolean}|null>(()=>initialSettingsOrigin?{origin:initialSettingsOrigin}:null);
   const [settingsDock,setSettingsDock]=useState<DockContext>();
   const [spaceNameAction,setSpaceNameAction]=useState<NameSaveAction>();
@@ -102,7 +128,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const transitionPage=useRouteTransition();
   // Reset after the new page is committed, before the browser paints it.
   useLayoutEffect(()=>{window.scrollTo({top:0,left:0,behavior:'instant'});},[tab]);
-  const [showTotalFirst,setShowTotalFirst]=useState(false);
+  const [splitOpen,setSplitOpen]=useState(false);
   const [demoView,setDemoView]=useState(()=>window.sessionStorage.getItem('uchiwake-demo-view')==='1');
   const requestId=useRef(0);
   const loadRequest=useRef<AbortController|null>(null);
@@ -129,8 +155,14 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [importConfirmation,setImportConfirmation]=useState<{origin?:PanelOrigin;card:SharedCard}|null>(null);
   const [importConfirmationDock,setImportConfirmationDock]=useState<DockContext>();
   const importDestination=useRef<Tab|null>(null);
+  const pendingLanding=useRef<ImportLanding|null>(null);
   const importRequest=useRef<AbortController|null>(null);
   const [importProgress,setImportProgress]=useState<ImportProgress|null>(null);
+  // The last reading stays on screen as the result while its rows are fixed.
+  const lastProgress=useRef<ImportProgress|null>(null);
+  const [importDone,setImportDone]=useState<ImportProgress|null>(null);
+  const [reviewIntro,setReviewIntro]=useState(false);
+  const [importSort,setImportSort]=useState<ListSort>(ARRIVAL_SORT);
   useEffect(()=>()=>{importRequest.current?.abort();},[]);
   const [categoryDraft,setCategoryDraft]=useState<Record<string,Category>>({});
   const [amountDraft,setAmountDraft]=useState<Record<string,string>>({});
@@ -147,9 +179,21 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const [rentAmount,setRentAmount]=useState('');
   const [rentStartMonth,setRentStartMonth]=useState(month);
   const [draft,setDraft]=useState<ImportDraft|null>(null);
+  const noDraft=!draft;
+  useEffect(()=>{if(noDraft){setImportDone(null);setReviewIntro(false);setImportSort(ARRIVAL_SORT);}},[noDraft]);
   const [totalChecked,setTotalChecked]=useState(false);
   const [history,setHistory]=useState<HistoryPoint[]>([]);
   const [chartMonths,setChartMonths]=useState<6|12|36|60>(6);
+  // Scrubbing the bar chart: the hero figure follows the bar under the finger.
+  // Switching space slides the page in from the side of the space chosen.
+  const shownSpaceId=useRef(space.id);
+  useLayoutEffect(()=>{
+    const before=shownSpaceId.current;shownSpaceId.current=space.id;
+    if(before===space.id)return;
+    const from=spaces.findIndex(item=>item.id===before),to=spaces.findIndex(item=>item.id===space.id),d=to>=from?1:-1;
+    const page=document.getElementById('main-content');
+    if(page)springAnimate(page,{translate:`${d*-60}px 0`,opacity:.5},{translate:'0px 0',opacity:1},{stiffness:300,damping:22});
+  },[space.id]);
   async function load() {
     const request=++requestId.current;
     loadRequest.current?.abort();
@@ -164,7 +208,10 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         api<State&Partial<SpaceData>>(`/state${query}`,{signal}),
         api<{months:HistoryPoint[]}>(`/settlement-history${historyQuery}`,{signal}).catch(()=>({months:[]}))
       ]);
-      if(request===requestId.current){setState(result);setHistory(resultHistory.months);setNotice('');}
+      if(request===requestId.current){
+        const staged=withStagingPartner(result,space);
+        setState(staged);setHistory(staged===result?resultHistory.months:resultHistory.months.map(point=>({...point,amount:Math.round(point.total/2)})));setNotice('');
+      }
     }
     catch(e) { if(request===requestId.current&&!controller.signal.aborted){if(demoView){window.sessionStorage.removeItem('uchiwake-demo-view');setDemoView(false);}else {setNotice(signal.aborted?'データの読み込みがタイムアウトしました。もう一度お試しください。':String(e instanceof Error?e.message:e));if((e as {status?:number}).status===404){setState(null);void refreshSpaces();}}} }
     finally {controller.abort();if(loadRequest.current===controller)loadRequest.current=null;}
@@ -187,18 +234,32 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const rentEnabled=state?.space_preferences?.rent_enabled===true;
   const rent=useMemo(()=>rentForMonth(displayedMonth,state?.bills||[],state?.rent_rules||[]),[displayedMonth,state]);
   const splitItems=useMemo(()=>state?settlementItems(state,personal):[],[state,personal]);
+  // One person in a shared space: the share is the whole bill, so there is nothing to switch.
+  const single=personal||(state?.members?.filter(member=>member.active).length??1)<=1;
   const allocationConfig=state?.settlement?.config??defaultConfig([{user_id:user.id,name:user.name||'あなた',active:true}]);
-  const {amounts:allocations,remainder:roundingRemainder,unassigned:roundingUnassigned}=useMemo(()=>settlementDetails(splitItems,allocationConfig),[splitItems,allocationConfig]);
+  const {amounts:allocations,adjustments:roundingAdjustments,remainder:roundingRemainder,unassigned:roundingUnassigned}=useMemo(()=>settlementDetails(splitItems,allocationConfig),[splitItems,allocationConfig]);
   const totals={total:splitItems.reduce((n,i)=>n+i.amount,0),perPerson:allocations[user.id]??0};
 
   const breakdown=useMemo(()=>categoryTotals(state?.entries||[]),[state]);
   const cardTotal=(state?.statements||[]).reduce((sum,item)=>sum+item.confirmed_total,0);
   const otherBills=(state?.bills||[]).filter(item=>item.kind==='utilities'||item.kind==='other');
+  const splitPeople=Object.entries(allocations).map(([id,amount])=>({id,amount,rounding:roundingAdjustments[id]??0,avatarUrl:id===user.id?(state?.members?.find(member=>member.user_id===id)?.avatarUrl??user.avatarUrl):state?.members?.find(member=>member.user_id===id)?.avatarUrl,name:id===user.id?(state?.members?.find(member=>member.user_id===id)?.name||user.name||'あなた'):state?.members?.find(member=>member.user_id===id)?.name||'メンバー'})).sort((a,b)=>a.id===user.id?-1:b.id===user.id?1:0);
+  async function saveSplit(firstPercent:number){
+    const settings=state?.settlement;if(!settings||demoView||splitPeople.length!==2)return;
+    if(splitPeople.some(person=>person.id===STAGING_PARTNER)){
+      // The stand-in partner exists only on this screen, so its split stays here too.
+      setState(current=>current?.settlement?{...current,settlement:{...current.settlement,config:{...allocationConfig,uniform:true,common:{mode:'percent',shares:[{user_id:splitPeople[0].id,weight:firstPercent*100},{user_id:splitPeople[1].id,weight:(100-firstPercent)*100}]}}}}:current);
+      return;
+    }
+    const config={...allocationConfig,uniform:true,common:{mode:'percent' as const,shares:[{user_id:splitPeople[0].id,weight:firstPercent*100},{user_id:splitPeople[1].id,weight:(100-firstPercent)*100}]}};
+    try{await api(`/spaces/${space.id}/settlement`,{method:'PUT',body:JSON.stringify({month:displayedMonth,scope:'month',config,revision:settings.scope==='month'&&settings.month===displayedMonth?settings.revision:0})});await load();}
+    catch(e){setNotice(e instanceof Error?e.message:String(e));await load();}
+  }
   const hasSettlementData=!!(state?.statements.length||otherBills.length||(rentEnabled&&rent.amount));
   const rowsTotal=draft?.entries.reduce((sum,row)=>sum+Number(row.amount||0),0)||0;
   async function save() {
     if (!editing||demoView||busy) return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try {
       const id=editing.data.id;
       const targetMonth=editing.data.due_month;
@@ -243,12 +304,15 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     importRequest.current=controller;
     setBusy(true);setNotice('');setImportDiagnostic('');
     try {
-      const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:setImportProgress,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      const result=await runStatementImport({demo:isDemo,signal:controller.signal,onProgress:progress=>{lastProgress.current=progress;setImportProgress(progress);},reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         analyze:(onEntry,onReasoning,onEvent)=>isDemo?Promise.resolve(demoImportResult(importMonth)):streamStatement(importFiles,controller.signal,onEntry,onReasoning,space.id,onEvent)});
+      // Let the last rows land on screen before the result replaces them.
+      await peelStore.whenSettled(controller.signal);controller.signal.throwIfAborted();
       if(result.diagnostics)setImportDiagnostic(JSON.stringify({ok:true,diagnostics:result.diagnostics},null,2));
       const sum=result.entries.reduce((a,b)=>a+b.amount,0);
       const card=state?.cards.find(item=>item.id===selectedCardId);
       setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${card?.name||'共有カード'}`,confirmed_total:result.confirmed_total||sum,entries:result.entries,source_total:result.source_total,total_alternative:result.total_alternative,demo:!!result.demo});setTotalChecked(false);
+      setImportDone(lastProgress.current);setReviewIntro(!!result.entries.length);setImportSort(ARRIVAL_SORT);
       if(!result.entries.length)setNotice('利用行を読み取れませんでした。明細行を手入力してください。');
     }catch(e){if(!controller.signal.aborted){setNotice(String(e instanceof Error?e.message:e));const diagnostics=(e as {diagnostics?:unknown})?.diagnostics;if(diagnostics)setImportDiagnostic(JSON.stringify({ok:false,code:(e as {code?:string})?.code,diagnostics},null,2));}}
     finally{if(importRequest.current===controller){importRequest.current=null;setImportProgress(null);setBusy(false);}}
@@ -259,9 +323,13 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   }
   async function saveStatement() {
     if(demoView||busy||!draft||draft.demo || !totalChecked || draft.confirmed_total!==rowsTotal||draft.entries.some(entry=>isReviewCategory(entry.category,state?.category_settings)))return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try {
       await api('/statements',{method:'POST',body:JSON.stringify({due_month:draft.due_month,card_id:draft.card_id,title:draft.title,confirmed_total:draft.confirmed_total,entries:draft.entries})});
+      const from=document.querySelector('.statement-import-frame')?.getBoundingClientRect();
+      const weights=new Map<string,number>();for(const entry of draft.entries)if(entry.amount>0)weights.set(entry.category,(weights.get(entry.category)??0)+entry.amount);
+      const card=state?.cards.find(item=>item.id===draft.card_id);
+      if(from)pendingLanding.current={from,cardId:draft.card_id,tone:card?displayColor(card.color):undefined,colors:[...weights].sort((a,b)=>b[1]-a[1]).map(([category])=>displayColor(categoryAppearance(category,state?.category_settings).color)).filter((color):color is string=>!!color)};
       const targetMonth=draft.due_month;setImportPanel(current=>current?{...current,closing:true}:null);
       if(targetMonth!==month)setMonth(targetMonth);else await load();
     }catch(e){setNotice(String(e instanceof Error?e.message:e));}
@@ -280,7 +348,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const {editedEntries,changes:entryChanges,valid:validEntryChanges}=prepareStatementEdits(state?.statements||[],state?.entries||[],{categories:categoryDraft,amounts:amountDraft,deletedIds:deletedEntryIds});
   async function saveStatementEdits() {
     if(demoView||busy||!entryChanges.length||!validEntryChanges)return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try{
       for(const change of entryChanges){
         await api(`/statements/${change.id}/entries`,{method:'PUT',body:JSON.stringify({revision:change.revision,entries:change.entries.map(({id,category,amount})=>({id,category,amount})),deleted_ids:change.deleted_ids})});
@@ -303,7 +371,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const dismissCategorySettings=()=>setCategorySettings(current=>current?{...current,closing:true}:null);
   async function saveCategorySettings() {
     if(!categorySettings||demoView||busy)return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try{
       const draft=categorySettings.draft;
       await api<CategoryAppearance>(categorySettings.isNew?'/category-settings':`/category-settings/${encodeURIComponent(categorySettings.saved.category)}`,{method:categorySettings.isNew?'POST':'PUT',body:JSON.stringify({...draft,category:normalizeCategoryName(draft.category)})});
@@ -333,7 +401,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   async function saveRentRule() {
     if(demoView||busy)return;
     if(!rentStartMonth||!Number.isSafeInteger(Number(rentAmount))||Number(rentAmount)<=0)return;
-    setBusy(true);setNotice('');
+    haptic();setBusy(true);setNotice('');
     try{await api(`/rent-rules/${rentStartMonth}`,{method:'PUT',body:JSON.stringify({amount:Number(rentAmount)})});dismissBill();await load();}
     catch(e){setNotice(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
@@ -390,6 +458,9 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const switchDemo=(enabled:boolean)=>{setCategoryDetails(null);window.sessionStorage.setItem('uchiwake-demo-view',enabled?'1':'0');setOpenCard(null);setImportPanel(null);setImportConfirmation(null);setCardSettings(null);setCategorySettings(null);setDraft(null);setImportFiles([]);setEditing(null);setDemoView(enabled);};
   const canSaveDraft=!!draft&&totalChecked&&draft.entries.length>0&&rowsTotal===draft.confirmed_total&&rowsTotal>0&&!!draft.title.trim()&&!!draft.card_id&&draft.entries.every(e=>!!e.title.trim()&&!!e.amount&&!isReviewCategory(e.category,state?.category_settings));
   const chartEnd=historyEndMonth(displayedMonth);
+  // Compare the figure shown large with the same figure last month, once
+  // there was anything to settle then.
+  // Both months come from the history, so the line agrees with the bars.
   const chart=history.length?history:Array.from({length:120},(_,index)=>({month:bump(chartEnd,index-119),amount:0,total:0}));
   const panelStatements=(state?.statements||[]).filter(item=>openCard?.type==='card'?item.card_id===openCard.id:openCard?.type==='statement'&&item.id===openCard.id);
   const panelTitle=state?.cards.find(card=>card.id===(openCard?.type==='card'?openCard.id:panelStatements[0]?.card_id))?.name||panelStatements[0]?.title;
@@ -447,13 +518,15 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     onAction:()=>{if(cardSettings.view==='summary'){setCardSettings({...cardSettings,view:'edit'});return;}if(cardSettings.card)void updateCard(cardSettings.card,cardSettings.name.trim(),cardSettings.active,cardSettings.color);else void createCard(cardSettings.name,cardSettings.color);},
     disabled:busy||(cardSettings.view==='edit'&&(demoView||!cardSettings.name.trim()||(!!cardSettings.card&&cardSettings.name.trim()===cardSettings.card.name&&cardSettings.active===cardSettings.card.active&&cardSettings.color===(cardSettings.card.color??defaultCardColor))))
   }:undefined;
+  const unresolvedDraftRows=draft?unresolvedEntries(draft.entries,state?.category_settings??[]):0;
   const importContext:DockContext|undefined=importPanel?{
     label:draft?'カード明細の確認':'明細の取り込み',commit:true,
-    actionAppearance:importProgress?'breathing':undefined,
+    actionAppearance:importProgress||(draft&&reviewIntro)?'breathing':undefined,
+    entryControls:draft&&importDone&&!reviewIntro&&draft.entries.length>1?{sort:importSort,onSort:setImportSort,trailing:true}:undefined,
     onBack:()=>{if(importConfirmation)return;if(importRequest.current){cancelImport();return;}if(busy||readingFiles)return;if(draft){setImportMonth(draft.due_month);setSelectedCardId(draft.card_id);setDraft(null);setNotice('');}else setImportPanel({...importPanel,closing:true});},
-    actionLabel:draft?((demoView||draft.demo)?'デモ・保存されません':busy?'保存中…':'保存して計算'):readingFiles?'ファイルを準備中…':!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'Thinking...':'確認へ',
+    actionLabel:draft?(reviewIntro?'Thinking...':busy?'保存中…':unresolvedDraftRows?`あと${unresolvedDraftRows}件を確認`:(demoView||draft.demo)?'デモ・保存されません':importDone?`${draft.entries.length}件を登録`:'保存して計算'):readingFiles?'ファイルを準備中…':!state?.cards.some(card=>card.active)?'共有カードを設定':importProgress?'Thinking...':'確認へ',
     onAction:()=>{if(busy||readingFiles)return;if(draft)void saveStatement();else if(!state?.cards.some(card=>card.active))selectTab('settings');else openImportConfirmation();},
-    disabled:busy||readingFiles||!!((demoView||draft?.demo)&&draft)||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:!canStartImport))
+    disabled:busy||readingFiles||!!(draft&&(reviewIntro||demoView||draft.demo))||(!!state?.cards.some(card=>card.active)&&(draft?!canSaveDraft:!canStartImport))
   }:undefined;
   const categoryOptions=allCategoryAppearances(state?.category_settings);
   const categoryNameDuplicate=!!categorySettings&&categoryOptions.some(item=>item.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.isNew||item.category!==categorySettings.saved.category));
@@ -464,6 +537,7 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
     onAction:()=>{if(busy)return;void saveCategorySettings();},
     disabled:busy||demoView||!validCategoryName(categorySettings.draft.category)||categoryNameDuplicate||(!categorySettings.isNew&&categorySettings.saved.icon===categorySettings.draft.icon&&categorySettings.saved.color===categorySettings.draft.color&&categorySettings.saved.category===normalizeCategoryName(categorySettings.draft.category)&&(categorySettings.saved.include_in_settlement!==false)===(categorySettings.draft.include_in_settlement!==false))
   }:undefined;
+  const spaceFaces=personal||!state?.members?.length?[{id:user.id,name:user.name,avatarUrl:user.avatarUrl}]:state.members.filter(member=>member.active).map(member=>({id:member.user_id,name:member.name,avatarUrl:member.avatarUrl}));
   const PageIcon=({home:Calculator,ledger:ReceiptText,settings:Settings,import:Camera} as const)[tab];
   const settingsPanelContext:DockContext={label:'スペース設定',contentKey:`space-settings:${spaceNameAction?'save':'idle'}`,backOnly:!spaceNameAction,commit:!!spaceNameAction,onBack:dismissSpaceSettings,
     actionLabel:spaceNameAction?.label??'閉じる',onAction:()=>{if(!busy&&!spaceSettings?.closing)spaceNameAction?.onAction();},disabled:!spaceNameAction||spaceNameAction.disabled||busy||!!spaceSettings?.closing,
@@ -473,7 +547,8 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   const categoryDetailsContext:DockContext|undefined=categoryDetails?{label:`${categoryDetails.category}の明細`,entryControls:{sort:categorySort,onSort:setCategorySort,groupByCard,onGroupByCard:setGroupByCard},backOnly:true,onBack:dismissCategoryDetails,actionLabel:'閉じる',onAction:dismissCategoryDetails}:undefined;
   const dockContext=importConfirmationDock||spaceDock||allocationDock||(!categoryDetails?.closing&&categoryDetailsContext)||(!openCard?.closing&&cardContext)||(!editing?.closing&&billContext)||(!cardSettings?.closing&&settingsContext)||(!importPanel?.closing&&importContext)||(!categorySettings?.closing&&categorySettingsContext)||breakdownDock||settingsDock||undefined;
   return <>
-    <SpaceControls space={space} spaces={spaces} disabled={busy||!!(spaceSettings||allocationBreakdown||spaceDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onSettings={()=>openSpaceSettings(document.querySelector<HTMLElement>('.space-switcher')??undefined)} onRefresh={refreshSpaces} onDockChange={setSpaceDock}/>
+    <SpaceControls space={space} spaces={spaces} disabled={busy||!!(spaceSettings||allocationBreakdown||spaceDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails||allocationOpen)} api={api} onSelect={onSelectSpace} onSettings={()=>openSpaceSettings(document.querySelector<HTMLElement>('.space-switcher')??undefined)} onRefresh={refreshSpaces} onDockChange={setSpaceDock} dockRequest={spaceMenu} faces={spaceFaces} onAppSettings={()=>selectTab('settings')} onMenuChange={setSpaceMenuOpen}/>
+    <ScrollEdge/>
     <main className="shell" aria-busy={!state||state.month!==month} inert={!!state&&state.month!==month}>
       <nav className="desktop-tabs" aria-label="メインメニュー">{dockTabs.map(item=><button key={item.key} aria-current={tab===item.key?'page':undefined} onClick={()=>selectTab(item.key)}><item.icon size={18}/>{item.label}</button>)}<button onClick={()=>selectTab('import')}><Plus size={18}/>追加</button></nav>
       <div id="main-content">
@@ -482,39 +557,40 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
       {demoView&&<div className="demo-view-banner" role="status">デモ表示中 · サンプルデータ</div>}
       {!state?<div className="empty loading">{notice?'データを表示できませんでした。':'読み込んでいます…'}{notice&&<div><button className="secondary" onClick={()=>void load()}>再読み込み</button></div>}</div>:<>
       {tab==='home'&&<>
-        <p className="space-current-name">{space.name}</p>
+        <p className="space-current-name">{space.name}<span>{Number(displayedMonth.slice(0,4))}年{Number(displayedMonth.slice(5,7))}月の{personal?'支出':'精算'}</span></p>
         <section className="hero settlement-hero">
-          <button type="button" className="settlement-amount-toggle" aria-label={personal?'今月の支出合計':`現在は${showTotalFirst?'支払い合計':'あなたの負担額'}を大きく表示。タップして切り替え`} aria-pressed={showTotalFirst} onClick={()=>{if(!personal)setShowTotalFirst(value=>!value);}}>
-            <span className="hero-label">{showTotalFirst?<UsersRound size={18} aria-hidden="true"/>:<UserRound size={18} aria-hidden="true"/>}{personal?'支出合計':showTotalFirst?'支払い合計':'あなたの負担額'}{!personal&&<><span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span><span className="hero-switch-hint"><ArrowLeftRight size={14} aria-hidden="true"/></span></>}</span>
-            <span className="hero-money">{hasSettlementData?<NumberTicker value={personal||showTotalFirst?totals.total:totals.perPerson}/>: '—'}</span>
-            <span className="hero-secondary" hidden={personal}><span>{showTotalFirst?'あなたの負担額':'支払い合計'}</span><strong>{hasSettlementData?<NumberTicker value={showTotalFirst?totals.perPerson:totals.total}/>: '—'}</strong></span>
-          </button>
-          {!personal&&!demoView&&hasSettlementData&&<button className="allocation-breakdown-trigger" onClick={event=>setAllocationBreakdown({origin:panelOrigin(event.currentTarget)})}><UsersRound size={16}/><span>負担の内訳</span><small>{Object.keys(allocations).length}人{!!roundingRemainder&&` · 端数${roundingRemainder.toLocaleString('ja-JP')}円${roundingUnassigned?'（未選択）':''}`}</small><ChevronRight size={15}/></button>}
+          <div className="settlement-amount-toggle">
+            <span className="hero-label"><UsersRound size={18} aria-hidden="true"/>{personal?'支出合計':splitOpen?'それぞれの負担額':'支払い合計'}{!single&&<span className="hero-basis">{allocationConfig.uniform?`${allocationConfig.common.shares.length}人で分担`:'費用別に分担'}</span>}</span>
+            <span className="hero-stage"><span className="hero-money">{hasSettlementData?<NumberTicker value={totals.total}/>: '—'}</span><span className="hero-split-slot"/></span>
+            {/* Joined, your share sits under the total; torn apart, the total sits small under the two shares. */}
+            {!single&&<span className="hero-secondary" key={splitOpen?'total':'share'}><span>{splitOpen?'支払い合計':'あなたの負担額'}</span><strong>{hasSettlementData?<NumberTicker value={splitOpen?totals.total:totals.perPerson}/>: '—'}</strong></span>}
+          </div>
+          {!personal&&hasSettlementData&&splitPeople.length>1&&<SplitBar people={splitPeople} editable={!demoView&&allocationConfig.uniform&&!busy} onCommit={percent=>void saveSplit(percent)} onSplitChange={setSplitOpen} remainder={roundingRemainder} unassigned={roundingUnassigned} onDecide={demoView?undefined:origin=>setAllocationBreakdown({origin})}/>}
           <SettlementChart data={chart} month={displayedMonth} visibleMonths={chartMonths} onSelectMonth={setMonth}/>
           <div className="chart-ranges" role="group" aria-label="表示期間">{([[6,'6M'],[12,'1Y'],[36,'3Y'],[60,'5Y']] as const).map(([count,label])=><button key={count} aria-pressed={chartMonths===count} onClick={()=>setChartMonths(count)}>{label}</button>)}</div>
         </section>
         <section className="section settlement-section"><div className="settlement-list">
-          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item panel-source" data-panel-source={openCard?.type==='card'&&openCard.id===card.id?'true':undefined} key={card.id} onClick={event=>{setSelectedCardId(card.id);setOpenCard({type:'card',id:card.id,view:'summary',origin:panelOrigin(event.currentTarget)});}}><span className="settlement-item-icon"><CreditCard size={22} color={displayColor(card.color)}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{card.name}</span>{items.length>0&&<small>{items.length}件の明細</small>}<strong className="settlement-item-amount">{items.length?yen(items.reduce((sum,item)=>sum+(personal?item.confirmed_total:statementSettlementAmount(item,state.entries,state.category_settings)),0)):'—'}</strong></span><ChevronRight size={17}/></button>})}
-          {state.statements.filter(item=>!item.card_id||!state.cards.some(card=>card.id===item.card_id)).map(item=><button className="settlement-item panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===item.id?'true':undefined} key={item.id} onClick={event=>setOpenCard({type:'statement',id:item.id,view:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{item.title}</span><strong className="settlement-item-amount">{yen((personal?item.confirmed_total:statementSettlementAmount(item,state.entries,state.category_settings)))}</strong></span><ChevronRight size={17}/></button>)}
+          {state.cards.filter(card=>card.active||state.statements.some(item=>item.card_id===card.id)).map(card=>{const items=state.statements.filter(item=>item.card_id===card.id);return <button className="settlement-item panel-source" data-panel-source={openCard?.type==='card'&&openCard.id===card.id?'true':undefined} data-card-id={card.id} key={card.id} onClick={event=>{setSelectedCardId(card.id);setOpenCard({type:'card',id:card.id,view:'summary',origin:panelOrigin(event.currentTarget)});}}><span className="settlement-item-icon"><CreditCard size={22} color={displayColor(card.color)}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{card.name}</span>{items.length>0&&<small>{items.length}件の明細</small>}<strong className="settlement-item-amount">{items.length?<Money value={items.reduce((sum,item)=>sum+(personal?item.confirmed_total:statementSettlementAmount(item,state.entries,state.category_settings)),0)}/>:'—'}</strong></span><ChevronRight size={17}/></button>})}
+          {state.statements.filter(item=>!item.card_id||!state.cards.some(card=>card.id===item.card_id)).map(item=><button className="settlement-item panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===item.id?'true':undefined} key={item.id} onClick={event=>setOpenCard({type:'statement',id:item.id,view:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{item.title}</span><strong className="settlement-item-amount"><Money value={personal?item.confirmed_total:statementSettlementAmount(item,state.entries,state.category_settings)}/></strong></span><ChevronRight size={17}/></button>)}
           {!state.cards.length&&<button className="settlement-item panel-source" data-panel-source={cardSettings&&!cardSettings.card?'true':undefined} onClick={event=>openSettings(undefined,event.currentTarget)}><span className="settlement-item-icon"><CreditCard size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{personal?'カード':'共有カード'}</span><strong className="settlement-item-amount">—</strong></span><ChevronRight size={17}/></button>}
-          {rentEnabled&&<button className="settlement-item panel-source" data-panel-source={editing?.data.kind==='rent'?'true':undefined} onClick={event=>addBill(event.currentTarget)}><span className="settlement-item-icon"><Home size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">家賃</span><strong className="settlement-item-amount">{rent.amount?yen(rent.amount):'—'}</strong></span><ChevronRight size={17}/></button>}
-          {otherBills.map(b=><button className="settlement-item panel-source" data-panel-source={editing?.data.id===b.id?'true':undefined} key={b.id} onClick={event=>setEditing({type:'bill',data:b,view:'summary',initialView:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><ArrowDownLeft size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{b.title}</span><strong className="settlement-item-amount">{yen(b.amount)}</strong></span><ChevronRight size={17}/></button>)}
+          {rentEnabled&&<button className="settlement-item panel-source" data-panel-source={editing?.data.kind==='rent'?'true':undefined} onClick={event=>addBill(event.currentTarget)}><span className="settlement-item-icon"><Home size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">家賃</span><strong className="settlement-item-amount">{rent.amount?<Money value={rent.amount}/>:'—'}</strong></span><ChevronRight size={17}/></button>}
+          {otherBills.map(b=><button className="settlement-item panel-source" data-panel-source={editing?.data.id===b.id?'true':undefined} key={b.id} onClick={event=>setEditing({type:'bill',data:b,view:'summary',initialView:'summary',origin:panelOrigin(event.currentTarget)})}><span className="settlement-item-icon"><ArrowDownLeft size={22}/></span><span className="settlement-item-copy"><span className="settlement-item-label">{b.title}</span><strong className="settlement-item-amount"><Money value={b.amount}/></strong></span><ChevronRight size={17}/></button>)}
         </div></section>
         {state.bills.some(b=>b.kind==='card')&&<details className="legacy-details"><summary>以前のカード請求の入力を確認</summary>{state.bills.filter(b=>b.kind==='card').map(b=><BillRow key={b.id} bill={b} onEdit={()=>setEditing({type:'bill',data:b,view:'summary',initialView:'summary'})}/>)}</details>}
       </>}
       {tab==='ledger'&&<>{state.statements.length? <>
         <div className="ledger-overview"><span>{monthText(displayedMonth)}のカード合計</span><strong><NumberTicker value={cardTotal}/></strong></div>
-        {!!breakdown.length&&<CategoryChart data={breakdown} settings={state.category_settings} onSelectCategory={(category,source)=>setCategoryDetails({category,origin:panelOrigin(source)})}/>}
+        {!!breakdown.length&&<CategoryChart data={breakdown} settings={state.category_settings} onSelectCategory={(category,source)=>setCategoryDetails({category,origin:panelOrigin(source)})} openCategory={categoryDetails?.category}/>}
         <h2 className="ledger-cards-heading">カード別</h2>
-        {state.statements.map(s=><button className="statement-preview panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===s.id?'true':undefined} key={s.id} onClick={event=>setOpenCard({type:'statement',id:s.id,view:'details',origin:panelOrigin(event.currentTarget)})}><span className="statement-preview-heading"><CreditCard size={22} color={displayColor(state.cards.find(card=>card.id===s.card_id)?.color)}/><span><strong>{state.cards.find(card=>card.id===s.card_id)?.name||s.title}</strong><small>{state.entries.filter(e=>e.statement_id===s.id).length}件の明細</small></span><ChevronRight size={18}/></span><strong className="statement-preview-amount">{yen(s.confirmed_total)}</strong></button>)}
+        {state.statements.map(s=><button className="statement-preview panel-source" data-panel-source={openCard?.type==='statement'&&openCard.id===s.id?'true':undefined} data-card-id={s.card_id??undefined} key={s.id} onClick={event=>setOpenCard({type:'statement',id:s.id,view:'details',origin:panelOrigin(event.currentTarget)})}><span className="statement-preview-heading"><CreditCard size={22} color={displayColor(state.cards.find(card=>card.id===s.card_id)?.color)}/><span><strong>{state.cards.find(card=>card.id===s.card_id)?.name||s.title}</strong><small>{state.entries.filter(e=>e.statement_id===s.id).length}件の明細</small></span><ChevronRight size={18}/></span><strong className="statement-preview-amount"><Money value={s.confirmed_total}/></strong></button>)}
 
-      </>:demoView?<div className="empty">この月のデモ明細はありません。</div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
+      </>:demoView?<div className="empty"><EmptySymbol/><p>この月のデモ明細はありません。</p></div>:<Empty text="この月のカード明細はまだありません。" onClick={()=>selectTab('import')} label="カード明細を取り込む"/>}</>}
       {tab==='settings'&&<div className="settings-page">
         <SpaceSettingsLinks spaces={spaces} disabled={busy} onOpen={(target,source)=>{if(target.id===space.id)openSpaceSettings(source);else onSelectSpace(target.id,panelOrigin(source));}}/>
         <div className="settings-group-heading settings-common-heading"><small>アプリ共通</small><h2>アカウント・表示</h2></div>
         <AccountSettings user={user} signingOut={signingOut} updateProfile={saveProfile}/>
         <AppearanceSettings/>
-        {state.demo_enabled&&<section className="section settings-section demo-settings"><h2 className="section-heading"><Database size={20} aria-hidden="true"/>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="mode-options" role="group" aria-label="表示するデータ"><button className={!demoView?'selected':''} aria-pressed={!demoView} onClick={()=>switchDemo(false)}>実データ</button><button className={demoView?'selected':''} aria-pressed={demoView} onClick={()=>switchDemo(true)}>デモデータ</button></div></section>}
+        {state.demo_enabled&&<section className="section settings-section demo-settings"><h2 className="section-heading"><Database size={20} aria-hidden="true"/>表示するデータ</h2><p className="subtle">デモには直近6か月のカード2枚と家賃を用意しています。実データの保存内容は変わりません。</p><div className="appearance-control data-mode-control" role="group" aria-label="表示するデータ" style={{'--appearance-index':demoView?1:0} as React.CSSProperties}><SegmentSelection index={demoView?1:0} memory="data-mode"/><button type="button" aria-pressed={!demoView} onClick={()=>{if(demoView){haptic();switchDemo(false);}}}>{demoView&&<HapticTouch/>}<Database size={20} aria-hidden="true"/>実データ</button><button type="button" aria-pressed={demoView} onClick={()=>{if(!demoView){haptic();switchDemo(true);}}}>{!demoView&&<HapticTouch/>}<Sparkles size={20} aria-hidden="true"/>デモデータ</button></div></section>}
         <AppUpdateSettings/>
         <button type="button" className="settings-add-card settings-logout" disabled={signingOut || savingProfile} onClick={() => void logout()}><LogOut size={17}/>{signingOut ? 'ログアウト中…' : 'ログアウト'}</button>
         <AppInfo/>
@@ -533,18 +609,20 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
         <section className="section settings-section"><h2 className="section-heading"><Home size={20} aria-hidden="true"/>家賃</h2><SettingsToggle label="家賃を集計に含める" checked={rentEnabled} disabled={demoView||busy} onChange={enabled=>void saveRentEnabled(enabled)}/><p className="subtle">オフにすると家賃の表示と全期間の集計を無効にします。登録済みの金額は保持されます。</p>{rentEnabled&&<><p className="subtle">指定した月から毎月の精算に使います。金額が変わったら、新しい開始月を指定してください。</p><div className="rule-list">{state.rent_rules.map(rule=><button type="button" className="settings-rent-button" key={rule.effective_month} onClick={event=>{setRentStartMonth(rule.effective_month);setRentAmount(String(rule.amount));setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rule.amount},view:'fixed',initialView:'fixed',rentRuleMonth:rule.effective_month,origin:panelOrigin(event.currentTarget)});}}><Home size={21}/><span><strong>{yen(rule.amount)}</strong><small>{monthText(rule.effective_month)}から</small></span><ChevronRight size={18}/></button>)}</div><button type="button" className="settings-add-card" onClick={event=>{setRentStartMonth(month);setRentAmount('');setEditing({type:'bill',data:{kind:'rent',title:'家賃',due_month:month,amount:rent.amount},view:'fixed',initialView:'fixed',origin:panelOrigin(event.currentTarget)});}}><Plus size={17}/> 基本家賃を設定</button><p className="subtle">一時的な変更は精算画面の家賃から入力できます。</p></>}</section>
     </div></SpacePanel>}
     {allocationBreakdown&&state?.settlement&&<AllocationBreakdownPanel month={displayedMonth} members={state.members??[]} spaceId={space.id} items={splitItems} settings={state.settlement} api={api} onSaved={load} userId={user.id} origin={allocationBreakdown.origin} onClose={()=>setAllocationBreakdown(null)} onDockChange={setBreakdownDock}/>}
-    <FloatingDock personal={personal} tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(spaceSettings||allocationBreakdown||spaceDock||allocationDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setImportFiles([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
+    <PullRefresh onRefresh={load} disabled={!state||!!draft||tab==='import'||busy}/>
+    <FloatingDock space={{name:space.name,faces:spaceFaces,open:spaceMenuOpen,onOpen:source=>setSpaceMenu({source,at:performance.now()})}} personal={personal} tab={tab} onSelect={selectTab} context={dockContext} panelActive={!!(spaceSettings||allocationBreakdown||spaceDock||allocationDock||openCard||editing||cardSettings||importPanel||categorySettings||categoryDetails)} month={month} onMonthChange={setMonth} onPrevMonth={()=>setMonth(bump(month,-1))} onNextMonth={()=>setMonth(bump(month,1))} add={{label:'追加',disabled:!state||state.month!==month,options:[...((state?.cards||[]).filter(card=>card.active).map(card=>({id:card.id,label:card.name,color:card.color,kind:'card' as const,onClick:()=>{setSelectedCardId(card.id);setDraft(null);setImportFiles([]);selectTab('import');}}))),...(!state?.cards.some(card=>card.active)?[{id:'new-card',label:'カードを追加',kind:'card' as const,onClick:()=>openSettings()}]:[])]}}/>
     {allocationOpen&&state?.settlement&&<SettlementSettingsPanel initialScope={allocationOpen} spaceId={space.id} month={month} members={state.members??[]} settings={state.settlement} items={splitItems} api={api} onClose={()=>setAllocationOpen(null)} onSaved={load} onDockChange={setAllocationDock}/>}
     {categoryDetails&&state&&<CategoryEntriesPanel sort={categorySort} groupByCard={groupByCard} category={categoryDetails.category} origin={categoryDetails.origin} closing={categoryDetails.closing} month={displayedMonth} entries={state.entries} statements={state.statements} cards={state.cards} category_settings={state.category_settings} onClose={dismissCategoryDetails} onExited={()=>setCategoryDetails(null)}/>}
     {openCard&&state&&panelTitle&&<CardStatementPanel sort={cardSort} key={`${openCard.type}-${openCard.id}`} title={panelTitle} color={state.cards.find(card=>card.id===(openCard.type==='card'?openCard.id:panelStatements[0]?.card_id))?.color} month={month} statements={panelStatements} entries={editedEntries} categorySettings={state.category_settings} amountDraft={amountDraft} deletedEntryIds={deletedEntryIds} onToggleDeleteEntry={id=>{if(!busy&&!demoView)setDeletedEntryIds(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);}} onChangeAmount={(id,amount)=>{if(!busy)setAmountDraft(current=>({...current,[id]:amount}));}} demo={demoView} view={openCard.view} origin={openCard.origin} closing={openCard.closing} onClose={cardContext!.onBack} onExited={()=>{const destination=cardDestination.current;cardDestination.current=null;setOpenCard(null);setCategoryDraft({});setAmountDraft({});setDeletedEntryIds([]);if(destination==='import')openImport();else if(destination)selectTab(destination);}} actionLabel={cardContext!.actionLabel} actionDisabled={cardContext!.disabled} busy={busy} error={notice} onAction={cardContext!.onAction} onChangeCategory={(id,category)=>{void changeCategory(id,category);}} onDeleteStatement={id=>{void removeStatement(id);}}/>}
     {categorySettings&&categorySettingsContext&&<CategorySettingsPanel value={categorySettings.draft} isNew={categorySettings.isNew} view={categorySettings.view} origin={categorySettings.origin} closing={categorySettings.closing} busy={busy} error={notice||(categoryNameDuplicate?'同じ名前の費目があります':undefined)} actionLabel={categorySettingsContext.actionLabel} actionDisabled={categorySettingsContext.disabled} onChange={value=>setCategorySettings(current=>current?{...current,draft:value}:null)} onAction={categorySettingsContext.onAction} onClose={categorySettingsContext.onBack} onExited={()=>setCategorySettings(null)}/>}
-    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} suspended={!!importConfirmation} progress={importProgress} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;setImportPanel(null);setImportConfirmation(null);setDraft(null);setImportFiles([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
+    {importPanel&&state&&importContext&&<StatementImportPanel reviewing={!!draft} processing={!!importProgress} suspended={!!importConfirmation} progress={importProgress??importDone} result={draft&&importDone?{count:draft.entries.length,total:rowsTotal,matches:draft.source_total?draft.source_total.amount===rowsTotal:draft.source_total===null?null:draft.confirmed_total===rowsTotal}:undefined} files={importFiles} origin={importPanel.origin} closing={importPanel.closing} context={importContext} onExited={()=>{const destination=importDestination.current;importDestination.current=null;const landing=pendingLanding.current;pendingLanding.current=null;if(landing&&!destination)requestAnimationFrame(()=>landImport(landing));setImportPanel(null);setImportConfirmation(null);setDraft(null);setImportFiles([]);setTotalChecked(false);setNotice('');if(destination){setTab(destination);}}}>
       <p className="space-import-target">登録先：{space.name}</p>
       {notice&&<div className="notice" role="alert">{notice}</div>}
-      {!importProgress&&state.demo_enabled&&aiMode==='live'&&<ImportDiagnostics result={importDiagnostic}/>}
+      {!importProgress&&!importDone&&state.demo_enabled&&aiMode==='live'&&<ImportDiagnostics result={importDiagnostic}/>}
 {(importProgress?<ImportProcessing progress={importProgress} settings={state.category_settings}/>:!draft?<>
         {!state.cards.some(card=>card.active)?<Empty text="先に共有カードを設定してください。" onClick={()=>selectTab('settings')} label="設定を開く"/>:<ImportSetup cards={state.cards.filter(card=>card.active)} cardId={selectedCardId} month={importMonth} onMonth={setImportMonth} files={importFiles} loading={readingFiles} disabled={busy||readingFiles} mode={aiMode} demoEnabled={state.demo_enabled} liveEnabled={state.ai_enabled} demoView={demoView} onCard={id=>{setSelectedCardId(id);setImportFiles([]);}} onMode={value=>{setAiMode(value);setNotice('');}} onFiles={files=>{void chooseImportFiles(files);}} onRemove={index=>setImportFiles(current=>current.filter((_,i)=>i!==index))} onManual={()=>{setDraft({due_month:importMonth,card_id:selectedCardId,title:`${monthText(importMonth)}の${state.cards.find(item=>item.id===selectedCardId)?.name||'共有カード'}`,confirmed_total:0,entries:[{spent_on:'',title:'',amount:0,category:fallbackCategory(state.category_settings)}],demo:demoView});setTotalChecked(false);}}/>}
-      </>:<ImportReview files={importFiles} draft={draft} cards={state.cards} settings={state.category_settings} busy={busy} checked={totalChecked} onChange={value=>{setDraft(value);setTotalChecked(false);}} onChecked={setTotalChecked}/>)}
+      </>:<ImportReview files={importFiles} draft={draft} sort={importSort} intro={reviewIntro} onIntroDone={()=>setReviewIntro(false)} cards={state.cards} settings={state.category_settings} busy={busy} checked={totalChecked} onChange={value=>{setDraft(value);setTotalChecked(false);}} onChecked={setTotalChecked}/>)}
+      {importDone&&state.demo_enabled&&aiMode==='live'&&<ImportDiagnostics result={importDiagnostic}/>}
     </StatementImportPanel>}
     {importConfirmation&&importPanel&&<ImportConfirmationPanel spaceName={space.name} card={importConfirmation.card} month={importMonth} files={importFiles} mode={aiMode} demoView={demoView} disabled={!canStartImport} origin={importConfirmation.origin} onClose={()=>setImportConfirmation(null)} onStart={()=>void analyzeStatement()} onDockChange={setImportConfirmationDock}/>}
     {editing&&<BillPanel bill={editing.data} view={editing.view} onView={openFixedRent} deleteAction={billContext!.secondaryAction} origin={editing.origin} closing={editing.closing} onExited={()=>setEditing(null)} actionLabel={billContext!.actionLabel} onAction={billContext!.onAction} actionDisabled={billContext!.disabled} month={month} demo={demoView} busy={busy} rentStartMonth={rentStartMonth} rentAmount={rentAmount} onRentStartMonth={setRentStartMonth} onRentAmount={setRentAmount} onChange={data=>setEditing({...editing,data})} onClose={billContext!.onBack}/>}
@@ -552,6 +630,10 @@ function App({user,logout,signingOut,updateProfile,space,spaces,onSelectSpace,on
   </>;
 }
 function Field({label,children}:{label:string;children:React.ReactNode}) {return <label className="field"><span>{label}</span>{children}</label>}
-function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
+function Empty({text,onClick,label}:{text:string;onClick:()=>void;label:string}) {return <div className="empty"><EmptySymbol/><p>{text}</p><button className="secondary" onClick={onClick}><Plus size={16}/>{label}</button></div>}
+// A blank statement slip: what the month will hold once a statement arrives.
+function EmptySymbol() {return <svg className="empty-symbol" viewBox="0 0 64 64" aria-hidden="true"><path className="empty-slip" d="M18 8h28a4 4 0 0 1 4 4v42l-6-4-6 4-6-4-6 4-6-4-6 4V12a4 4 0 0 1 4-4Z"/><path className="empty-line" d="M24 22h16"/><path className="empty-line" d="M24 30h10"/><path className="empty-line" d="M24 38h13"/></svg>}
 function BillRow({bill,onEdit}:{bill:Bill;onEdit:()=>void}) {return <div className="row"><div className="row-symbol">{bill.kind==='card'?<CreditCard size={19}/>:bill.kind==='rent'?<Home size={19}/>:<ArrowDownLeft size={19}/>}</div><div className="row-content"><strong>{bill.title}</strong><small>{billKinds[bill.kind]}{bill.note?` · ${bill.note}`:''}</small></div><strong className="row-money">{yen(bill.amount)}</strong><button className="row-edit" onClick={onEdit} aria-label={`${bill.title}を編集`}>編集</button></div>}
+hapticEverywhere();
+installSpringTokens();installSquish();
 createRoot(document.getElementById('root')!).render(<AuthGate>{(user,logout,signingOut,updateProfile)=><SpaceApp key={user.id} user={user} logout={logout} signingOut={signingOut} updateProfile={updateProfile}/>}</AuthGate>);

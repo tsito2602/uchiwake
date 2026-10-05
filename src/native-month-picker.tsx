@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 export function NativeMonthPicker({value,onChange,label='表示年月を選択'}:{value:string;onChange:(month:string)=>void;label?:string}) {
   const [nativeMonth]=useState(()=>{
@@ -8,13 +8,16 @@ export function NativeMonthPicker({value,onChange,label='表示年月を選択'}
     return input.type==='month';
   });
   const [year,month]=value.split('-');
+  // The label rolls the way the month moved: later months come up from below.
+  const previous=useRef(value),direction=useRef<'next'|'prev'|undefined>(undefined);
+  if(previous.current!==value){direction.current=value>previous.current?'next':'prev';previous.current=value;}
   if(!nativeMonth)return <div className="dock-month-picker dock-month-fallback">
     <label><span aria-hidden="true">{year}</span><select aria-label={label==='表示年月を選択'?'表示年':`${label}（年）`} value={year} onChange={event=>onChange(`${event.target.value}-${month}`)}>{Array.from({length:Math.max(2100,Number(year))-Math.min(1900,Number(year))+1},(_,i)=>String(Math.min(1900,Number(year))+i)).map(item=><option key={item} value={item}>{item}年</option>)}</select></label>
     <span aria-hidden="true">-</span>
     <label><span aria-hidden="true">{month}</span><select aria-label={label==='表示年月を選択'?'表示月':`${label}（月）`} value={month} onChange={event=>onChange(`${year}-${event.target.value}`)}>{Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0')).map(item=><option key={item} value={item}>{Number(item)}月</option>)}</select></label>
   </div>;
   return <label className="dock-month-picker">
-    <span aria-hidden="true">{value}</span>
+    <span aria-hidden="true" className="dock-month-value" key={value} data-direction={direction.current}>{value}</span>
     <input type="month" aria-label={label} value={value} onClick={event=>{
       // Keep the real input tappable: iOS opens its native picker on focus.
       try { event.currentTarget.showPicker?.(); } catch { /* Native focus remains available. */ }

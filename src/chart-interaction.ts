@@ -48,3 +48,21 @@ export function pieSlice(start:number,end:number,radius=88) {
   // Two arcs also handle a single category occupying the entire circle.
   return `M 100 100 L ${point(start)} A ${radius} ${radius} 0 0 1 ${point((start+end)/2)} A ${radius} ${radius} 0 0 1 ${point(end)} Z`;
 }
+
+// A ring piece cut like the logo: straight, parallel cuts that leave the same
+// gap at both radii, and square corners. Turns run clockwise from noon.
+export function donutSlice(start:number,end:number,outer=88,inner=45,gap=5) {
+  const at=(r:number,angle:number)=>`${(100+r*Math.cos(angle)).toFixed(3)} ${(100+r*Math.sin(angle)).toFixed(3)}`;
+  if(end-start>=.9999){
+    // One category: the whole ring, drawn as two arcs each way.
+    return `M ${at(outer,-Math.PI/2)} A ${outer} ${outer} 0 1 1 ${at(outer,Math.PI/2)} A ${outer} ${outer} 0 1 1 ${at(outer,-Math.PI/2)} Z M ${at(inner,-Math.PI/2)} A ${inner} ${inner} 0 1 0 ${at(inner,Math.PI/2)} A ${inner} ${inner} 0 1 0 ${at(inner,-Math.PI/2)} Z`;
+  }
+  const a=start*Math.PI*2-Math.PI/2,b=end*Math.PI*2-Math.PI/2;
+  const outerPad=Math.asin(Math.min(1,gap/2/outer)),innerPad=Math.asin(Math.min(1,gap/2/inner));
+  const span=b-a;
+  // A sliver thinner than the gap keeps a hairline instead of vanishing.
+  const oa=Math.min(a+outerPad,a+span/2-.0005),ob=Math.max(b-outerPad,a+span/2+.0005);
+  const ia=Math.min(a+innerPad,a+span/2-.0005),ib=Math.max(b-innerPad,a+span/2+.0005);
+  const large=(from:number,to:number)=>to-from>Math.PI?1:0;
+  return `M ${at(outer,oa)} A ${outer} ${outer} 0 ${large(oa,ob)} 1 ${at(outer,ob)} L ${at(inner,ib)} A ${inner} ${inner} 0 ${large(ia,ib)} 0 ${at(inner,ia)} Z`;
+}

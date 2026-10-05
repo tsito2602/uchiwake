@@ -144,17 +144,11 @@
 .statement-import-panel .review-section { margin-top: 26px; }
 .statement-import-panel .draft-entry { border: 1px solid var(--line); border-radius: 20px; background: var(--paper); }
 .statement-import-panel .reconcile-section { padding-bottom: 8px; }
-.import-review { padding-top: 24px; }
-.import-review-list-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 24px 0 12px; color: var(--muted); font-size: 12px; }
-.import-edit-hint { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 550; animation: import-hint-arrive .5s .15s both; }
-.import-edit-hint svg { animation: import-pencil-nudge .6s .5s both; }
 .import-review-list { min-height: 0; }
-.import-review-item,.import-review-summary { min-width: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); overflow: hidden; transition: background .2s,border-color .2s; }
-.import-review-item { margin-bottom: 10px; animation: import-row-arrive .38s var(--import-row-delay,0ms) both; }
-.import-review-item[data-expanded="true"],.import-review-summary[data-expanded="true"] { border-color: #bcbcbc; background: var(--paper); }
+.import-review-summary { min-width: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); overflow: hidden; transition: background .2s,border-color .2s; }
+.import-review-summary[data-expanded="true"] { border-color: #bcbcbc; background: var(--paper); }
 .import-entry-button { width: 100%; gap: 10px; padding: 15px 12px; border: 0; border-radius: 0; background: transparent; color: var(--ink); text-align: left; animation: none; transition: background .2s,transform .22s; }
 .import-entry-button:not(:disabled):active { transform: scale(.985); background: var(--paper); }
-.import-entry-button > b { font-size: 15px; }
 .import-entry-edit { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: var(--ink); border-radius: 50%; background: var(--soft); transition: background .2s,transform .25s; }
 .import-entry-button[aria-expanded="true"] .import-entry-edit,.import-review-total[aria-expanded="true"] .import-entry-edit { background: var(--soft); transform: rotate(90deg); }
 .import-review-expander { overflow: hidden; }
@@ -168,8 +162,6 @@
 .import-review-total { width: 100%; gap: 10px; min-height: 64px; margin-top: 0; padding: 12px; border: 0; background: transparent; text-align: left; color: var(--ink); }
 .import-review-total strong { margin-left: auto; }
 .import-review-total:focus-visible,.import-entry-button:focus-visible { outline: 2px solid #171717; outline-offset: -4px; }
-.import-complete-symbol { border: 0; color: #fff; background: var(--brand); animation: import-check-pop .48s cubic-bezier(.34,1.56,.64,1) both; }
-.import-animated-check path { stroke-dasharray: 32; stroke-dashoffset: 32; animation: import-check-draw .4s .12s ease forwards; }
 .import-review-confirm { position: relative; align-items: center; gap: 12px; min-height: 60px; margin: 18px 0 0; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); color: var(--ink); font-size: 12px; transition: background .25s,border-color .25s; }
 .import-review-confirm[data-checked="true"] { border-color: #171717; background: var(--paper); }
 .import-review-confirm input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
@@ -198,10 +190,7 @@
 .card-panel-footer button.breathing-action { justify-content: center; }
 @keyframes import-row-arrive { from { opacity: 0; transform: translateY(12px); filter: blur(3px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
 @keyframes import-phase-arrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes import-hint-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes import-pencil-nudge { 0%,100% { transform: rotate(0); } 40% { transform: rotate(-14deg); } 70% { transform: rotate(7deg); } }
 @keyframes import-check-pop { 0% { transform: scale(.8); } 65% { transform: scale(1.08); } 100% { transform: scale(1); } }
-@keyframes import-check-draw { to { stroke-dashoffset: 0; } }
 @keyframes import-category-arrive { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes import-breathe { from { opacity: .4; } to { opacity: 1; } }
 @media(max-width:620px) { .statement-import-frame { min-height: 0; } }
@@ -210,17 +199,9 @@
   .import-upload { transition: none; }
   .import-sorted-entry,.import-category-tag,.import-skeleton > div { animation: none !important; }
   .import-thinking-text { animation: none !important; background: none; color: var(--muted); }
-  .import-phase-status *,.import-review-item,.import-edit-hint,.import-edit-hint svg,.import-complete-symbol,.import-animated-check path,.import-review-confirm * { animation: none !important; transition: none !important; }
-  .import-animated-check path { stroke-dashoffset: 0; }
+  .import-phase-status *,.import-review-confirm * { animation: none !important; transition: none !important; }
   .import-entry-button,.import-entry-edit { transition: none; }
 }
-
-.import-review-group { min-width:0; display:grid; gap:10px; }
-.import-review-group + .import-review-group { margin-top:20px; }
-.import-review-group-heading { padding:4px 2px; }
-.import-review-group-heading h4 { display:flex; align-items:center; gap:8px; margin:0; font-size:15px; }
-.import-review-group-heading h4 span { font-size:12px; font-weight:500; color: var(--muted); }
-.import-review-group-heading p { margin:7px 0 4px; font-size:12px; color: var(--muted); line-height:1.6; }
 
 /* Review evidence stays beside the transaction it describes. */
 .import-review-reasons { padding:12px 16px; border-top:1px solid var(--line); font-size:13px; line-height:1.65; }
@@ -266,3 +247,51 @@
 .import-source-content { margin-top: 0; padding-bottom: 12px; }
 .import-original-files a { display: inline-block; padding: 12px 0; color: var(--ink); }
 @media(prefers-reduced-motion:reduce) { .import-source-toggle > svg { transition: none; } }
+
+/* After the reading the same list stays: rows that need a decision gather in
+   a box above it, the rest keep the order they arrived in. */
+.import-review .import-sorting-list { min-height: 0; }
+.import-review-row { position: relative; min-width: 0; }
+.import-review-row[data-flying] { visibility: hidden; }
+.import-review-row[data-reordering] { z-index: 2; border-radius: 12px; background: var(--paper); }
+.import-review-list .import-entry-button { gap: 13px; padding: 16px 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.import-review-list .import-entry-button[data-classification='review'] { border-radius: 13px; }
+.import-sorting-list .import-entry-edit { width: 24px; height: 24px; background: transparent; color: var(--muted); }
+.import-sorting-list .import-entry-edit[data-hidden], .import-review[data-pens='false'] .import-entry-edit { opacity: 0; }
+.import-review-box { overflow: hidden; margin-bottom: 4px; border-radius: 18px; background: var(--soft); }
+.import-review-box-in { display: grid; padding: 12px 14px 2px; }
+.import-review-box h4 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 2px; font-size: 14px; }
+.import-review-box h4 small { color: var(--muted); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.import-review-box .import-entry-button[data-classification='review'] { outline: 0; }
+.import-review-box .import-review-row:last-child > .import-entry-button { border-bottom: 0; }
+.import-review-box .import-review-row:has(.import-review-why) > .import-entry-button, .import-review-box .import-review-row:has(.import-review-expander) > .import-entry-button { border-bottom: 0; padding-bottom: 8px; }
+.import-review-box .import-review-row:not(:last-child):has(.import-review-why) { border-bottom: 1px solid var(--line); }
+.import-review-why { display: grid; gap: 6px; padding: 0 0 12px 36px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.import-review-why p { margin: 0; }
+.import-review-why-label { color: var(--muted); font-size: 11px; }
+.import-review-why .import-candidates { margin: 0; gap: 6px; }
+.import-review-why .import-candidates button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px; border-radius: 999px; background: var(--paper); font-size: 12px; }
+.import-review-why .import-candidates button i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.import-review-why .import-source { margin-top: 2px; }
+.import-review-allok { display: flex; align-items: center; gap: 7px; padding: 4px 0 12px; color: var(--import-ok); font-size: 14px; font-weight: 700; }
+.import-review-sec { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0 2px; color: var(--muted); font-size: 12px; }
+.import-review-sec b { color: var(--ink); font-weight: 600; }
+.import-review .import-review-confirm { margin-top: 14px; min-height: 52px; padding: 10px 14px; border-color: transparent; background: var(--soft); animation: import-confirm-arrive .36s cubic-bezier(.3,1.3,.5,1) both; }
+.import-review-flyer { position: fixed; z-index: 400; pointer-events: none; border-radius: 12px; background: var(--paper); transform-origin: 50% 50%; }
+.import-review-flyer > .import-sorting-list { height: 100%; min-height: 0; }
+.import-review-flyer .import-sorting-list .import-sorted-entry { height: 100%; padding: 0 6px; border: 0; outline: 0; animation: none; }
+.import-glow { position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none; transition: opacity .8s ease .38s; }
+.import-glow[data-leaving] { opacity: 0; }
+@keyframes import-confirm-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .import-review .import-review-confirm { animation: none; } .import-glow { transition: none; } }
+/* An open editor belongs to its row: no rule between them, one rule after the form. */
+.import-review-list .import-review-row:has(> .import-review-expander) > .import-entry-button { border-bottom-color: transparent; }
+.import-review-list .import-review-row:has(> .import-review-expander) { border-bottom: 1px solid var(--line); }
+.import-review-list .import-review-editor { margin: 0; padding-top: 4px; border-top: 0; }
+.import-review-box .import-review-row:last-child { border-bottom: 0; }
+/* A long shop name must not widen the box: rows fit its width and ellipsize. */
+.import-review-box-in { grid-template-columns: minmax(0,1fr); }
+.import-review-box .import-sorting-list, .import-review-box .import-review-row, .import-review-why { min-width: 0; }
+.import-review-why p { overflow-wrap: anywhere; }
+.import-review-summary + .import-original-files { margin-top: 10px; }
+.import-review > .import-hint { margin-top: 12px; }

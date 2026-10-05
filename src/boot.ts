@@ -1,5 +1,5 @@
 import { initializeTheme, THEME_EVENT } from './theme';
-import { BOOT_HOLD_END, BOOT_EXIT_DURATION, drawBrand, type BrandTheme } from './brand-motion';
+import { BALL, BALL_EDGE, BOOT_HOLD_END, BOOT_EXIT_DURATION, BRAND_THEMES, drawBrand, drawMelt, type BrandTheme } from './brand-motion';
 
 const screen = document.getElementById('initial-boot');
 const root = document.getElementById('root');
@@ -59,8 +59,12 @@ if (screen && root && canvas) {
       revealFrame = requestAnimationFrame(() => {
         if (reduced.matches) cleanup();
         else {
-          screen?.classList.add('boot-leaving');
-          exitTimer = window.setTimeout(cleanup, BOOT_EXIT_DURATION);
+          const handover = screen ? toDock(screen) : 0;
+          if (handover) exitTimer = window.setTimeout(cleanup, handover);
+          else {
+            screen?.classList.add('boot-leaving');
+            exitTimer = window.setTimeout(cleanup, BOOT_EXIT_DURATION);
+          }
         }
       });
     });
@@ -95,4 +99,51 @@ if (screen && root && canvas) {
     finished = true;
     dismiss();
   } else tick(started);
+}
+
+// Adapted from uchino: the mark itself becomes a ball of ink that drops into
+// the bottom navigation. On the canvas the slices slide together into one
+// solid disc (drawMelt); that disc is handed to an element of the same size,
+// which squashes, stretches as it falls, lands, and spreads into the dock.
+// Returns how long the handover runs, or 0 when there is no dock on screen
+// (sign-in), where the cover simply fades.
+function toDock(cover: HTMLElement): number {
+  const dock = document.querySelector<HTMLElement>('.kondo-floating-dock');
+  const symbol = cover.querySelector<HTMLElement>('.boot-symbol');
+  if (!dock || !symbol || !cover.animate) return 0;
+  const d = dock.getBoundingClientRect(), p = symbol.getBoundingClientRect();
+  if (!d.width || !d.height || !p.width) return 0;
+  const style = getComputedStyle(cover), ink = BRAND_THEMES[theme].ink;
+  // The canvas draws 1750 logo units across 340px from (-82, -101) in the symbol box.
+  const unit = p.width / 176 * 340 / 1750;
+  const bx = p.left - 82 / 176 * p.width + (248 + BALL.x) * unit, by = p.top - 101 / 142 * p.height + (240 + BALL.y) * unit, r = BALL_EDGE * unit;
+  const MELT = 300, FALL = 720, total = MELT + FALL + 60, landAt = MELT + FALL * .8;
+  cover.querySelector('.boot-name')?.animate([{opacity: 1}, {opacity: 0, filter: 'blur(4px)', transform: 'translateY(6px)'}], {duration: 220, easing: 'ease-in', fill: 'forwards'});
+  if (ctx && canvas) {
+    const begun = performance.now();
+    const melt = (now: number) => {
+      const m = Math.min(1, (now - begun) / MELT);
+      drawMelt(ctx, canvas.width, canvas.height, m, theme);
+      if (m < 1) requestAnimationFrame(melt);
+    };
+    melt(begun);
+  }
+  symbol.animate([{opacity: 1}, {opacity: 0}], {duration: 1, delay: MELT, fill: 'forwards'});
+  const drop = document.createElement('div');
+  drop.style.cssText = `position:fixed;left:0;top:0;opacity:0;background:${ink};pointer-events:none`;
+  cover.appendChild(drop);
+  const box = (left: number, top: number, width: number, height: number) =>
+    ({left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`, borderRadius: `${Math.min(width, height) / 2}px`});
+  drop.animate([
+    {...box(bx - r, by - r, r * 2, r * 2), opacity: 1},
+    {...box(bx - r * 1.14, by - r * .7, r * 2.28, r * 1.7), offset: .12},
+    {...box(bx - r * .72, by - r * .9, r * 1.44, r * 2.5), offset: .3},
+    {...box(bx - 40, d.top - 30, 80, 76), offset: .56},
+    {...box(d.left - 8, d.top + 4, d.width + 16, d.height - 8), offset: .8, opacity: 1},
+    {...box(d.left, d.top, d.width, d.height), opacity: 0},
+  ], {duration: FALL, delay: MELT, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards'});
+  cover.animate([{backgroundColor: style.backgroundColor}, {backgroundColor: 'transparent'}], {duration: 400, delay: MELT + 200, easing: 'ease-out', fill: 'forwards'});
+  dock.animate([{opacity: 0}, {opacity: 0, offset: landAt / total}, {opacity: 1}], {duration: total});
+  document.getElementById('main-content')?.animate([{opacity: 0, transform: 'translateY(12px)'}, {opacity: 1, transform: 'none'}], {duration: 520, delay: MELT + 360, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'backwards'});
+  return total;
 }

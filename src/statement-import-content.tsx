@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+import { LiveSpring, reducedMotion } from './cartoon-motion';
 import { displayColor } from './display-color';
 import { NativeMonthPicker } from './native-month-picker';
-import { Check, ChevronDown, CreditCard, FileImage, FileText, Files, Table2, Plus, Pencil, ScanLine, Sparkles, X } from 'lucide-react';
+import { ChevronDown, CreditCard, FileImage, FileText, Files, Table2, Plus, Pencil, Sparkles, X } from 'lucide-react';
 import type { CategoryAppearance, SharedCard, EntryDraft } from './domain';
 import { categoryAppearance } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import type { ImportProgress } from './statement-import-flow';
-import { ImportThinking } from './import-thinking';
+import { ImportReader, type ReaderResult } from './import-reader';
+import { entryKey, usePeel } from './import-peel-store';
 import { statementFileAccept, statementFileSize, type StatementFile } from './statement-files';
 import { reviewCauseLabel } from './import-policy';
 
@@ -53,50 +55,57 @@ export function ImportEntryLine({entry,settings}:{entry:EntryDraft;settings:Cate
   const appearance=categoryAppearance(entry.category,settings);
   const label=entry.import_meta?.status==='pending'?'仕分け待ち':entry.import_meta?.status==='classifying'?'仕分け中…':entry.category;
   const causes=entry.import_meta?.status==='review'?entry.import_meta.review_causes:undefined;
-  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color)}}>{label}</span>{!!causes?.length&&<small>{causes.map(reviewCauseLabel).join('・')}</small>}</span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
+  return <><CategoryIcon name={appearance.icon} color={appearance.color} size={23}/><span className="import-entry-copy"><strong>{entry.title||'新しい明細'}</strong><small>{entry.spent_on||'利用日不明'}</small><span className="import-category-tag" style={{color:displayColor(appearance.color),'--tag-color':displayColor(appearance.color)} as React.CSSProperties}>{label}</span>{!!causes?.length&&<small>{causes.map(reviewCauseLabel).join('・')}</small>}</span><b>¥{entry.amount.toLocaleString('ja-JP')}</b></>;
 }
 
-export function ImportPhaseStatus({progress}:{progress:ImportProgress}) {
-  const reading=progress.phase==='reading';
-  const checking=progress.phase==='checking';
-  const parallel=reading&&progress.entries.length>0;
-  const title=progress.activity?.rechecking?'明細を再確認中':parallel?'読み取りと仕分け中':reading?'明細を読み取り中':checking?'金額を確認中':'費目ごとに仕分け中';
-  const classified=progress.entries.filter(entry=>!entry.import_meta||entry.import_meta.status==='classified'||entry.import_meta.status==='review').length;
-  const sortingDone=checking||(!reading&&progress.count!==null&&classified===progress.count);
-  const tasks=[
-    {label:'読み取り',icon:FileText,state:reading?'current':'done',fraction:reading?null:1,description:reading?`${progress.entries.length}件を受信`:'完了'},
-    {label:'仕分け',icon:Sparkles,state:sortingDone?'done':(progress.entries.length>0||!reading)?'current':'pending',fraction:sortingDone?1:progress.count===null?null:progress.count?Math.min(1,classified/progress.count):0,description:sortingDone?'完了':`${classified}件完了`}
-  ];
-  const detail=progress.activity?.text??(reading&&progress.demo?'サンプル明細を準備中…':progress.reasoning??(checking?'明細の金額を合計しています…':reading?undefined:`仕分け ${classified}件完了`));
-  return <section className="import-phase-status" aria-label="取り込みの進行">
-    <div className="import-phase-title" role="status" aria-live="polite"><span key={progress.phase} className="import-phase-title-content">{checking?<Check className="import-animated-check" size={20} aria-hidden="true"/>:<ScanLine size={20} aria-hidden="true"/>}<strong>{title}</strong></span>{progress.demo&&<small>デモ</small>}</div>
-    <ul className="import-tasks" aria-label="読み取りと仕分けの並行処理">{tasks.map(({label,icon:Icon,state,fraction,description})=><li key={label} data-state={state} data-indeterminate={state==='current'&&fraction===null}>
-      <span className="import-task-marker" aria-hidden="true">{state==='done'?<Check className="import-animated-check" size={13}/>:<Icon size={13}/>}</span><span>{label}</span><small>{state==='pending'?'待機中':description}</small>
-      <span className="import-task-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={state==='pending'?0:fraction===null?undefined:Math.round(fraction*100)} aria-valuetext={state==='pending'?'読み取れた行から開始':description}><i style={{transform:`scaleX(${fraction??0})`}}/></span>
-    </li>)}</ul>
-    <div className="import-verification" data-active={checking}><Check size={14} aria-hidden="true"/><span>金額確認</span><small>{checking?'照合中':'読み取り・仕分けの完了後'}</small></div>
-    <div className="import-live-status"><ImportThinking text={detail}/><ImportElapsed/></div>
-    {(!reading||progress.entries.length>0)&&<div className="import-phase-summary"><span>{reading?'読み取り済み':checking?'金額確認済み':'仕分け済み'} <b>{reading?progress.entries.length:checking?(progress.checkedCount??0):classified}</b>{progress.count===null?'件':` / ${progress.count}件`}</span><span className="import-phase-total"><small>利用合計</small><strong>¥{(checking?(progress.checkedTotal??0):progress.entries.reduce((sum,entry)=>sum+entry.amount,0)).toLocaleString('ja-JP')}</strong></span></div>}
-  </section>;
+export function ImportPhaseStatus({progress,files,result}:{progress:ImportProgress;files?:StatementFile[];result?:ReaderResult}) {
+  return <ImportReader progress={progress} files={files} result={result}/>;
 }
 
-function ImportElapsed() {
-  const [started]=useState(()=>Date.now());
-  const [seconds,setSeconds]=useState(0);
-  useEffect(()=>{
-    const timer=window.setInterval(()=>setSeconds(Math.max(0,Math.floor((Date.now()-started)/1000))),1000);
-    return()=>window.clearInterval(timer);
-  },[started]);
-  return <span className="import-elapsed" aria-label={`経過時間 ${seconds}秒`}>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span>;
+const sorted=(entry:EntryDraft)=>!entry.import_meta||entry.import_meta.status==='classified'||entry.import_meta.status==='review';
+function stamp(row:HTMLElement){
+  const tag=row.querySelector<HTMLElement>('.import-category-tag'),icon=row.querySelector<SVGElement|HTMLElement>(':scope > svg');
+  tag?.animate([{transform:'scale(1.8,.4) rotate(-6deg)',opacity:0},{opacity:1,offset:.6},{transform:'none',opacity:1}],{duration:460,easing:'cubic-bezier(.3,1.7,.5,1)'});
+  icon?.animate([{transform:'scale(.5)'},{transform:'scale(1.2)',offset:.6},{transform:'none'}],{duration:380,easing:'cubic-bezier(.3,1.6,.5,1)'});
+}
+function shake(row:HTMLElement){
+  const spring=new LiveSpring(0,value=>{row.style.translate=Math.abs(value)<.05?'':`${value.toFixed(2)}px 0`;},{stiffness:900,damping:9});
+  spring.to(0,undefined,420);
 }
 
+// Rows are listed newest first, right under the statement they peel off.
+// While the reader runs, a row joins the list when its strip lets go of the
+// sheet (the rows below step down to make room) and shows once it lands.
+// Its category tag waits as a shimmer until that row's own classification
+// comes back, then stamps on; rule matches stamp as they land.
 export function ImportProcessing({progress,settings}:{progress:ImportProgress;settings:CategoryAppearance[]}) {
-  const reading=progress.phase==='reading';
+  const peel=usePeel();
+  const list=useRef<HTMLDivElement>(null);
+  const keyed=progress.entries.map((entry,index)=>({entry,key:entryKey(entry,index)}));
+  const shown=(peel.active?keyed.filter(({key})=>peel.admitted.has(key)):keyed).reverse();
+  const places=useRef(new Map<string,number>());
+  const seen=useRef(new Map<string,string>());
+  useLayoutEffect(()=>{
+    const node=list.current;if(!node)return;
+    const rows=[...node.querySelectorAll<HTMLElement>('[data-entry-id]')];
+    const motion=peel.active&&!reducedMotion();
+    for(const row of rows){
+      const key=row.dataset.entryId!,top=row.offsetTop,before=places.current.get(key);
+      places.current.set(key,top);
+      // Rows already in the list glide down to make room, with a small dip.
+      if(motion&&before!==undefined&&Math.abs(before-top)>.5)row.animate([{translate:`0 ${before-top}px`},{translate:'0 2px',offset:.7},{translate:'0 0'}],{duration:460,easing:'cubic-bezier(.3,1.2,.5,1)'});
+      if(!peel.active||!row.hasAttribute('data-landed'))continue;
+      const entry=keyed.find(item=>item.key===key)?.entry;if(!entry)continue;
+      const status=sorted(entry)?(entry.import_meta?.status==='review'?'review':'sorted'):'waiting';
+      const before2=seen.current.get(key);seen.current.set(key,status);
+      if(!motion||before2===status)continue;
+      if(status!=='waiting'&&before2!==status)stamp(row);
+      if(status==='review'&&before2!=='review')shake(row);
+    }
+  });
   return <div className="import-processing">
-    <div className="import-sorting-list" aria-label="仕分け結果">
-      {reading&&!progress.entries.length?<div className="import-skeleton" aria-hidden="true">{[0,1,2].map(index=><div key={index}><i/><span/><b/></div>)}</div>:progress.entries.map((entry,index)=>{
-        return <div className="import-sorted-entry" data-import-entry="" data-classification={entry.import_meta?.status} key={entry.import_meta?.id??index}><ImportEntryLine entry={entry} settings={settings}/></div>;
-      })}
+    <div ref={list} className="import-sorting-list" data-peel={peel.active||undefined} aria-label="仕分け結果">
+      {!shown.length&&progress.phase==='reading'?null:shown.map(({entry,key})=><div className="import-sorted-entry" data-import-entry="" data-entry-id={key} data-landed={!peel.active||peel.landed.has(key)?'':undefined} data-classification={entry.import_meta?.status} data-rule={entry.import_meta?.rule_id?'':undefined} key={key}><ImportEntryLine entry={entry} settings={settings}/><span className="import-entry-edit" data-hidden="" aria-hidden="true"><Pencil size={16}/></span></div>)}
     </div>
   </div>;
 }

@@ -3,9 +3,20 @@ import { animatePanel, animatePanelSurroundings, cancelPanel, reversePanel, type
 import { trackPanelViewport } from './panel-viewport';
 import { lockOverlayBackground } from './overlay-lock';
 import { registerPanel } from './panel-stack';
+import { springAnimate } from './cartoon-motion';
 export type { PanelOrigin } from './kondo-panel-motion';
 
-export const panelOrigin = (element:HTMLElement):PanelOrigin => {
+export const panelOrigin = (element:Element):PanelOrigin => {
+  // A donut piece has no box to grow from, so the panel grows out of (and
+  // folds back into) a round drop sitting in the middle of the piece.
+  if(element instanceof SVGGraphicsElement&&element.dataset.mid){
+    const matrix=element.getScreenCTM(),mid=Number(element.dataset.mid),radius=Number(element.dataset.radius)||87;
+    if(matrix){
+      const x=Math.cos(mid)*radius,y=Math.sin(mid)*radius,size=Math.max(36,Math.min(64,46*Math.hypot(matrix.a,matrix.b)));
+      const cx=x*matrix.a+y*matrix.c+matrix.e,cy=x*matrix.b+y*matrix.d+matrix.f;
+      return {left:cx-size/2,top:cy-size/2,width:size,height:size,round:true};
+    }
+  }
   const {left,top,width,height}=element.getBoundingClientRect();
   return {left,top,width,height};
 };
@@ -63,12 +74,20 @@ export function usePanelMorph(panel:RefObject<HTMLElement|null>,origin:PanelOrig
     const animation=motion.current;
     if(!animation){exited.current();return;}
     // Reverse the retained entrance, including a dismissal before it finishes.
+    const source=document.querySelector<Element>('.panel-source[data-panel-source="true"]');
     reversePanel(animation,companions.current);
     let active=true;
-    const finish=()=>{if(active){active=false;exited.current();}};
-    const timer=window.setTimeout(finish,600);
+    // Back in its place, the card gives a small squish like the mock.
+    // Whatever it came from shows again under the folding box and swells as
+    // the box sinks into it, then settles (a round drop into a donut piece
+    // swells it more than a wide card).
+    const round=!!origin?.round,end=Number(animation.effect?.getComputedTiming().endTime)||500;
+    if(source instanceof HTMLElement||source instanceof SVGElement)source.style.visibility='visible';
+    const gulp=window.setTimeout(()=>{if(source?.isConnected)springAnimate(source,round?{scale:'1.1 1.1'}:{scale:'1.04 1.06'},{scale:'1 1'},{stiffness:380,damping:11});},end*.42);
+    const finish=()=>{if(active){active=false;exited.current();if(source instanceof HTMLElement||source instanceof SVGElement)requestAnimationFrame(()=>requestAnimationFrame(()=>{source.style.visibility='';}));}};
+    const timer=window.setTimeout(finish,end+120);
     void animation.finished.then(finish,()=>undefined);
-    return()=>{active=false;window.clearTimeout(timer);};
+    return()=>{active=false;window.clearTimeout(timer);window.clearTimeout(gulp);};
   },[closing]);
   useEffect(()=>{
     const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;

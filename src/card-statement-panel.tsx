@@ -1,6 +1,6 @@
 import { sortEntries, type EntrySort } from './entry-sort';
 import { displayColor } from './display-color';
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { ArrowRight, CreditCard, Trash2, Undo2, X } from 'lucide-react';
 import { categoryTotals, statementSettlementAmount, type CategoryAppearance, type CardEntry, type CardStatement, type Category } from './domain';
 import { allCategoryAppearances, categoryAppearance } from './category-appearance';
@@ -8,6 +8,7 @@ import { CategoryIcon } from './category-icon';
 import { CategoryChart } from './spending-charts';
 import { NumberTicker } from './number-ticker';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
+import { useReorderMotion } from './reorder-motion';
 
 type Props = {
   title: string;
@@ -41,6 +42,7 @@ const yen=(amount:number)=>`¥${Math.round(amount).toLocaleString('ja-JP')}`;
 export function CardStatementPanel({title,sort,color,categorySettings=[],month,statements,entries,demo,view,origin,closing,onClose,onExited,actionLabel,actionDisabled,busy,error,onAction,onChangeCategory,onChangeAmount,amountDraft,deletedEntryIds,onToggleDeleteEntry,onDeleteStatement}:Props) {
   const panel=useRef<HTMLElement>(null);
   usePanelMorph(panel,origin,closing,onExited,onClose);
+  useReorderMotion(panel,JSON.stringify(sort),view);
   useLayoutEffect(()=>{if(panel.current)panel.current.scrollTop=0;},[view]);
   const total=statements.reduce((sum,item)=>sum+item.confirmed_total,0);
   const matchingEntries=entries.filter(entry=>statements.some(statement=>statement.id===entry.statement_id));
@@ -57,7 +59,7 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
   ].map(group=>({...group,entries:cardEntries.filter(entry=>(categoryAppearance(entry.category,categorySettings).include_in_settlement!==false)===group.included)}));
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
-    <div className="card-panel-frame">
+    <div className="card-panel-frame" data-toned={color?true:undefined} style={color?{'--panel-tone':displayColor(color)} as CSSProperties:undefined}>
       <div className="card-panel-glass" aria-hidden="true"/>
       <section className="card-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="card-panel-title" ref={panel}>
         <header className="card-panel-header"><span className="card-panel-icon"><CreditCard size={22} color={displayColor(color)}/></span><div><h2 tabIndex={-1} id="card-panel-title">{view==='edit'?'明細を編集':title}</h2><span>{Number(month.slice(0,4))}年{Number(month.slice(5))}月</span></div><button className="card-panel-close" aria-label="明細を閉じる" onClick={onClose}><X size={20}/></button></header>
@@ -96,11 +98,11 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
               })}
             </div>:view==='summary'?entryGroups.map(group=><section className="card-panel-statement" aria-label={group.label} key={group.label}>
               <div className="card-panel-statement-title"><strong>{group.label}</strong><span>{group.entries.length}件 · {yen(group.entries.reduce((sum,entry)=>sum+entry.amount,0))}</span></div>
-              {group.entries.map(entry=><div className="card-panel-entry" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.spent_on?<time dateTime={entry.spent_on}>{entry.spent_on}</time>:'利用日不明'}</small><small className="entry-category"><CategoryIcon name={categoryAppearance(entry.category,categorySettings).icon} color={categoryAppearance(entry.category,categorySettings).color} size={14}/>{entry.category}</small></div><span>{yen(entry.amount)}</span></div>)}
+              {group.entries.map(entry=><div className="card-panel-entry" data-reorder-key={entry.id} key={entry.id}><div><strong>{entry.title}</strong><small>{entry.spent_on?<time dateTime={entry.spent_on}>{entry.spent_on}</time>:'利用日不明'}</small><small className="entry-category"><CategoryIcon name={categoryAppearance(entry.category,categorySettings).icon} color={categoryAppearance(entry.category,categorySettings).color} size={14}/>{entry.category}</small></div><span>{yen(entry.amount)}</span></div>)}
               {!group.entries.length&&<p className="card-panel-more">該当する明細はありません。</p>}
             </section>):statements.map(statement=><div className="card-panel-statement" key={statement.id}>
               <div className="card-panel-statement-title"><strong>{statements.length===1?'合計':statement.title}</strong><span>{yen(statement.confirmed_total)}</span></div>
-              {cardEntries.filter(entry=>entry.statement_id===statement.id).map(entry=><div className="card-panel-entry" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.spent_on||'利用日不明'}</small><small className="entry-category"><CategoryIcon name={categoryAppearance(entry.category,categorySettings).icon} color={categoryAppearance(entry.category,categorySettings).color} size={14}/>{entry.category}</small></div><span>{yen(entry.amount)}</span></div>)}
+              {cardEntries.filter(entry=>entry.statement_id===statement.id).map(entry=><div className="card-panel-entry" data-reorder-key={entry.id} key={entry.id}><div><strong>{entry.title}</strong><small>{entry.spent_on||'利用日不明'}</small><small className="entry-category"><CategoryIcon name={categoryAppearance(entry.category,categorySettings).icon} color={categoryAppearance(entry.category,categorySettings).color} size={14}/>{entry.category}</small></div><span>{yen(entry.amount)}</span></div>)}
             </div>)}
           </>:<div className="card-panel-empty"><p>この月の明細はまだありません。</p></div>}
         </div>

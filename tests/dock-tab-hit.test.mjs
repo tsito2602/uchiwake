@@ -34,11 +34,13 @@ const {render}=await import('data:text/javascript;base64,'+Buffer.from(bundle).t
 
 function fixture(t,tab='home') {
   globalThis.window={setTimeout};
+  // The island's press spring only needs frames to be requested.
+  globalThis.requestAnimationFrame??=()=>0;globalThis.cancelAnimationFrame??=()=>{};
   const selected=[],capture=new Set();
   const content=render({tab,onSelect:value=>selected.push(value),month:'2026-09',onMonthChange:()=>assert.fail('must not change month'),onPrevMonth(){},onNextMonth(){}});
   const nav=content.props.children.find(child=>child?.type==='nav').props;
   const target={querySelectorAll:()=>bounds.map(rect=>({getBoundingClientRect:()=>rect})),setPointerCapture:id=>capture.add(id),hasPointerCapture:id=>capture.has(id),releasePointerCapture:id=>capture.delete(id)};
-  const event=(x,y=900,id=1)=>({button:0,isPrimary:true,pointerId:id,clientX:x,clientY:y,currentTarget:target});
+  const event=(x,y=900,id=1)=>({button:0,isPrimary:true,pointerId:id,clientX:x,clientY:y,target,currentTarget:target});
   return {nav,event,selected,capture};
 }
 
@@ -47,9 +49,21 @@ test('カレンダー上や領域外で指を離すと選択せず、互換ク�
     const f=fixture(t);f.nav.onPointerDown(f.event(40));f.nav.onPointerMove(f.event(x));f.nav.onPointerUp(f.event(x));
     assert.deepEqual(f.selected,[]);assert.equal(f.capture.size,0);
     let prevented=false,stopped=false;
-    f.nav.onClickCapture({preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+    f.nav.onClickCapture({target:{classList:{contains:()=>false}},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
     assert.ok(prevented&&stopped);
   }
+});
+
+test('指を滑らせないタップはタブ自身のクリックで選び、iPhoneの触覚スイッチを通す',t=>{
+  const f=fixture(t);f.nav.onPointerDown(f.event(40));f.nav.onPointerUp(f.event(40));
+  // A plain tap never captures the pointer and leaves the click alone.
+  assert.equal(f.capture.size,0);assert.deepEqual(f.selected,[]);
+  let prevented=false,stopped=false;
+  f.nav.onClickCapture({target:{},preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+  assert.ok(!prevented&&!stopped);
+  const tabs=f.nav.children.flat().filter(child=>child?.type==='button');
+  tabs[0].props.onClick();
+  assert.deepEqual(f.selected,['home']);
 });
 
 test('領域外からアイコンへ戻って離すと、そのタブを一度だけ選ぶ',t=>{

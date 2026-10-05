@@ -25,9 +25,11 @@ function useSpaceDock(context:DockContext,onDockChange:SpaceDockChange) {
  useLayoutEffect(()=>()=>onDockChange(undefined),[onDockChange]);
 }
 
-export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin,closing,onExited,suspended=false}:{
+// fit: a short form (a name, a code, a choice) gets a panel only as tall as
+// its content, resting just above the dock and keyboard, not a full screen.
+export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin,closing,onExited,suspended=false,fit=false}:{
  title:string;icon:LucideIcon;children:ReactNode;context:DockContext;onDockChange:SpaceDockChange;
- origin?:PanelOrigin;closing?:boolean;onExited:()=>void;suspended?:boolean;
+ origin?:PanelOrigin;closing?:boolean;onExited:()=>void;suspended?:boolean;fit?:boolean;
 }) {
  const panel=useRef<HTMLElement>(null);
  const titleId=useId();
@@ -35,7 +37,7 @@ export function SpacePanel({title,icon:Icon,children,context,onDockChange,origin
  useSpaceDock(context,onDockChange);
  return createPortal(<div className="card-panel-backdrop" onClick={event=>{if(!suspended&&event.target===event.currentTarget)context.onBack();}}>
   <div className="card-panel-scrim" aria-hidden="true"/>
-  <div className="card-panel-frame">
+  <div className="card-panel-frame" data-fit={fit||undefined}>
    <div className="card-panel-glass" aria-hidden="true"/>
    <section ref={panel} className="card-panel space-floating-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
     <header className="card-panel-header"><span className="card-panel-icon"><Icon size={22}/></span><div><h2 id={titleId} tabIndex={-1}>{title}</h2></div></header>

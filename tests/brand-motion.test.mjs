@@ -36,18 +36,21 @@ test('アニメーションの1画目はホーム図柄と同じ位置へ収ま�
   assert.ok(Math.abs(head[0][0]-451)<1e-8);
   assert.ok(Math.abs(head[0][1]-222)<1e-8);
 });
-function launch({dark=false,reduced=false,alreadyReady=false,canvas=true,scrollY=0}={}) {
+function launch({dark=false,reduced=false,alreadyReady=false,canvas=true,scrollY=0,dock=false}={}) {
   let now=0,id=0;
   const timers=new Map(),frames=new Map(),events=new Map(),dispatched=[];
   const context=new Proxy({}, {get:(obj,key)=>obj[key] ?? (()=>{}),set:(obj,key,value)=>(obj[key]=value,true)});
-  const element=()=>({dataset:{},style:{visibility:''},attrs:{},isConnected:true,classList:new Set(),getBoundingClientRect(){return {top:-sandbox.scrollY}},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},remove(){this.isConnected=false}});
+  const element=()=>({dataset:{},style:{visibility:''},attrs:{},isConnected:true,classList:new Set(),animations:[],children:[],animate(frames,timing){this.animations.push({frames,timing});return {}},querySelector(){return null},appendChild(child){this.children.push(child)},getBoundingClientRect(){return {top:-sandbox.scrollY}},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},remove(){this.isConnected=false}});
   const ids=Object.fromEntries(['initial-boot','root','boot-canvas','boot-still','app-icon','app-manifest','app-theme-color'].map(k=>[k,element()]));
   ids['boot-canvas'].getContext=()=>canvas?context:null;
   if(alreadyReady) ids.root.dataset.bootReady='true';
+  const dockElement={...element(),getBoundingClientRect:()=>({left:16,top:780,width:358,height:56})};
+  const symbol={...element(),getBoundingClientRect:()=>({left:107,top:350,width:176,height:142})};
+  ids['initial-boot'].querySelector=selector=>selector==='.boot-symbol'?symbol:null;
   const media=matches=>({matches,addEventListener(_,fn){this.listener=fn},removeEventListener(){this.listener=null}});
   const darkMedia=media(dark),reducedMedia=media(reduced);
-  const document={dispatchEvent:e=>{dispatched.push({type:e.type,bootVisible:ids['initial-boot'].isConnected,inert:ids.root.attrs.inert});events.get(e.type)?.(e)},documentElement:element(),getElementById:k=>ids[k],addEventListener:(k,f)=>events.set(k,f),removeEventListener:k=>events.delete(k)};
-  const sandbox={document,Event,addEventListener:(k,f)=>events.set(k,f),dispatchEvent:e=>events.get(e.type)?.(e),matchMedia:q=>q.includes('color-scheme')?darkMedia:reducedMedia,performance:{now:()=>now},devicePixelRatio:1,
+  const document={querySelector:selector=>dock&&selector==='.kondo-floating-dock'?dockElement:null,createElement:()=>element(),dispatchEvent:e=>{dispatched.push({type:e.type,bootVisible:ids['initial-boot'].isConnected,inert:ids.root.attrs.inert});events.get(e.type)?.(e)},documentElement:element(),getElementById:k=>ids[k],addEventListener:(k,f)=>events.set(k,f),removeEventListener:k=>events.delete(k)};
+  const sandbox={document,Event,addEventListener:(k,f)=>events.set(k,f),dispatchEvent:e=>events.get(e.type)?.(e),matchMedia:q=>q.includes('color-scheme')?darkMedia:reducedMedia,getComputedStyle:()=>({color:'#30302f',backgroundColor:'#ffffff'}),performance:{now:()=>now},devicePixelRatio:1,
     history:{scrollRestoration:'auto'},scrollY,scrollTo:({top})=>{sandbox.scrollY=top},
     setTimeout:(fn,ms)=>{timers.set(++id,{fn,at:now+ms});return id},clearTimeout:k=>timers.delete(k),requestAnimationFrame:fn=>{frames.set(++id,fn);return id},cancelAnimationFrame:k=>frames.delete(k)};
   sandbox.window=sandbox;
@@ -59,7 +62,7 @@ function launch({dark=false,reduced=false,alreadyReady=false,canvas=true,scrollY
     for(const [key,timer] of [...timers]) if(timer.at<=now){timers.delete(key);timer.fn()}
   }
   const reveal=()=>{advance(16);advance(16);advance(240)};
-  return {ids,advance,reveal,sandbox,dispatched,ready:()=>events.get('uchiwake:ready')?.(),darkMedia,reducedMedia};
+  return {dockElement,symbol,ids,advance,reveal,sandbox,dispatched,ready:()=>events.get('uchiwake:ready')?.(),darkMedia,reducedMedia};
 }
 test('準備済みでも8文字の出現が終わるまで待ってから操作を解放する',()=>{
   const app=launch({alreadyReady:true});
@@ -135,4 +138,25 @@ test('描画待機中にタイムアウトしても操作を解放し、後か�
   app.reveal();
   assert.equal(app.ids['initial-boot'].classList.has('boot-leaving'),false);
   assert.equal(app.dispatched.length,1);
+});
+
+test('ドックがあれば、ロゴそのものが玉になってボトムナビへ落ちてから操作を解放する',()=>{
+  const app=launch({alreadyReady:true,dock:true});
+  app.advance(BOOT_HOLD_END);app.advance(16);app.advance(16);
+  const cover=app.ids['initial-boot'];
+  assert.equal(cover.classList.has('boot-leaving'),false);
+  const drop=cover.children[0];
+  const frames=drop.animations[0].frames,last=frames.at(-1);
+  // It takes over from the melted mark as a disc and ends as the dock itself.
+  assert.equal(frames[0].width,frames[0].height);
+  assert.equal(drop.animations[0].timing.delay,300);
+  assert.deepEqual([last.left,last.top,last.width,last.height,last.opacity],['16px','780px','358px','56px',0]);
+  assert.equal(app.symbol.animations[0].frames.at(-1).opacity,0);
+  assert.equal(app.dockElement.animations.length,1);
+  app.advance(1060);
+  assert.equal(cover.isConnected,true);
+  assert.equal(app.ids.root.attrs.inert,'');
+  app.advance(40);
+  assert.equal(cover.isConnected,false);
+  assert.equal(app.ids.root.attrs.inert,undefined);
 });

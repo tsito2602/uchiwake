@@ -19,7 +19,7 @@ export function CardSettingsPanel({card,view,origin,closing,busy,name,active,col
 
   return <div className="card-panel-backdrop" onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className="card-panel-scrim" aria-hidden="true"/>
-    <div className="card-panel-frame">
+    <div className="card-panel-frame" data-fit>
       <div className="card-panel-glass" aria-hidden="true"/>
       <section className="card-panel card-settings-panel" data-view={view} role="dialog" aria-modal="true" aria-labelledby="card-settings-title" ref={panel}>
         <header className="card-panel-header"><span className="card-panel-icon"><CreditCard size={22} color={displayColor(view==='summary'?savedColor:color)}/></span><div><h2 tabIndex={-1} id="card-settings-title">{card?'カードの設定':'カードを追加'}</h2><span>{card?'共有カード':'新しい共有カード'}</span></div><button className="card-panel-close" aria-label="閉じる" onClick={onClose}><X size={20}/></button></header>
