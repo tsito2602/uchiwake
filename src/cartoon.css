@@ -278,3 +278,7 @@ div.settlement-amount-toggle[data-tears] { cursor: pointer; -webkit-tap-highligh
 div.settlement-amount-toggle[data-tears]:active .hero-stage { scale: .985; transition: scale .12s; }
 div.settlement-amount-toggle[data-tears] { position: relative; }
 .space-current-name > span::before { content: '·'; margin: 0 6px; }
+.split-bar-rounding[data-settled] { border-style: solid; border-color: transparent; background: var(--soft); animation: rounding-settle .32s var(--ease-flow) both; }
+.split-bar-rounding[data-settled] > em { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ink) 25%, transparent); }
+@keyframes rounding-settle { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+.rounding-option-amount { margin-inline-start: auto; color: var(--muted); font-size: 13px; font-style: normal; font-variant-numeric: tabular-nums; }

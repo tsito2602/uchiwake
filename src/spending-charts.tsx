@@ -188,22 +188,9 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
   const maximum=Math.max(1,...items.map(item=>Math.abs(item.amount)));
   const dataSignature=data.map(item=>`${item.category}:${item.amount}`).join();
   useEffect(()=>{setActiveCategory(null);},[dataSignature,view]);
-  // A tap anywhere but the donut's pieces, its centre and its list lets go of
-  // the picked piece (the space around the ring included).
-  const chartRoot=useRef<HTMLElement>(null);
-  const panelOpen=useRef(false);panelOpen.current=!!openCategory;
-  useEffect(()=>{
-    if(activeCategory===null)return;
-    // While its statements are open the piece stays picked, so the panel folds
-    // back into the piece it came from.
-    const away=(event:PointerEvent)=>{const target=event.target as Element|null,root=chartRoot.current;
-      if(!root||panelOpen.current||target?.closest?.('.category-pie-slice, .category-pie-open, .category-pie-haptic, .category-chart ul'))return;setActiveCategory(null);};
-    document.addEventListener('pointerdown',away,true);
-    return()=>document.removeEventListener('pointerdown',away,true);
-  },[activeCategory]);
   const positive=data.reduce((sum,item)=>sum+Math.max(0,item.amount),0);
   const refunds=data.some(item=>item.amount<0);
-  return <section ref={chartRoot} className="category-chart" aria-label="カテゴリ別のカード利用額">
+  return <section className="category-chart" aria-label="カテゴリ別のカード利用額">
     <div className="category-chart-heading"><h2>カテゴリ別</h2>
       <div className="category-chart-switch" role="group" aria-label="グラフの表示形式">
         <button type="button" aria-label="円グラフ" title="円グラフ" aria-pressed={view==='pie'} onClick={()=>setView('pie')}><ChartPie size={19} aria-hidden="true"/></button>
@@ -219,7 +206,7 @@ export function CategoryChart({data,settings=[],animateAmounts=true,onSelectCate
       </>;
       // Rows slide only when the list itself changes. A re-render while a panel
       // folds (the page still scaled) would otherwise read as a move and jolt them.
-      return <motion.li data-active={view==='pie'&&activeCategory===item.category?'true':undefined} data-dim={view==='pie'&&activeCategory!==null&&activeCategory!==item.category?'true':undefined} layout={reduce?false:"position"} layoutDependency={`${view}|${dataSignature}`} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>{view==='pie'&&item.amount>0?<button type="button" className="category-chart-row panel-source" data-panel-source={openedFrom==='row'&&openCategory===item.category?'true':undefined} aria-pressed={activeCategory===item.category} aria-label={activeCategory===item.category&&onSelectCategory?`${item.category}の明細を見る`:`${item.category}を円グラフで示す`} onClick={event=>{if(activeCategory===item.category&&open)open('row')(item.category,event.currentTarget);else setActiveCategory(item.category);}}>{content}</button>:onSelectCategory?<button type="button" className="category-chart-row panel-source" data-panel-source={openedFrom==='row'&&openCategory===item.category?'true':undefined} aria-label={`${item.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>open!('row')(item.category,event.currentTarget)}>{content}</button>:content}</motion.li>;
+      return <motion.li data-active={view==='pie'&&activeCategory===item.category?'true':undefined} data-dim={view==='pie'&&activeCategory!==null&&activeCategory!==item.category?'true':undefined} layout={reduce?false:"position"} layoutDependency={`${view}|${dataSignature}`} key={item.category} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,height:0,marginBottom:-20}} transition={{duration:reduce?0:.45,ease}}>{view==='pie'&&item.amount>0?<button type="button" className="category-chart-row panel-source" data-panel-source={openedFrom==='row'&&openCategory===item.category?'true':undefined} aria-label={onSelectCategory?`${item.category}の明細を見る`:item.category} aria-haspopup={onSelectCategory?'dialog':undefined} onClick={event=>{if(open)open('row')(item.category,event.currentTarget);}}>{content}</button>:onSelectCategory?<button type="button" className="category-chart-row panel-source" data-panel-source={openedFrom==='row'&&openCategory===item.category?'true':undefined} aria-label={`${item.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>open!('row')(item.category,event.currentTarget)}>{content}</button>:content}</motion.li>;
     })}</AnimatePresence></ul>
     </motion.div></AnimatePresence>
     {refunds&&<p className="category-chart-note">返金はマイナス額で表示。割合はプラスのカテゴリ合計を基準にしています。{view==='pie'&&'円グラフにはプラスのカテゴリのみ表示しています。'}</p>}

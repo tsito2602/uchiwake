@@ -19,6 +19,8 @@ export function AllocationBreakdown({month,members,allocations,adjustments,unass
  {!!unassigned&&<p className="allocation-rounding-note">端数 {roundingLabel(unassigned)} · 未選択</p>}</>;
 }
 
+// Who pays the rounding remainder. Everyone's share is read off the torn split
+// bar, so this panel is only the remainder: pick a person, or draw one.
 type PanelProps={month:string;spaceId:string;members:Member[];items:SettlementItem[];settings:SettlementSettings;userId:string;api:Api;onSaved:()=>Promise<void>;origin?:PanelOrigin;onClose:()=>void;onDockChange:SpaceDockChange};
 export function AllocationBreakdownPanel({origin,onClose,onDockChange,month,spaceId,members,items,settings,userId,api,onSaved}:PanelProps) {
  const base=settlementDetails(items,{...settings.config,roundingUserId:null});
@@ -62,11 +64,10 @@ export function AllocationBreakdownPanel({origin,onClose,onDockChange,month,spac
  }
  const editable=!!base.remainder;
  const disabled=busy||drawing||closing;
- const context:DockContext={label:'負担の内訳',backOnly:!editable,commit:changed,actionLabel:busy?'保存中…':drawing?'抽選中…':changed?'保存':'ランダムで決める',actionIcon:changed?undefined:'shuffle',disabled,onAction:changed?()=>void save():startDraw,onBack:dismiss,
+ const context:DockContext={label:'端数の負担',backOnly:!editable,commit:changed,actionLabel:busy?'保存中…':drawing?'抽選中…':changed?'保存':'ランダムで決める',actionIcon:changed?undefined:'shuffle',disabled,onAction:changed?()=>void save():startDraw,onBack:dismiss,
   auxiliaryAction:editable&&changed?{icon:'shuffle',label:'ランダムで決める',disabled,onAction:startDraw}:undefined};
  const winner=draw?candidates[draw.index]:undefined;
- return <SpacePanel title="負担の内訳" icon={UsersRound} origin={origin} closing={closing} onExited={onClose} onDockChange={onDockChange} context={context}>
-  <AllocationBreakdown month={month} members={members} userId={userId} allocations={detail.amounts} adjustments={detail.adjustments} unassigned={detail.unassigned}/>
+ return <SpacePanel title="端数の負担" icon={UsersRound} origin={origin} closing={closing} onExited={onClose} onDockChange={onDockChange} context={context}>
   {editable&&<section className="rounding-choice" aria-labelledby="rounding-title">
    <div className="rounding-heading"><h3 id="rounding-title">端数 <strong>{roundingLabel(base.remainder)}</strong></h3><span>{changed?'未保存':selected?'保存済み':'未選択'}</span></div>
    <p className="rounding-description">{base.remainder<0?'端数の返金を受け取る人を選べます。':'端数を払う人を選べます。'}未選択のままでも大丈夫です。</p>
@@ -80,7 +81,7 @@ export function AllocationBreakdownPanel({origin,onClose,onDockChange,month,spac
    </div>}
    <fieldset className="rounding-options" disabled={disabled}><legend className="sr-only">端数を負担する人</legend>
     <label className="rounding-option" data-selected={selected===null}><input type="radio" name="rounding-member" aria-label="未選択" checked={selected===null} onChange={()=>choose(null)}/><CircleHelp size={22} aria-hidden="true"/><span>未選択</span>{selected===null&&<Check size={17} aria-hidden="true"/>}</label>
-    {candidates.map(member=><label key={member.user_id} className="rounding-option" data-selected={selected===member.user_id}><input type="radio" name="rounding-member" aria-label={member.name} checked={selected===member.user_id} onChange={()=>choose(member.user_id)}/><MemberAvatar member={member}/><span>{member.name}{!member.active&&<small>現在は参加していません</small>}</span>{selected===member.user_id&&<Check size={17} aria-hidden="true"/>}</label>)}
+    {candidates.map(member=><label key={member.user_id} className="rounding-option" data-selected={selected===member.user_id}><input type="radio" name="rounding-member" aria-label={member.name} checked={selected===member.user_id} onChange={()=>choose(member.user_id)}/><MemberAvatar member={member}/><span>{member.name}{member.user_id===userId&&<small>あなた</small>}{!member.active&&<small>現在は参加していません</small>}</span><em className="rounding-option-amount">{yen(detail.amounts[member.user_id]??0)}</em>{selected===member.user_id&&<Check size={17} aria-hidden="true"/>}</label>)}
    </fieldset>
    {!draw&&<p className="rounding-draw-hint"><Shuffle size={13}/>ランダムでも決められます</p>}
   </section>}

@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { categoryAppearance } from './category-appearance';
 import { displayColor } from './display-color';
 import { LiveSpring, reducedMotion } from './cartoon-motion';
@@ -24,9 +23,9 @@ function arc(a0:number,a1:number){
 }
 
 // The category donut. When it comes into view its pieces spin in and gather
-// into the ring; a tapped piece (or its row) pops out and the centre rolls to
-// its amount. Tapping it again (or the centre) opens that category's statements.
-// Another month replays the same gathering.
+// into the ring. A tapped piece opens that category's statements; a held piece
+// pops out and the centre rolls to its amount, following the finger round the
+// ring. Another month replays the same gathering.
 export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{items:Item[];settings:CategoryAppearance[];selected:Category|null;opened?:Category|null;onPick:(category:Category|null)=>void;onOpen?:(category:Category,source:Element)=>void}) {
   const root=useRef<HTMLDivElement>(null);
   const groups=useRef<(SVGGElement|null)[]>([]);
@@ -88,46 +87,68 @@ export function CategoryPie({items,settings,selected,opened,onPick,onOpen}:{item
   const current=slices.find(item=>item.category===selected)??null;
   // The centre figure shrinks with its digits so it never runs onto the ring.
   const figure=yen(current?current.amount:total).length,figureSize=figure<=7?24:figure<=8?21:figure<=10?18:15;
-  // A tap ticks, picks the piece, and on the picked piece opens its statements.
-  const press=(category:Category,source:Element)=>{
-    haptic();
-    if(category===selected&&onOpen)onOpen(category,source);
-    else onPick(category===selected?null:category);
+  // A tap on a piece opens its statements straight away. Holding a piece
+  // pops it out instead, and sliding the finger round the ring pops each
+  // piece it passes; letting go puts them all back.
+  const pieceAt=(x:number,y:number):Category|null=>{
+    const svg=root.current?.querySelector('svg'),box=svg?.getBoundingClientRect();if(!box||!box.width)return null;
+    const scale=260/box.width,dx=(x-box.left)*scale-130,dy=(y-box.top)*scale-130,r=Math.hypot(dx,dy);
+    if(r<INNER*.55||r>OUTER+34)return null;
+    let a=Math.atan2(dy,dx);if(a<-Math.PI/2)a+=Math.PI*2;
+    const list=latest.current;let at=-Math.PI/2;
+    for(const item of list){const span=item.amount/total*Math.PI*2;if(a<at+span)return item.category;at+=span;}
+    return list.at(-1)?.category??null;
   };
+  const gesture=useRef<{id:number;x:number;y:number;category:Category;held:boolean;moved:boolean;timer:number}|null>(null);
+  const lastTap=useRef<{category:Category;at:number}|null>(null);
+  const openPiece=(category:Category)=>{const node=root.current?.querySelector<SVGPathElement>(`.category-pie-slice[data-category="${CSS.escape(category)}"]`);if(node&&onOpen){haptic();onOpen(category,node);}};
+  const end=()=>{const g=gesture.current;if(g)window.clearTimeout(g.timer);gesture.current=null;};
+  const down=(event:ReactPointerEvent<HTMLDivElement>)=>{
+    if(!event.isPrimary||event.button!==0)return;
+    const category=pieceAt(event.clientX,event.clientY);if(!category)return;
+    end();event.currentTarget.setPointerCapture?.(event.pointerId);
+    const g={id:event.pointerId,x:event.clientX,y:event.clientY,category,held:false,moved:false,timer:0};
+    g.timer=window.setTimeout(()=>{if(gesture.current!==g||g.moved)return;g.held=true;haptic();onPickRef.current(g.category);},320);
+    gesture.current=g;
+  };
+  const move=(event:ReactPointerEvent<HTMLDivElement>)=>{
+    const g=gesture.current;if(!g||g.id!==event.pointerId)return;
+    if(g.held){const category=pieceAt(event.clientX,event.clientY);if(category&&category!==g.category){g.category=category;haptic();onPickRef.current(category);}return;}
+    if(Math.hypot(event.clientX-g.x,event.clientY-g.y)>10){g.moved=true;window.clearTimeout(g.timer);}
+  };
+  const up=(event:ReactPointerEvent<HTMLDivElement>)=>{
+    const g=gesture.current;if(!g||g.id!==event.pointerId)return;end();
+    if(g.held){onPickRef.current(null);return;}
+    if(g.moved||event.type!=='pointerup'||pieceAt(event.clientX,event.clientY)!==g.category)return;
+    // iPhone opens from its haptic switch (below) so the tap ticks.
+    if(ios)lastTap.current={category:g.category,at:performance.now()};else openPiece(g.category);
+  };
+  const openRef=useRef(openPiece);openRef.current=openPiece;
   // iPhone ticks only through a native switch, so one invisible label lies over
-  // the ring and hands each tap to whatever piece (or the centre) is under it.
-  const tapAt=useRef<{x:number;y:number}|null>(null);
+  // the ring; its toggle after a plain tap is what opens the piece.
   const label=useRef<HTMLLabelElement>(null);
-  const pressRef=useRef(press);pressRef.current=press;
   const onPickRef=useRef(onPick);onPickRef.current=onPick;
   useLayoutEffect(()=>{
     const node=label.current,input=node?.querySelector('input');if(!node||!input)return;
-    const tap=(event:MouseEvent)=>{event.stopPropagation();if(event.target===node)tapAt.current={x:event.clientX,y:event.clientY};};
-    const change=()=>{
-      const at=tapAt.current;tapAt.current=null;if(!at)return;
-      node.style.pointerEvents='none';
-      const hit=document.elementFromPoint(at.x,at.y);
-      node.style.pointerEvents='';
-      if(hit instanceof SVGPathElement&&hit.dataset.category)pressRef.current(hit.dataset.category as Category,hit);
-      else if(hit instanceof HTMLElement&&hit.matches('.category-pie-open'))hit.click();
-      else onPickRef.current(null);
-    };
+    const tap=(event:MouseEvent)=>event.stopPropagation();
+    const change=()=>{window.setTimeout(()=>{const t=lastTap.current;lastTap.current=null;if(t&&performance.now()-t.at<600)openRef.current(t.category);},0);};
     node.addEventListener('click',tap);input.addEventListener('change',change);
     return()=>{node.removeEventListener('click',tap);input.removeEventListener('change',change);};
   },[total>0]);
-  return <div className="category-pie" ref={root} data-selected={current?'true':undefined}>
-    {total>0?<svg viewBox="-130 -130 260 260" role="group" aria-label="カテゴリ別の支払い割合。片をタップすると金額を確認できます。">
+  return <div className="category-pie" ref={root} data-selected={current?'true':undefined}
+    onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onContextMenu={event=>event.preventDefault()}>
+    {total>0?<svg viewBox="-130 -130 260 260" role="group" aria-label="カテゴリ別の支払い割合。片をタップすると明細が開きます。長押ししてなぞると金額を確認できます。">
       {slices.map((item,index)=><g key={item.category} ref={node=>{groups.current[index]=node;}}>
         <path className={`category-pie-slice${onOpen?' panel-source':''}`} data-panel-source={opened===item.category?'true':undefined} data-category={item.category} data-mid={item.mid} data-radius={(INNER+OUTER)/2} data-dim={current&&current.category!==item.category?'true':undefined} d={item.path} fillRule="evenodd" role="button" tabIndex={0} aria-pressed={item.category===selected}
           aria-label={`${item.category}：${yen(item.amount)}`} fill={displayColor(categoryAppearance(item.category,settings).color)}
-          onClick={event=>press(item.category,event.currentTarget)}
-          onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();press(item.category,event.currentTarget);}if(event.key==='Escape')onPick(null);}}/>
+          onClick={event=>{if(event.detail===0)openPiece(item.category);}}
+          onFocus={()=>onPick(item.category)} onBlur={()=>onPick(null)}
+          onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openPiece(item.category);}if(event.key==='Escape')onPick(null);}}/>
       </g>)}
     </svg>:<p className="category-pie-empty">割合を表示できる支払いがありません</p>}
     {total>0&&<div className="category-pie-center" role="status" aria-live="polite">
-      <small>{current?current.category:'カード合計'}</small><b style={{fontSize:figureSize}}><NumberTicker value={current?current.amount:total}/></b><span>{current?`${Math.round(current.amount/total*100)}%`:`${items.length}つの費目`}{current&&onOpen&&<ChevronRight size={12} aria-hidden="true"/>}</span>
+      <small>{current?current.category:'カード合計'}</small><b style={{fontSize:figureSize}}><NumberTicker value={current?current.amount:total}/></b><span>{current?`${Math.round(current.amount/total*100)}%`:`${items.length}つの費目`}</span>
     </div>}
-    {total>0&&current&&onOpen&&<button type="button" className="category-pie-open" aria-label={`${current.category}の明細を見る`} aria-haspopup="dialog" onClick={event=>{haptic();onOpen(current.category,event.currentTarget);}}/>}
     {total>0&&ios&&<label ref={label} className="haptic-touch category-pie-haptic" aria-hidden="true"><input type="checkbox" {...{switch:''}} tabIndex={-1}/></label>}
   </div>;
 }

@@ -47,7 +47,7 @@ const shares=(people:SplitPerson[])=>{
 // people the seam can then be pulled in 5% steps to change the split.
 // A rounding remainder nobody has taken yet stays visible under the bar (and
 // between the torn amounts) until someone is picked to pay it.
-export function SplitBar({people,editable,onCommit,onSplitChange,unassigned=0,onDecide}:{people:SplitPerson[];editable:boolean;onCommit?:(firstPercent:number)=>void;onSplitChange?:(split:boolean)=>void;unassigned?:number;onDecide?:(origin:{left:number;top:number;width:number;height:number})=>void}) {
+export function SplitBar({people,editable,onCommit,onSplitChange,remainder=0,unassigned=0,onDecide}:{people:SplitPerson[];editable:boolean;onCommit?:(firstPercent:number)=>void;onSplitChange?:(split:boolean)=>void;remainder?:number;unassigned?:number;onDecide?:(origin:{left:number;top:number;width:number;height:number})=>void}) {
   const root=useRef<HTMLDivElement>(null);
   const [split,setSplit]=useState(false);
   const [slot,setSlot]=useState<HTMLElement|null>(null);
@@ -224,8 +224,9 @@ export function SplitBar({people,editable,onCommit,onSplitChange,unassigned=0,on
       </span>)}
       {canDrag&&<span className="split-bar-seam" aria-hidden="true"><span/></span>}
     </div>
-    {!!unassigned&&<button type="button" className="split-bar-rounding" data-split={split||undefined} disabled={!onDecide} onClick={event=>{haptic();const r=event.currentTarget.getBoundingClientRect();onDecide?.({left:r.left,top:r.top,width:r.width,height:r.height});}}>
-      <i aria-hidden="true"/><span>端数 <b>{Math.abs(unassigned).toLocaleString('ja-JP')}円</b> を{unassigned<0?'受け取る':'払う'}人が未定</span>{onDecide&&<em>決める</em>}
+    {(!!unassigned||(split&&!!remainder))&&<button type="button" className="split-bar-rounding" data-settled={!unassigned||undefined} disabled={!onDecide} onClick={event=>{haptic();const r=event.currentTarget.getBoundingClientRect();onDecide?.({left:r.left,top:r.top,width:r.width,height:r.height});}}>
+      {unassigned?<><i aria-hidden="true"/><span>端数 <b>{Math.abs(unassigned).toLocaleString('ja-JP')}円</b> を{unassigned<0?'受け取る':'払う'}人が未定</span>{onDecide&&<em>決める</em>}</>
+        :<><span>端数 <b>{Math.abs(remainder).toLocaleString('ja-JP')}円</b> は{people.find(person=>person.rounding)?.name??'メンバー'}が{remainder<0?'受け取り':'負担'}</span>{onDecide&&<em>変える</em>}</>}
     </button>}
     {slot&&createPortal(<span className="hero-split-nums" aria-live="polite" aria-hidden={!split}>{people.map((person,index)=><span key={person.id} className="hero-split-person"><small>{person.name}</small><b><NumberTicker value={amounts[index]}/></b>{!!person.rounding&&<em className="hero-split-rounding">端数 {person.rounding>0?'+':'−'}{Math.abs(person.rounding).toLocaleString('ja-JP')}円込み</em>}</span>)}</span>,slot)}
   </>;
