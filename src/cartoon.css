@@ -350,8 +350,10 @@ div.settlement-amount-toggle[data-tears] { position: relative; }
 .statement-import-panel { --import-ok: #2f8a55; }
 :root[data-brand-theme='dark'] .statement-import-panel { --import-ok: #58b07c; }
 .import-phase-summary { position: relative; }
-.import-phase-summary[data-result] .import-lanes { opacity: 0; pointer-events: none; }
-.import-match { position: absolute; left: 0; top: 50%; translate: 0 -50%; display: inline-flex; align-items: center; gap: 5px; color: var(--import-ok); font-size: 12px; font-weight: 700; white-space: nowrap; transform-origin: 0 50%; }
+/* In the result the lanes leave the flow, so the match and the total share one line. */
+.import-phase-summary[data-result] { flex-wrap: nowrap; }
+.import-phase-summary[data-result] .import-lanes { position: absolute; left: 0; top: 50%; translate: 0 -50%; opacity: 0; pointer-events: none; }
+.import-match { display: inline-flex; min-width: 0; align-items: center; gap: 5px; color: var(--import-ok); font-size: 12px; font-weight: 700; white-space: nowrap; transform-origin: 0 50%; }
 .import-match[data-matches='false'] { color: var(--danger, #ce5b56); }
 .import-match:not([data-matches]) { color: var(--ink); }
 .import-reader-hint { font-variant-numeric: normal; }

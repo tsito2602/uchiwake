@@ -276,7 +276,6 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
     <div className="import-sorting-list import-review-list" aria-label="仕分け結果">{listRows.map(item=>row(item,'list'))}</div>
     {/* The list shows the newest read row first, so a row put at the front lands last. */}
     <button className="import-review-add" disabled={busy} onClick={()=>{const entry={spent_on:'',title:'',amount:0,category:fallbackCategory(settings)};const key=entryKey(entry,0);setEditing(key);onChange(withDraftEntries(draft,[entry,...draft.entries]));requestAnimationFrame(()=>root.current?.querySelector(rowSelector(key))?.scrollIntoView({block:'center',behavior:reducedMotion()?'auto':'smooth'}));}}><Plus size={16}/> 明細を追加</button>
-    <ImportOriginalFiles files={files}/>
     <div className="import-review-summary" data-expanded={metadataOpen}>
     <button className="import-processing-foot import-review-total" disabled={busy} aria-label="利用合計：登録先・引落額を編集" aria-expanded={metadataOpen} aria-controls={`${id}-metadata`} onClick={()=>setMetadataOpen(!metadataOpen)}><span>利用合計</span><strong>¥{total.toLocaleString('ja-JP')}</strong><span className="import-entry-edit" aria-hidden="true">{metadataOpen?<X size={16}/>:<Pencil size={16}/>}</span></button>
     <AnimatePresence initial={false}>{metadataOpen&&<motion.div key="metadata" className="import-review-expander" {...expand}><fieldset className="import-review-editor import-review-metadata" id={`${id}-metadata`} disabled={busy}>
@@ -285,6 +284,7 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
       <label className="field"><span>カード引落額（円）</span><input type="number" inputMode="numeric" min="1" step="1" value={draft.confirmed_total||''} onChange={event=>onChange({...draft,confirmed_total:Number(event.target.value),total_manual:true})}/></label>
     </fieldset></motion.div>}</AnimatePresence>
     </div>
+    <ImportOriginalFiles files={files}/>
     {draft.total_alternative&&<div className="import-review-reasons" role="status"><strong>原本の合計額を一つに確定できませんでした</strong><p>再読み取りでは「{draft.total_alternative.label}」を¥{draft.total_alternative.amount.toLocaleString('ja-JP')}と読みました。請求の対象範囲と原本の金額を確認し、利用合計から登録する金額を修正してください。</p><ImportSourcePreview source={{...draft.total_alternative,row:0,excerpt:draft.total_alternative.label}} files={files}/></div>}
     {draft.source_total===null&&<p className="import-hint">原本に照合できる合計額はありません。読み取った明細の合計と内容を確認してください。</p>}
     {draft.source_total&&draft.source_total.amount!==total&&<div className="import-review-reasons" role="status"><strong>原本の記載額との差：¥{Math.abs(draft.source_total.amount-total).toLocaleString('ja-JP')}</strong><p>「{draft.source_total.label}」は¥{draft.source_total.amount.toLocaleString('ja-JP')}、明細の合計は¥{total.toLocaleString('ja-JP')}です。再読み取り後も一致していません。原本の金額・返金や手数料・請求の対象範囲を確認してください。</p><ImportSourcePreview source={{...draft.source_total,row:0,excerpt:draft.source_total.label}} files={files}/></div>}

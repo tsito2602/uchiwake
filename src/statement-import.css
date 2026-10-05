@@ -276,7 +276,7 @@
 .import-review-allok { display: flex; align-items: center; gap: 7px; padding: 4px 0 12px; color: var(--import-ok); font-size: 14px; font-weight: 700; }
 .import-review-sec { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0 2px; color: var(--muted); font-size: 12px; }
 .import-review-sec b { color: var(--ink); font-weight: 600; }
-.import-review .import-review-confirm { position: sticky; bottom: 0; z-index: 3; margin-top: 14px; min-height: 52px; padding: 10px 14px; border-color: transparent; background: var(--soft); box-shadow: 0 -10px 18px -8px var(--paper); animation: import-confirm-arrive .36s cubic-bezier(.3,1.3,.5,1) both; }
+.import-review .import-review-confirm { margin-top: 14px; min-height: 52px; padding: 10px 14px; border-color: transparent; background: var(--soft); animation: import-confirm-arrive .36s cubic-bezier(.3,1.3,.5,1) both; }
 .import-review-flyer { position: fixed; z-index: 400; pointer-events: none; border-radius: 12px; background: var(--paper); transform-origin: 50% 50%; }
 .import-review-flyer > .import-sorting-list { height: 100%; min-height: 0; }
 .import-review-flyer .import-sorting-list .import-sorted-entry { height: 100%; padding: 0 6px; border: 0; outline: 0; animation: none; }
@@ -289,3 +289,9 @@
 .import-review-list .import-review-row:has(> .import-review-expander) { border-bottom: 1px solid var(--line); }
 .import-review-list .import-review-editor { margin: 0; padding-top: 4px; border-top: 0; }
 .import-review-box .import-review-row:last-child { border-bottom: 0; }
+/* A long shop name must not widen the box: rows fit its width and ellipsize. */
+.import-review-box-in { grid-template-columns: minmax(0,1fr); }
+.import-review-box .import-sorting-list, .import-review-box .import-review-row, .import-review-why { min-width: 0; }
+.import-review-why p { overflow-wrap: anywhere; }
+.import-review-summary + .import-original-files { margin-top: 10px; }
+.import-review > .import-hint { margin-top: 12px; }
