@@ -48,26 +48,28 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
   // While the space sheet is out, the pill sits on the space (face) tab it came from.
   const selected=space?.open?dockTabs.findIndex(item=>item.key==='settings'):Math.max(0,dockTabs.findIndex(item=>item.key===tab));
   useLayoutEffect(()=>{morph.current?.measure();},[context,showMonth]);
-  // Liquid selection: the edge in the direction of travel leads on a stiff
-  // spring and the trailing edge follows on a soft one, so the fill stretches
-  // toward the new tab, then gathers itself there.
+  // Liquid selection (kondo's trip dock): the edge in the direction of travel
+  // leads on a stiff spring and the trailing edge follows 40 ms later on a soft
+  // one, so the fill stretches toward the new tab, then gathers itself there.
   const tabsNav=useRef<HTMLElement|null>(null);
   const swipe=useRef(false);
   const island=useRef<LiveSpring|null>(null);
   island.current??=new LiveSpring(1,value=>{const nav=tabsNav.current;if(nav)nav.style.scale=Math.abs(value-1)<.0005?'':`${(2-value).toFixed(4)} ${value.toFixed(4)}`;},{stiffness:600,damping:18});
   const edges=useRef<{left:LiveSpring;right:LiveSpring}|null>(null);
+  const trail=useRef<ReturnType<typeof setTimeout>>(undefined);
   const target=preview??selected;
   useLayoutEffect(()=>{
     const nav=tabsNav.current;if(!nav)return;
     const paint=()=>{const e=edges.current;if(!e)return;nav.style.setProperty('--sel-l',e.left.value.toFixed(4));nav.style.setProperty('--sel-r',e.right.value.toFixed(4));};
     if(!edges.current||!nav.style.getPropertyValue('--sel-l')){edges.current={left:new LiveSpring(target,paint,'lead'),right:new LiveSpring(target+1,paint,'lead')};paint();return;}
     const {left,right}=edges.current;
+    clearTimeout(trail.current);
     if(reducedMotion()){left.set(target);right.set(target+1);return;}
-    const forward=target>left.value;
+    const forward=target>left.target;
     (forward?right:left).to(forward?target+1:target,'lead');
-    (forward?left:right).to(forward?target:target+1,'split');
+    trail.current=setTimeout(()=>(forward?left:right).to(forward?target:target+1,'split'),40);
   },[target,!!context]);
-  useEffect(()=>()=>{edges.current?.left.stop();edges.current?.right.stop();},[]);
+  useEffect(()=>()=>{clearTimeout(trail.current);edges.current?.left.stop();edges.current?.right.stop();},[]);
   // Month pill: drag sideways like turning a page; the label follows on a
   // rubber band and a pull past 36px turns the month.
   const monthLabel=useRef<HTMLDivElement|null>(null);
@@ -132,7 +134,7 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
     // Capture only once the finger slides: a plain tap must reach the tab's
     // haptic switch, which pointer capture would redirect to the nav.
     pointer.current={id:event.pointerId,target:event.currentTarget,x:event.clientX,y:event.clientY};
-    swipe.current=false;island.current!.to(.97,{stiffness:600,damping:18});
+    swipe.current=false;
     setPreview(hit(event));
   }
   function move(event:PointerEvent<HTMLElement>) {
@@ -177,7 +179,7 @@ export function FloatingDock({space,personal,tab,onSelect,add,context,panelActiv
     <div className={`floating-nav-host${context?.entryControls&&!context.entryControls.trailing?' has-entry-controls':''}${context||panelActive?' context-host':''}`}><div ref={root} className="kondo-floating-dock thumb-dock" data-mode={context?'context':'browse'}>
 
       <FluidDockSurface root={root} ref={morph} addOpen={menuOpen}/>
-      <DockContent identity={context?.contentKey??(context?'context':'browse')} mode={context?'context':'browse'}>
+      <DockContent identity={context?(context.contentKey??'context'):`browse${showMonth?'':':no-month'}${add?'':':no-add'}`} mode={context?'context':'browse'}>
         {context?<nav className={`context-dock${context.entryControls?' context-entries':''}${context.entryControls?.trailing?' context-trailing-sorts':''}${context.rentActions?' context-rent':''}`} aria-label={context.label}>
           <div className="context-island context-back"><PanelBackButton onBack={context.onBack}/></div>
           {context.detailAction&&<div className="context-island context-detail"><button aria-label={context.detailAction.label} onClick={context.detailAction.onAction} disabled={context.detailAction.disabled}><DockActionIcon action={context.detailAction} fallback="details"/></button></div>}

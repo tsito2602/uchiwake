@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { build } from 'esbuild';
 
 const {outputFiles}=await build({entryPoints:[new URL('../src/kondo-fluid-dock.tsx',import.meta.url).pathname],bundle:true,write:false,format:'esm',platform:'node'});
-const {prepareDockMorph,morphDock,dockSlots,dockContour}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {prepareDockMorph,morphDock,dockSlots,dockContour,jelly,MORPH}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 
 const tabs={left:0,width:140,radius:28};
 const add={left:313,width:56,radius:28};
@@ -54,4 +54,16 @@ test('年月の島の変形途中でページを戻しても追加ボタンは�
     const interrupted=morphDock(browse,settings,0,progress,prepareDockMorph(browse,settings,true));
     verifyFrames(interrupted.islands,browse,interrupted.tension);
   }
+});
+
+test('kondoと同じく、島の数が同じ変形は首を作らず、ばね（k300/d34）で揺れずに止まる',()=>{
+  const from=[{left:0,width:56,radius:28,slot:0},{left:66,width:120,radius:28,slot:1},{left:196,width:56,radius:28,slot:2}];
+  const to=[{left:0,width:56,radius:28,slot:0},{left:130,width:56,radius:28,slot:1},{left:196,width:56,radius:28,slot:2}];
+  const plan=prepareDockMorph(from,to);
+  assert.equal(plan.simple,true);
+  assert.equal(morphDock(from,to,0,.5,plan,jelly).tension,0);
+  assert.ok(MORPH>=600);
+  let last=0;
+  for(let i=0;i<=100;i++){const v=jelly(i/100);assert.ok(v<=1.001&&v>=last-1e-9);last=v;}
+  assert.equal(jelly(1),1);
 });
