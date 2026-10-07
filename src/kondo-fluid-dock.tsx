@@ -7,8 +7,8 @@ import {
   type Ref,
   type RefObject,
 } from "react";
+import { LiveSpring, springSamples } from "./cartoon-motion";
 const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-import { animateDockPress } from "./kondo-dock-surface";
 
 export type DockIsland = {
   left: number;
@@ -20,6 +20,19 @@ export type DockIsland = {
 };
 const samples = 320;
 const ease = (t: number) => 1 - (1 - t) ** 3;
+export const MORPH_MS = 600;
+
+/** kondo's dock (cartoon-dock.tsx): the fluid dock's path on a near-critically
+    damped spring, so the islands glide into their new shape and stop without
+    a wobble. */
+const JELLY = springSamples({ stiffness: 300, damping: 34 });
+export const MORPH = Math.max(MORPH_MS, JELLY.duration);
+export const jelly = (t: number) => {
+  const at = t * (JELLY.values.length - 1),
+    i = Math.floor(at);
+  if (i >= JELLY.values.length - 1) return 1;
+  return JELLY.values[i] + (JELLY.values[i + 1] - JELLY.values[i]) * (at - i);
+};
 
 /** Three overlapping lobes make one capsule, with no internal seams. */
 export function joinedDock(width: number, radius = 32): DockIsland[] {
@@ -157,7 +170,9 @@ export function prepareDockMorph(
   }
   let a = visibleDock(from),
     b = visibleDock(to);
-  const simple = a.length === b.length && a.length <= 2;
+  // The same number of islands only move and resize: they keep their order
+  // and their gaps, so no neck is needed (as in kondo).
+  const simple = a.length === b.length;
   if (!a.length || !b.length) return { from, to, simple };
   if (a.length < b.length) a = splitDock(a, b);
   else if (b.length < a.length) b = splitDock(b, a);
@@ -170,16 +185,23 @@ export function morphDock(
   tension: number,
   t: number,
   plan = prepareDockMorph(from, to),
+  /** Progress along the move; may overshoot 1 for a springy landing. */
+  curve: (t: number) => number = ease,
 ) {
   if (t >= 1) return { islands: to, tension: 0 };
   if (t <= 0) return { islands: from, tension };
-  const p = ease(t);
-  const fadeOut = 1 - ease(Math.min(1, (t * 600) / 140));
-  const fadeIn = ease(Math.max(0, Math.min(1, (t * 600 - 180) / 240)));
+  const p = curve(t);
+  const fadeOut = 1 - ease(Math.min(1, (t * MORPH_MS) / 140));
+  const fadeIn = ease(Math.max(0, Math.min(1, (t * MORPH_MS - 180) / 240)));
   return {
     islands: plan.from.map((island, i) => ({
       left: island.left + (plan.to[i].left - island.left) * p,
-      width: island.width + (plan.to[i].width - island.width) * p,
+      // Past the target the edges may overshoot, but an island never gets
+      // narrower than both of its shapes.
+      width: Math.max(
+        island.width + (plan.to[i].width - island.width) * p,
+        p > 1 ? Math.min(island.width, plan.to[i].width) : 0,
+      ),
       radius: island.radius + (plan.to[i].radius - island.radius) * p,
       slot: plan.to[i].slot,
       blend:
@@ -191,7 +213,8 @@ export function morphDock(
         : (island.tint ?? 0) * fadeOut + (plan.to[i].tint ?? 0) * fadeIn,
     })),
     tension:
-      tension * (1 - p) + (plan.simple ? 0 : 1800 * Math.sin(Math.PI * p) ** 2),
+      tension * (1 - p) +
+      (plan.simple ? 0 : 1800 * Math.sin(Math.PI * Math.min(1, p)) ** 2),
   };
 }
 
@@ -387,18 +410,14 @@ export function FluidDockSurface({
     plan: DockMorphPlan;
     revealSelection: boolean;
   } | null>(null);
-  const presses = useRef(
-    new Map<
-      HTMLElement,
-      {
-        from: DockScale;
-        to: DockScale;
-        start: number;
-        duration: number;
-        animation?: Animation;
-      }
-    >(),
-  );
+  /** The pressed island (its slot) and its squish, and the whole dock's
+      crouch around a morph: kondo's Q and J, both scale (2-v, v). */
+  const pressed = useRef(-1);
+  const rise = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const squish = useRef<LiveSpring | null>(null);
+  const crouch = useRef<LiveSpring | null>(null);
+  squish.current ??= new LiveSpring(1, () => paint(), { stiffness: 600, damping: 18 });
+  crouch.current ??= new LiveSpring(1, () => paint(), { stiffness: 600, damping: 18 });
   const lastPath = useRef("");
   const lastAccentPath = useRef("");
 
@@ -412,10 +431,28 @@ export function FluidDockSurface({
       ...island,
       left: island.left + 12,
     }));
+    const browsing = root.current?.dataset.mode === 'browse';
     const scales = islands.map((island, i) => {
-      const scale=pressScale(controls.current[island.slot ?? i] ?? null, performance.now());
-      const add=(island.slot??i)===2&&root.current?.dataset.mode==='browse'?addScale.current:1;
-      return {x:scale.x*add,y:scale.y*add};
+      const slot = island.slot ?? i;
+      // The add button stays put through a morph, like kondo's ＋ beside its dock.
+      const stable = browsing && slot === 2;
+      const add = stable ? addScale.current : 1;
+      const v = (stable ? 1 : crouch.current!.value) * (slot === pressed.current ? squish.current!.value : 1);
+      if (Math.abs(v - 1) <= 0.0005) return { x: add, y: add };
+      // A squish widens an island, but never into a separate neighbour.
+      const gap = Math.min(
+        ...islands.map((other) =>
+          other === island || other.width <= 0
+            ? Infinity
+            : Math.max(
+                other.left - island.left - island.width,
+                island.left - other.left - other.width,
+              ),
+        ),
+      );
+      const room =
+        gap > 0 && island.width > 0 ? 1 + (gap - 6) / island.width : Infinity;
+      return { x: Math.min(2 - v, Math.max(1, room)) * add, y: v * add };
     });
     const center = height.current / 2 + 12;
     const d = dockContour(w, islands, shape.current.tension, scales, center);
@@ -454,46 +491,25 @@ export function FluidDockSurface({
     frame=requestAnimationFrame(tick);
     return()=>cancelAnimationFrame(frame);
   },[addOpen]);
-  const pressScale = (element: HTMLElement | null, now: number): DockScale => {
-    const track = element && presses.current.get(element);
-    if (!track) return { x: 1, y: 1 };
-    const t = Math.min(1, Math.max(0, (now - track.start) / track.duration));
-    // WAAPI already knows the eased progress; this does not flush style/layout.
-    const p =
-      t >= 1
-        ? 1
-        : (track.animation?.effect?.getComputedTiming().progress ?? ease(t));
-    return {
-      x: track.from.x + (track.to.x - track.from.x) * p,
-      y: track.from.y + (track.to.y - track.from.y) * p,
-    };
-  };
   const tick = (now: number) => {
     frame.current = 0;
     if (morph.current) {
       const m = morph.current;
-      const t = Math.min(1, Math.max(0, (now - m.start) / 600));
-      shape.current = morphDock(m.from, m.to, m.tension, t, m.plan);
+      const t = Math.min(1, Math.max(0, (now - m.start) / MORPH));
+      shape.current = morphDock(m.from, m.to, m.tension, t, m.plan, jelly);
       // Fade selection fills over the final 240ms, on the same clock as the contour.
       const reveal=Math.min(1,Math.max(0,(t-.6)/.4));
       if(m.revealSelection)root.current?.style.setProperty('--dock-selection-reveal',String(reveal*reveal*(3-2*reveal)));
       if (t >= 1) {
         morph.current = null;
         if(root.current)root.current.dataset.morphing='false';
+        // Landed: the dock rises and simply stops, nothing wobbles.
+        clearTimeout(rise.current);
+        crouch.current!.to(1, { stiffness: 420, damping: 41 });
       }
-    }
-    let pressing = false;
-    for (const [element, track] of presses.current) {
-      if (!element.isConnected) {
-        presses.current.delete(element);
-        continue;
-      }
-      if (now - track.start < track.duration) pressing = true;
-      else if (track.to.x === 1 && track.to.y === 1)
-        presses.current.delete(element);
     }
     paint();
-    if (morph.current || pressing) frame.current = requestAnimationFrame(tick);
+    if (morph.current) frame.current = requestAnimationFrame(tick);
   };
   const schedule = () => {
     if (!frame.current) frame.current = requestAnimationFrame(tick);
@@ -563,9 +579,15 @@ export function FluidDockSurface({
     // Interrupted transitions start at the exact rendered geometry, not a layout
     // endpoint. Both the glass mask and its border use that same contour.
     node.dataset.morphing='true';
-    node.style.setProperty('--dock-selection-reveal',revealSelection?'0':'1');
+    // kondo pops the selection with its own control instead of fading it in late.
+    node.style.setProperty('--dock-selection-reveal','1');
+    // The dock crouches as the material starts to move and rises with it
+    // (kondo: J .92 on k700/d26, back to 1 on k420/d41 after 70 ms).
+    crouch.current!.to(0.92, { stiffness: 700, damping: 26 });
+    clearTimeout(rise.current);
+    rise.current = setTimeout(() => crouch.current!.to(1, { stiffness: 420, damping: 41 }), 70);
     morph.current = {
-      revealSelection,
+      revealSelection: revealSelection && false,
       from: from.islands,
       to: islands,
       tension: from.tension,
@@ -577,47 +599,26 @@ export function FluidDockSurface({
   useEffect(() => {
     const node = root.current;
     if (!node) return;
-    let pressed: HTMLElement | null = null;
+    let held: HTMLElement | null = null;
     let pointerId: number | null = null;
-    const animations = new Map<HTMLElement, Animation>();
+    // kondo: pressing anywhere on an island squishes the whole island
+    // (.95 on k600/d22, back on k420/d12); the add circle squishes as kondo's ＋
+    // (.88, back on k420/d13). The controls on it squish on their own.
     const feedback = (element: HTMLElement, down: boolean) => {
-      const motion = animateDockPress(element, down, animations.get(element));
-      if (motion) {
-        animations.set(element, motion);
-        void motion.finished.then(
-          () => {
-            if (!down && animations.get(element) === motion) animations.delete(element);
-          },
-          () => {},
-        );
-      }
-      const style = window.getComputedStyle(element);
-      const matrix = style.transform
-        .match(/^matrix\(([^)]+)\)$/)?.[1]
-        .split(",")
-        .map(Number);
-      const from = matrix
-        ? { x: matrix[0], y: matrix[3] }
-        : pressScale(element, performance.now());
-      const x = down
-        ? parseFloat(style.getPropertyValue("--safari-press-scale")) || 1.06
-        : 1;
+      const add = element.matches(".dock-add");
       element.dataset.pressed = String(down);
-      if (reduceMotion()) presses.current.delete(element);
-      else
-        presses.current.set(element, {
-          from,
-          to: { x, y: down ? 1.1 : 1 },
-          start: performance.now(),
-          duration: down ? 320 : 900,
-          animation: motion,
-        });
-      paint();
-      if (!reduceMotion()) schedule();
+      if (down) pressed.current = controls.current.indexOf(element);
+      if (reduceMotion()) {
+        if (!down) pressed.current = -1;
+        squish.current!.set(1);
+        return;
+      }
+      if (down) squish.current!.to(add ? 0.88 : 0.95, { stiffness: 600, damping: 22 });
+      else squish.current!.to(1, { stiffness: 420, damping: add ? 13 : 12 });
     };
     const release = () => {
-      if (pressed) feedback(pressed, false);
-      pressed = null;
+      if (held) feedback(held, false);
+      held = null;
       pointerId = null;
     };
     const down = (event: PointerEvent) => {
@@ -627,7 +628,7 @@ export function FluidDockSurface({
       if (!element || target.closest("[disabled], [inert], [data-outgoing]"))
         return;
       release();
-      pressed = element;
+      held = element;
       pointerId = event.pointerId;
       feedback(element, true);
     };
@@ -637,7 +638,7 @@ export function FluidDockSurface({
     const out = (event: PointerEvent) => {
       if (
         event.pointerId === pointerId &&
-        !pressed?.contains(event.relatedTarget as Node | null)
+        !held?.contains(event.relatedTarget as Node | null)
       )
         release();
     };
@@ -652,8 +653,9 @@ export function FluidDockSurface({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
       window.removeEventListener("blur", release);
-      animations.forEach((animation) => animation.cancel());
-      presses.current.clear();
+      squish.current!.stop();
+      crouch.current!.stop();
+      clearTimeout(rise.current);
     };
   }, []);
   useImperativeHandle(ref, () => ({ measure }));

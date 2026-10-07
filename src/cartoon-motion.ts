@@ -92,7 +92,10 @@ export function squishPress(element:HTMLElement){
  *  (scale 2-v, v), and on release it springs back past its size once. */
 const SQUISH_TARGETS:[string,number][]=[
   ['.category-chart-row, .space-sheet-row, .ledger-row, .import-review-row > .import-entry-button, .import-review-total',.97],
-  ['.safari-dock button, .dock-add, .fuse-add-options button, .settlement-item, .chart-ranges button, .dock-month button, .context-primary button, .card-panel-close, .category-chart-switch button',.92],
+  // The dock's controls press as kondo's (cartoon.ts SQ): ＋ .88, the rest .9.
+  ['.dock-add',.88],
+  ['.safari-dock button, .dock-month button, .context-island button',.9],
+  ['.fuse-add-options button, .settlement-item, .chart-ranges button, .card-panel-close, .category-chart-switch button',.92],
 ];
 export function installSquish(root:Document=document){
   const springs=new WeakMap<HTMLElement,LiveSpring>();
