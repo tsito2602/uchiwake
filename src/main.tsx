@@ -53,6 +53,7 @@ import { historyEndMonth } from './chart-interaction';
 import { NumberTicker } from './number-ticker';
 import { useRouteTransition } from './kondo-route-motion';
 import { panelOrigin, type PanelOrigin } from './use-panel-morph';
+import './fonts.css';
 import './styles.css';
 import './kondo-style.css';
 import './kondo-route-motion.css';
