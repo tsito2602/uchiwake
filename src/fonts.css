@@ -1,0 +1,8 @@
+/* kondo's faces (kondo src/web/fonts.css), self-hosted: Japanese in Zen Kaku
+   Gothic New 400/500/700/900; figures stay in Bricolage Grotesque (cartoon.css).
+   The many unicode-range slices are served from Workers static assets, not
+   embedded in the Worker (worker/index.ts). */
+@import "@fontsource/zen-kaku-gothic-new/400.css";
+@import "@fontsource/zen-kaku-gothic-new/500.css";
+@import "@fontsource/zen-kaku-gothic-new/700.css";
+@import "@fontsource/zen-kaku-gothic-new/900.css";
