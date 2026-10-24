@@ -14,6 +14,7 @@ import { moveRow } from './reorder-motion';
 import { reducedMotion } from './cartoon-motion';
 import { SegmentSelection } from './segment-selection';
 import { haptic } from './haptics';
+import { SignToggle } from './amount-sign';
 
 const monthLabel=(month:string)=>`${Number(month.slice(5))}月`;
 
@@ -266,7 +267,7 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
         <label className="field"><span>店名・内容</span><input value={entry.title} maxLength={100} onChange={event=>update(index,{title:event.target.value})}/></label>
         <div className="import-edit-pair">
           <label className="field"><span>利用日</span><input type="date" value={entry.spent_on} onChange={event=>update(index,{spent_on:event.target.value})}/></label>
-          <label className="field"><span>金額（円）</span><input type="number" inputMode="decimal" step="1" value={entry.amount||''} onChange={event=>update(index,{amount:Number(event.target.value)})}/></label>
+          <label className="field"><span>金額（円）</span><span className="amount-signed"><input type="number" inputMode="decimal" step="1" value={entry.amount||''} onChange={event=>update(index,{amount:Number(event.target.value)})}/><SignToggle value={entry.amount} label="金額" onFlip={()=>update(index,{amount:-entry.amount})}/></span></label>
         </div>
         <label className="field"><span>費目</span><select value={entry.category} onChange={event=>chooseCategory(index,event.target.value)}>{!entry.category&&<option value="" disabled>費目を選ぶ</option>}{categories.map(({category})=><option key={category}>{category}</option>)}</select></label>
         {entry.import_meta&&<div className="import-rule-opt-in"><p className="subtle">費目の修正は今回の明細だけに適用します。</p>
@@ -297,7 +298,7 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
     <AnimatePresence initial={false}>{metadataOpen&&<motion.div key="metadata" className="import-review-expander" {...expand}><fieldset className="import-review-editor import-review-metadata" id={`${id}-metadata`} disabled={busy}>
       <label className="field"><span>カード</span><select value={draft.card_id} onChange={event=>onChange({...draft,card_id:event.target.value})}>{cards.filter(item=>item.active).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label className="field"><span>引落月</span><input type="month" value={draft.due_month} onChange={event=>onChange({...draft,due_month:event.target.value})}/></label>
-      <label className="field"><span>カード引落額（円）</span><input type="number" inputMode="decimal" step="1" value={draft.confirmed_total||''} onChange={event=>onChange({...draft,confirmed_total:Number(event.target.value),total_manual:true})}/></label>
+      <label className="field"><span>カード引落額（円）</span><span className="amount-signed"><input type="number" inputMode="decimal" step="1" value={draft.confirmed_total||''} onChange={event=>onChange({...draft,confirmed_total:Number(event.target.value),total_manual:true})}/><SignToggle value={draft.confirmed_total} label="カード引落額" onFlip={()=>onChange({...draft,confirmed_total:-draft.confirmed_total,total_manual:true})}/></span></label>
     </fieldset></motion.div>}</AnimatePresence>
     </div>
     <ImportOriginalFiles files={files}/>

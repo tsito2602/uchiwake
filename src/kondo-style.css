@@ -622,3 +622,9 @@ h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.
 .card-panel-carry { display: grid; gap: 8px; margin: 0 0 22px; }
 .card-panel-carry p { margin: 0; color: var(--muted); font-size: 12px; }
 .card-panel-carry .appearance-control button { min-height: 48px; font-size: 13px; }
+.amount-signed { display: flex; gap: 6px; min-width: 0; }
+.amount-signed input { flex: 1 1 auto; min-width: 0; }
+.amount-sign { flex: none; align-self: stretch; display: grid; place-items: center; width: 44px; min-height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font-size: 18px; font-weight: 650; line-height: 1; transition: background .2s, color .2s, border-color .2s; }
+.amount-sign[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+:is(.amount-signed, .entry-amount-editor) input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+:is(.amount-signed, .entry-amount-editor) input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

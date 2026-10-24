@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
@@ -56,9 +57,10 @@ const {outputFiles}=await build({stdin:{contents:`
  import {renderToStaticMarkup} from 'react-dom/server';
  import {CardStatementPanel} from './src/card-statement-panel';
  export const render=props=>renderToStaticMarkup(createElement(CardStatementPanel,props));
+ export {flipAmountText} from './src/amount-sign';
 `,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node',packages:'external',loader:{'.css':'empty'}});
 const bundle=outputFiles[0].text.replace(/from "(react(?:-dom(?:\/server)?|\/jsx-runtime)?|lucide-react|motion\/react)"/g,(_match,name)=>`from ${JSON.stringify(import.meta.resolve(name))}`);
-const {render}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
+const {render,flipAmountText}=await import('data:text/javascript;base64,'+Buffer.from(bundle).toString('base64'));
 const props={title:'生活費',sort:{key:'date',dateAscending:false,amountAscending:false},month:'2026-09',statements,entries,demo:false,view:'edit',amountDraft:{},deletedEntryIds:[],onClose(){},onExited(){},onAction(){},onChangeCategory(){},onChangeAmount(){},onToggleDeleteEntry(){},onDeleteStatement(){},actionLabel:'変更を保存する'};
 
 test('編集は項目順のカードと削除操作を表示し、カテゴリ集計は閲覧画面だけに表示する',()=>{
@@ -85,4 +87,13 @@ test('削除予定の行は戻す操作に切り替わり、合計と件数か�
   assert.ok(html.includes('1件'));
   assert.ok(render({...props,deletedEntryIds:['a','b']}).includes('この明細も削除されます'));
   for(const extra of [{busy:true},{demo:true}])assert.match(render({...props,...extra}),/<button[^>]*disabled=""[^>]*aria-label="スーパーを削除"/);
+});
+
+test('数字キーボードでも金額をマイナスにできる',()=>{
+  const html=render(props);
+  for(const entry of entries)assert.match(html,new RegExp(`<button type="button" class="amount-sign" aria-label="${entry.title}の金額をマイナスにする" aria-pressed="${entry.amount<0}"`));
+  assert.equal(flipAmountText('1200'),'-1200');
+  assert.equal(flipAmountText('-1200'),'1200');
+  const review=readFileSync(new URL('../src/statement-import-review.tsx',import.meta.url),'utf8');
+  assert.equal((review.match(/<SignToggle /g)||[]).length,2);
 });

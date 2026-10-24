@@ -10,6 +10,7 @@ import { NumberTicker } from './number-ticker';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 import { useReorderMotion } from './reorder-motion';
 import { SegmentSelection } from './segment-selection';
+import { SignToggle, flipAmountText } from './amount-sign';
 
 type Props = {
   title: string;
@@ -100,7 +101,7 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
                       <div className="statement-edit-heading"><div><strong><span className="statement-edit-name">{entry.title}</span></strong><small>{entry.spent_on?<time dateTime={entry.spent_on}>{entry.spent_on}</time>:'利用日不明'}</small></div><button type="button" className={deleted?'entry-restore':'entry-delete'} disabled={demo||busy} aria-label={`${entry.title}${deleted?'の削除を取り消す':'を削除'}`} onClick={()=>onToggleDeleteEntry(entry.id)}><span className="entry-action-icon entry-trash-icon" aria-hidden="true"><Trash2 size={18}/></span><span className="entry-action-icon entry-undo-icon" aria-hidden="true"><Undo2 size={18}/></span></button></div>
                       <div className="statement-edit-details" aria-hidden={deleted} inert={deleted}><div className="statement-edit-clip">
                         <div className="statement-edit-fields">
-                          <label className="statement-edit-field"><span>金額</span><span className="entry-amount-editor"><span aria-hidden="true">¥</span><input type="number" inputMode="decimal" step="1" aria-label={`${entry.title}の金額（円）`} aria-invalid={invalid} aria-describedby={invalid?`entry-error-${entry.id}`:undefined} disabled={busy} value={amountDraft[entry.id]??String(entry.amount)} onChange={event=>onChangeAmount(entry.id,event.target.value)}/></span></label>
+                          <label className="statement-edit-field"><span>金額</span><span className="entry-amount-editor"><span aria-hidden="true">¥</span><input type="number" inputMode="decimal" step="1" aria-label={`${entry.title}の金額（円）`} aria-invalid={invalid} aria-describedby={invalid?`entry-error-${entry.id}`:undefined} disabled={busy} value={amountDraft[entry.id]??String(entry.amount)} onChange={event=>onChangeAmount(entry.id,event.target.value)}/><SignToggle value={entry.amount} label={`${entry.title}の金額`} disabled={busy} onFlip={()=>onChangeAmount(entry.id,flipAmountText(amountDraft[entry.id]??String(entry.amount)))}/></span></label>
                           <label className="statement-edit-field"><span>費目</span><select disabled={busy} aria-label={`${entry.title}の費目`} value={entry.category} onChange={event=>onChangeCategory(entry.id,event.target.value as Category)}>{allCategoryAppearances(categorySettings).map(({category})=><option key={category}>{category}</option>)}</select></label>
                         </div>
                         {invalid&&<p className="statement-entry-error" id={`entry-error-${entry.id}`}>金額は0以外の整数で、1億円以内にしてください。</p>}
