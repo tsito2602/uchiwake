@@ -37,13 +37,14 @@ test('導入前のプロンプト・指示・推論設定・4項目に理由区�
  const request=statementRequest([],categories,'要確認','その他');
  const item=request.options.text.format.schema.properties.entries.items;
  assert.deepEqual(item.properties.review_reason,{type:'string',enum:['purchase_unknown','merchant_unknown','multiple_categories','none']});
- assert.deepEqual(item.required,['spent_on','title','category','amount','review_reason']);
+ assert.deepEqual(item.required,['spent_on','title','category','amount','review_reason','refund']);
+ assert.deepEqual(item.properties.refund,{type:'boolean'});
  const [extension,sign]=request.content.splice(1,2);
  assert.equal(sign.type,'input_text');assert.equal(sign.text,refundSignInstruction);
  for(const notation of ['△','▲','1,200-','(1,200)','赤字','取消','返品','キャンセル料'])assert.ok(sign.text.includes(notation),notation);
- assert.match(sign.text,/負の整数/);assert.match(sign.text,/相殺・削除せず/);
+ assert.match(sign.text,/refund/);assert.match(sign.text,/負の整数/);assert.match(sign.text,/相殺・削除せず/);
  assert.match(extension.text,/分類できた場合はnone/);assert.match(extension.text,/理由を創作しない/);assert.match(extension.text,/分類できる明細を「要確認」に変更しない/);
- delete item.properties.review_reason;item.required.pop();
+ delete item.properties.review_reason;delete item.properties.refund;item.required.splice(-2);
  assert.deepEqual(request,original.request);
 });
 
@@ -95,6 +96,18 @@ test('返金のマイナス額を符号付きのまま受け渡し、合計か�
  const actual=await runStatementImport({demo:false,signal:new AbortController().signal,onProgress:value=>progress.push(value),analyze:(onEntry,onReasoning,onEvent)=>start(entry=>{seen.push(entry);onEntry(entry);},undefined,onEvent,onReasoning)});
  assert.deepEqual(actual,result);assert.deepEqual(seen.map(e=>e.amount),[3200,-1200]);
  assert.equal(progress.at(-1).checkedTotal,2000);
+});
+
+test('返金の行はAIが金額をプラスで返してもマイナスにする',async t=>{
+ const sent={confirmed_total:0,entries:[{...row(1),amount:3200,refund:false},{...row(2),title:'架空店2 返品',amount:1200,refund:true},{...row(3),amount:-500,refund:true},{...row(4),amount:0,refund:true}]};
+ await setup(t,async()=>stream(sent));
+ const seen=[];const actual=await start(entry=>seen.push(entry));
+ assert.deepEqual(seen.map(e=>e.amount),[3200,-1200,-500,0]);
+ assert.deepEqual(actual.entries.map(e=>e.amount),[3200,-1200,-500,0]);
+ assert.ok(actual.entries.every(e=>!('refund' in e)));
+ assert.ok(!Object.is(actual.entries[3].amount,-0));
+ const decoder=new StatementDecoder(categories);
+ assert.throws(()=>decoder.append('{"entries":['+JSON.stringify({...row(1),refund:'yes'})+']'));
 });
 
 test('非ストリームでも同じプロンプトを一回使い、費目名称変更に追従する',async t=>{
