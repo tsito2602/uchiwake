@@ -1,4 +1,4 @@
-import { rentForMonth, statementSettlementAmount, type State } from './domain';
+import { rentForMonth, statementSettlementAmount, type CardEntry, type CardStatement, type State } from './domain';
 export type Space = {id:string;name:string;kind:'personal'|'shared';owner_id:string};
 export type Member = {user_id:string;name:string;active:boolean;avatarUrl?:string};
 export type Split = {mode:'equal'|'percent';shares:{user_id:string;weight:number}[]};
@@ -40,14 +40,17 @@ function allocationDetails(amount:number,split:Split) {
  return {amounts:Object.fromEntries(rows.map(r=>[r.id,sign*r.amount||0])),remainder:sign*remainder||0};
 }
 export function allocate(amount:number,split:Split):Record<string,number> {return allocationDetails(amount,split).amounts;}
-export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'entries'|'bills'|'rent_rules'|'category_settings'|'space_preferences'>,personal=false) {
+export function settlementItems(state:Pick<State,'month'|'cards'|'statements'|'entries'|'bills'|'rent_rules'|'category_settings'|'space_preferences'|'carried_statements'|'carried_entries'>,personal=false) {
  const items=new Map<string,SettlementItem>();
  for(const card of state.cards)items.set(`card:${card.id}`,{key:`card:${card.id}`,label:card.name,amount:0,color:card.color});
- for(const s of state.statements){
+ // A negative statement carried to the next month counts there, on the same card.
+ const add=(s:CardStatement,entries:CardEntry[],counts:boolean)=>{
   const key=s.card_id?`card:${s.card_id}`:`statement:${s.id}`;
   const item=items.get(key)??{key,label:s.title,amount:0};
-  item.amount+=personal?s.confirmed_total:statementSettlementAmount(s,state.entries,state.category_settings);items.set(key,item);
- }
+  if(counts)item.amount+=personal?s.confirmed_total:statementSettlementAmount(s,entries,state.category_settings);items.set(key,item);
+ };
+ for(const s of state.statements)add(s,state.entries,!s.carry_to_next);
+ for(const s of state.carried_statements??[])add(s,state.carried_entries??[],true);
  if(state.space_preferences?.rent_enabled===true)items.set('rent',{key:'rent',label:'家賃',amount:rentForMonth(state.month,state.bills,state.rent_rules).amount});
  for(const b of state.bills.filter(b=>b.kind!=='card'&&b.kind!=='rent'))items.set(`bill:${b.id}`,{key:`bill:${b.id}`,label:b.title,amount:b.amount});
  return [...items.values()];

@@ -14,7 +14,7 @@ import { StatementDecoder, statementStream, normalizeReviewReason } from './stat
 import { statementRequest } from './statement-request';
 import { readStatementFiles } from './statement-files';
 import { Hono } from 'hono';
-import { billKinds, categories, type BillKind, type Bill, type CardStatement, type CardEntry, type RentRule } from '../src/domain';
+import { billKinds, categories, previousMonth, validStatementTotal, type BillKind, type Bill, type CardStatement, type CardEntry, type RentRule } from '../src/domain';
 import { allCategoryAppearances, fallbackCategory, otherCategory, foodCategory, isReviewCategory, normalizeCategoryName, validCategoryName, validCategoryColor, validCategoryIcon } from '../src/category-appearance';
 import { embeddedAssets } from './generated-assets';
 import { defaultCardColor, validCardColor } from '../src/card-colors';
@@ -28,6 +28,15 @@ const datePattern = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const error = (message: string, status: 400 | 401 | 404 | 413 | 500 | 502 | 503 = 400) => Response.json({ error: message }, { status });
 const safeString = (v: unknown, max = 100) => typeof v === 'string' ? v.trim().slice(0, max) : '';
 const validAmount = (v: unknown) => Number.isSafeInteger(v) && Number(v) > 0 && Number(v) <= 100_000_000;
+// Migration 0013 adds carry_to_next and lifts the positive-total CHECK. Until it is applied,
+// keep the app readable and refuse only what the old table cannot store.
+async function statementCarryReady(db:D1Database):Promise<boolean> {
+  const result=await db.prepare('PRAGMA table_info(card_statements)').all<{name:string}>();
+  return result.results.some(row=>row.name==='carry_to_next');
+}
+const carryColumn=(ready:boolean)=>ready?'carry_to_next':'0 AS carry_to_next';
+const withCarry=<T extends {carry_to_next?:unknown}>(rows:T[])=>rows.map(row=>({...row,carry_to_next:Boolean(row.carry_to_next)}));
+const migrationNeeded=()=>error('マイナスの明細を保存するにはDBの更新（マイグレーション0013）が必要です',503);
 async function categoryNames(db:D1Database,spaceId:string):Promise<string[]> {
   return allCategoryAppearances(await readCategorySettings(db,spaceId)).map(item=>item.category);
 }
@@ -73,18 +82,22 @@ app.get('/api/state', async c => {
     const members=await membersFor(c.env.DB,c.get('spaceId'));
     return c.json({...demoState(month),space:c.get('space'),members,settlement:await settlementFor(c.env.DB,c.get('space'),month,members),ai_enabled:importAIEnabled(c.env)});
   }
-  const [bills, statements, entries, cards, rentRules, categorySettings, preferences] = await Promise.all([
+  const carryReady=await statementCarryReady(c.env.DB);
+  const previous=previousMonth(month);
+  const [bills, statements, entries, cards, rentRules, categorySettings, preferences, carriedStatements, carriedEntries] = await Promise.all([
     c.env.DB.prepare('SELECT id,due_month,title,kind,amount,note FROM bills WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC').bind(month,c.get('spaceId')).all(),
-    c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at,revision FROM card_statements WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC').bind(month,c.get('spaceId')).all(),
+    c.env.DB.prepare(`SELECT id,card_id,due_month,title,confirmed_total,created_at,revision,${carryColumn(carryReady)} FROM card_statements WHERE due_month = ? AND space_id = ? ORDER BY created_at DESC`).bind(month,c.get('spaceId')).all<CardStatement>(),
     c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? AND s.space_id = ? ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(month,c.get('spaceId')).all(),
     c.env.DB.prepare('SELECT id,name,active,color FROM shared_cards WHERE space_id = ? AND deleted_at IS NULL ORDER BY created_at,id').bind(c.get('spaceId')).all(),
     c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules WHERE space_id = ? ORDER BY effective_month DESC').bind(c.get('spaceId')).all(),
     readCategorySettings(c.env.DB,c.get('spaceId')),
-    readSpacePreferences(c.env.DB,c.get('spaceId'))
+    readSpacePreferences(c.env.DB,c.get('spaceId')),
+    carryReady?c.env.DB.prepare('SELECT id,card_id,due_month,title,confirmed_total,created_at,revision,carry_to_next FROM card_statements WHERE due_month = ? AND space_id = ? AND carry_to_next=1 ORDER BY created_at DESC').bind(previous,c.get('spaceId')).all<CardStatement>():Promise.resolve({results:[] as CardStatement[]}),
+    carryReady?c.env.DB.prepare('SELECT e.id,e.statement_id,e.spent_on,e.title,e.category,e.amount FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.due_month = ? AND s.space_id = ? AND s.carry_to_next=1 ORDER BY s.created_at DESC,e.created_at,e.rowid').bind(previous,c.get('spaceId')).all():Promise.resolve({results:[]})
   ]);
   const members=await membersFor(c.env.DB,c.get('spaceId'));
-  const settlement=await settlementFor(c.env.DB,c.get('space'),month,members,!!(bills.results.some(b=>preferences.rent_enabled||b.kind!=='rent')||statements.results.length||(preferences.rent_enabled&&rentRules.results.some(r=>String(r.effective_month)<=month))));
-  return c.json({ space:c.get('space'),members,settlement,month, bills: bills.results, statements:statements.results, entries:entries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, space_preferences:preferences, category_settings:allCategoryAppearances(categorySettings), ai_enabled: importAIEnabled(c.env), demo_enabled: c.env.APP_ENV === 'staging' });
+  const settlement=await settlementFor(c.env.DB,c.get('space'),month,members,!!(bills.results.some(b=>preferences.rent_enabled||b.kind!=='rent')||statements.results.length||carriedStatements.results.length||(preferences.rent_enabled&&rentRules.results.some(r=>String(r.effective_month)<=month))));
+  return c.json({ space:c.get('space'),members,settlement,month, bills: bills.results, statements:withCarry(statements.results), entries:entries.results, carried_statements:withCarry(carriedStatements.results), carried_entries:carriedEntries.results, cards:cards.results.map(card=>({...card,active:Boolean(card.active)})), rent_rules:rentRules.results, space_preferences:preferences, category_settings:allCategoryAppearances(categorySettings), ai_enabled: importAIEnabled(c.env), demo_enabled: c.env.APP_ENV === 'staging' });
 });
 
 app.post('/api/category-settings', async c => {
@@ -143,19 +156,22 @@ app.get('/api/settlement-history', async c => {
   const [year,value]=month.split('-').map(Number);
   const start=new Date(Date.UTC(year,value-count,1)).toISOString().slice(0,7);
   const id=c.get('spaceId'),personal=c.get('space').kind==='personal';
-  const [bills,statements,entries,rentRules,settings,rules,members,preferences]=await Promise.all([
+  // One month earlier, so a statement carried into the first month is counted there.
+  const from=previousMonth(start);
+  const [bills,statementRows,entries,rentRules,settings,rules,members,preferences]=await Promise.all([
     c.env.DB.prepare('SELECT * FROM bills WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,start,month).all<Bill>(),
-    c.env.DB.prepare('SELECT * FROM card_statements WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,start,month).all<CardStatement>(),
-    c.env.DB.prepare('SELECT e.* FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.space_id=? AND s.due_month BETWEEN ? AND ?').bind(id,start,month).all<CardEntry>(),
+    c.env.DB.prepare('SELECT * FROM card_statements WHERE space_id=? AND due_month BETWEEN ? AND ?').bind(id,from,month).all<CardStatement>(),
+    c.env.DB.prepare('SELECT e.* FROM card_entries e JOIN card_statements s ON s.id=e.statement_id WHERE s.space_id=? AND s.due_month BETWEEN ? AND ?').bind(id,from,month).all<CardEntry>(),
     c.env.DB.prepare('SELECT effective_month,amount FROM rent_rules WHERE space_id=? AND effective_month<=?').bind(id,month).all<RentRule>(),
     readCategorySettings(c.env.DB,id),
     c.env.DB.prepare('SELECT month,scope,config FROM settlement_rules WHERE space_id=? AND month<=? ORDER BY month DESC').bind(id,month).all<{month:string;scope:string;config:string}>(),
     membersFor(c.env.DB,id),
     readSpacePreferences(c.env.DB,id)
   ]);
+  const statements=withCarry(statementRows.results);
   return c.json({months:Array.from({length:count},(_,index)=>{
     const key=new Date(Date.UTC(year,value-count+index,1)).toISOString().slice(0,7);
-    const items=settlementItems({month:key,cards:[],bills:bills.results.filter(b=>b.due_month===key),statements:statements.results.filter(s=>s.due_month===key),entries:entries.results,rent_rules:rentRules.results,category_settings:settings,space_preferences:preferences},personal);
+    const items=settlementItems({month:key,cards:[],bills:bills.results.filter(b=>b.due_month===key),statements:statements.filter(s=>s.due_month===key),carried_statements:statements.filter(s=>s.carry_to_next&&s.due_month===previousMonth(key)),carried_entries:entries.results,entries:entries.results,rent_rules:rentRules.results,category_settings:settings,space_preferences:preferences},personal);
     const total=items.reduce((n,item)=>n+item.amount,0);
     const rule=rules.results.find(r=>r.scope==='month'&&r.month===key)??rules.results.find(r=>r.scope==='default'&&r.month<=key);
     const config=rule?JSON.parse(rule.config) as SettlementConfig:defaultConfig(members);
@@ -226,13 +242,17 @@ app.delete('/api/bills/:id', async c => {
 
 // One reviewed import is one card withdrawal. The total must match the saved rows.
 app.post('/api/statements', async c => {
-  const body = await c.req.json().catch(() => null) as {due_month?:unknown;card_id?:unknown;title?:unknown;confirmed_total?:unknown;entries?:unknown} | null;
+  const body = await c.req.json().catch(() => null) as {due_month?:unknown;card_id?:unknown;title?:unknown;confirmed_total?:unknown;carry_to_next?:unknown;entries?:unknown} | null;
   const entries = body?.entries;
-  if (!body || !monthPattern.test(String(body.due_month)) || typeof body.card_id!=='string' || !safeString(body.title) || !validAmount(body.confirmed_total) || !Array.isArray(entries) || entries.length < 1) return error('カード明細の入力を確認してください');
+  if (!body || !monthPattern.test(String(body.due_month)) || typeof body.card_id!=='string' || !safeString(body.title) || !validStatementTotal(body.confirmed_total) || (body.carry_to_next!==undefined&&typeof body.carry_to_next!=='boolean') || !Array.isArray(entries) || entries.length < 1) return error('カード明細の入力を確認してください');
+  const carry=body.carry_to_next===true;
+  if(carry&&Number(body.confirmed_total)>=0)return error('翌月に繰り越せるのは合計がマイナスの明細だけです');
   const card=await c.env.DB.prepare('SELECT id FROM shared_cards WHERE id=? AND active=1 AND space_id = ?').bind(body.card_id,c.get('spaceId')).first();
   if (!card) return error('設定で使用中のカードを選んでください');
   const existing=await c.env.DB.prepare('SELECT id FROM card_statements WHERE due_month=? AND card_id=? AND space_id = ?').bind(body.due_month,body.card_id,c.get('spaceId')).first();
   if (existing) return error('この月のカード明細は登録済みです。明細画面で確認してください');
+  const carryReady=await statementCarryReady(c.env.DB);
+  if(!carryReady&&(carry||Number(body.confirmed_total)<=0))return migrationNeeded();
   const checked = entries.map((row:unknown) => {
     const item = row as Record<string,unknown> | null;
     return { spent_on:safeString(item?.spent_on,10),title:safeString(item?.title),category:item?.category,amount:item?.amount };
@@ -249,10 +269,12 @@ app.post('/api/statements', async c => {
   const id=crypto.randomUUID();
   await c.env.DB.batch([
     ...memoryWrites,
-    c.env.DB.prepare('INSERT INTO card_statements (id,card_id,due_month,title,confirmed_total,space_id) VALUES (?,?,?,?,?,?)').bind(id,body.card_id,body.due_month,safeString(body.title),total,c.get('spaceId')),
+    carryReady
+      ? c.env.DB.prepare('INSERT INTO card_statements (id,card_id,due_month,title,confirmed_total,space_id,carry_to_next) VALUES (?,?,?,?,?,?,?)').bind(id,body.card_id,body.due_month,safeString(body.title),total,c.get('spaceId'),carry?1:0)
+      : c.env.DB.prepare('INSERT INTO card_statements (id,card_id,due_month,title,confirmed_total,space_id) VALUES (?,?,?,?,?,?)').bind(id,body.card_id,body.due_month,safeString(body.title),total,c.get('spaceId')),
     ...checked.map(row=>c.env.DB.prepare('INSERT INTO card_entries (id,statement_id,spent_on,title,category,amount,space_id) VALUES (?,?,?,?,?,?,?)').bind(crypto.randomUUID(),id,row.spent_on,row.title,row.category,Number(row.amount),c.get('spaceId')))
   ]);
-  return c.json({id,card_id:body.card_id,due_month:body.due_month,confirmed_total:total},201);
+  return c.json({id,card_id:body.card_id,due_month:body.due_month,confirmed_total:total,carry_to_next:carry},201);
 });
 
 app.delete('/api/statements/:id', async c => {
@@ -277,6 +299,18 @@ app.put('/api/card-entries/:id/category', async c => {
   return result.meta.changes ? c.json({ok:true}) : error('対象が見つかりません',404);
 });
 
+app.put('/api/statements/:id/carry', async c => {
+  const body=await c.req.json().catch(()=>null) as {carry_to_next?:unknown;revision?:unknown}|null;
+  if(typeof body?.carry_to_next!=='boolean'||!Number.isSafeInteger(body.revision)||Number(body.revision)<0)return error('支払い月の指定を確認してください');
+  if(!await statementCarryReady(c.env.DB))return migrationNeeded();
+  const statement=await c.env.DB.prepare('SELECT confirmed_total,revision FROM card_statements WHERE id=? AND space_id=?').bind(c.req.param('id'),c.get('spaceId')).first<{confirmed_total:number;revision:number}>();
+  if(!statement)return error('対象が見つかりません',404);
+  if(body.carry_to_next&&statement.confirmed_total>=0)return error('翌月に繰り越せるのは合計がマイナスの明細だけです');
+  const result=await c.env.DB.prepare('UPDATE card_statements SET carry_to_next=?,revision=revision+1 WHERE id=? AND space_id=? AND revision=?').bind(body.carry_to_next?1:0,c.req.param('id'),c.get('spaceId'),body.revision).run();
+  if(!result.meta.changes)return c.json({error:'ほかのメンバーが変更しました。明細を開き直してください'},409);
+  return c.json({ok:true,carry_to_next:body.carry_to_next});
+});
+
 app.put('/api/statements/:id/entries', async c => {
   const id=c.req.param('id');
   const body=await c.req.json().catch(()=>null) as {entries?:unknown;deleted_ids?:unknown;revision?:unknown}|null;
@@ -293,7 +327,9 @@ app.put('/api/statements/:id/entries', async c => {
     rows.push({id:row.id,category:row.category as string,amount:Number(row.amount)});
   }
   const total=rows.reduce((sum,row)=>sum+row.amount,0);
-  if(rows.length&&!validAmount(total))return error('明細の合計は1円以上、1億円以下にしてください');
+  if(rows.length&&!validStatementTotal(total))return error('明細の合計は1億円以内にしてください');
+  const carryReady=await statementCarryReady(c.env.DB);
+  if(rows.length&&!carryReady&&total<=0)return migrationNeeded();
   const statement=await c.env.DB.prepare('SELECT revision FROM card_statements WHERE id=? AND space_id=?').bind(id,c.get('spaceId')).first<{revision:number}>();
   if(!statement)return error('対象が見つかりません',404);
   if(statement.revision!==body.revision)return c.json({error:'ほかのメンバーが変更しました。明細を開き直してください'},409);
@@ -305,7 +341,8 @@ app.put('/api/statements/:id/entries', async c => {
     ...rows.map(row=>c.env.DB.prepare('UPDATE card_entries SET category=?,amount=? WHERE id=? AND statement_id=? AND space_id = ? AND EXISTS(SELECT 1 FROM card_statements WHERE id=? AND revision=?)').bind(row.category,row.amount,row.id,id,c.get('spaceId'),id,body.revision)),
     ...deletedIds.map(entryId=>c.env.DB.prepare('DELETE FROM card_entries WHERE id=? AND statement_id=? AND space_id=? AND EXISTS(SELECT 1 FROM card_statements WHERE id=? AND revision=?)').bind(entryId,id,c.get('spaceId'),id,body.revision)),
     rows.length
-      ? c.env.DB.prepare('UPDATE card_statements SET confirmed_total=?,revision=revision+1 WHERE id=? AND space_id = ? AND revision=?').bind(total,id,c.get('spaceId'),body.revision)
+      // A statement that is no longer negative has nothing to carry.
+      ? c.env.DB.prepare(`UPDATE card_statements SET confirmed_total=?,${carryReady?'carry_to_next=CASE WHEN ?<0 THEN carry_to_next ELSE 0 END,':''}revision=revision+1 WHERE id=? AND space_id = ? AND revision=?`).bind(...(carryReady?[total,total]:[total]),id,c.get('spaceId'),body.revision)
       : c.env.DB.prepare('DELETE FROM card_statements WHERE id=? AND space_id=? AND revision=?').bind(id,c.get('spaceId'),body.revision)
   ]);
   if(!results.at(-1)?.meta.changes)return c.json({error:'ほかのメンバーが変更しました。明細を開き直してください'},409);
