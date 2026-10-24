@@ -454,8 +454,15 @@ async function openai(key:string,model:string,content:unknown[],extra:Record<str
 }
 
 app.all('/api/*', () => error('見つかりません',404));
-app.get('*', c => {
+app.get('*', async c => {
   const path = new URL(c.req.url).pathname;
+  // Fonts (hashed names) come from static assets and may be cached for good.
+  const fontType = path.startsWith('/assets/') && /\.woff2?$/.exec(path)?.[0];
+  if (fontType) {
+    const font = c.env.ASSETS ? await c.env.ASSETS.fetch(c.req.raw) : null;
+    if (!font?.ok) return error('見つかりません',404);
+    return new Response(font.body,{headers:{'Content-Type':fontType==='.woff2'?'font/woff2':'font/woff','X-Content-Type-Options':'nosniff','Cache-Control':'public, max-age=31536000, immutable'}});
+  }
   const comparison = path === '/__icon-check' || path.startsWith('/__icon-check/');
   if (comparison && c.env.APP_ENV !== 'staging') return error('見つかりません',404);
   const asset = comparison

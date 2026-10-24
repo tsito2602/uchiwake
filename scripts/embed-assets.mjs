@@ -8,10 +8,13 @@ async function collect(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) await collect(path);
-    else if (entry.isFile() && path !== join(root, 'worker.mjs')) files.push(path);
+    // Fonts are many unicode-range slices: Workers static assets serve them.
+    else if (entry.isFile() && path !== join(root, 'worker.mjs') && !['.woff', '.woff2'].includes(extname(path)) && entry.name !== '.assetsignore') files.push(path);
   }
 }
 await collect(root);
+// The static assets upload carries the fonts only; never the Worker bundle.
+await writeFile(join(root, '.assetsignore'), 'worker.mjs\n*.html\n');
 const types = { '.json':'application/json; charset=utf-8', '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json', '.png':'image/png', '.woff2':'font/woff2' };
 const map = {};
 for (const path of files) {
