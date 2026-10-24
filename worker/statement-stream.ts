@@ -18,7 +18,10 @@ function normalizeEntry(raw:unknown,categories:string[],reviewCategory:string):E
   const row=raw as Record<string,unknown>;
   if(typeof row.title!=='string'||typeof row.spent_on!=='string'||typeof row.category!=='string'||!Number.isSafeInteger(row.amount)||Math.abs(Number(row.amount))>100_000_000)throw new ImportError('invalid_result');
   const review_reason=normalizeReviewReason(row.review_reason);
-  return {title:row.title.trim().slice(0,100),spent_on:/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(row.spent_on)?row.spent_on:'',category:categories.includes(row.category)?row.category:reviewCategory,amount:Number(row.amount),...(review_reason!==undefined?{review_reason}:{})};
+  // Older responses have no refund flag; keep their amount as read.
+  if(row.refund!==undefined&&typeof row.refund!=='boolean')throw new ImportError('invalid_result');
+  const amount=row.refund===true&&Number(row.amount)>0?-Number(row.amount):Number(row.amount);
+  return {title:row.title.trim().slice(0,100),spent_on:/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(row.spent_on)?row.spent_on:'',category:categories.includes(row.category)?row.category:reviewCategory,amount,...(review_reason!==undefined?{review_reason}:{})};
 }
 
 // Only emit a complete entry object. Braces/quotes inside titles are not delimiters.
