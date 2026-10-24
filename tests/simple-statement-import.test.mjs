@@ -6,8 +6,8 @@ import app from '../dist/worker.mjs';
 import {spaceFixture} from './spaces-fixture.mjs';
 import {sessionCookie} from './auth-fixture.mjs';
 
-const {outputFiles}=await build({stdin:{contents:`export * from './src/statement-import-stream';export * from './src/statement-import-flow';export * from './worker/statement-request';export {StatementDecoder} from './worker/statement-stream';export {reviewReasons} from './src/import-policy';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
-const {streamStatement,runStatementImport,statementRequest,StatementDecoder,reviewReasons}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
+const {outputFiles}=await build({stdin:{contents:`export * from './src/statement-import-stream';export * from './src/statement-import-flow';export * from './worker/statement-request';export {StatementDecoder} from './worker/statement-stream';export {refundSignInstruction} from './worker/statement-request';export {reviewReasons} from './src/import-policy';`,resolveDir:new URL('../',import.meta.url).pathname},bundle:true,write:false,format:'esm',platform:'node'});
+const {streamStatement,runStatementImport,statementRequest,StatementDecoder,reviewReasons,refundSignInstruction}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
 // Captured independently from the commit immediately before Gateway integration.
 const original=JSON.parse(readFileSync(new URL('./fixtures/pre-gateway-statement-request.json',import.meta.url),'utf8'));
 const categories=original.request.options.text.format.schema.properties.entries.items.properties.category.enum;
@@ -32,13 +32,16 @@ async function setup(t,run){
 }
 const start=(onEntry=()=>{},signal=new AbortController().signal,onEvent=()=>{},onReasoning=()=>{})=>streamStatement(files,signal,onEntry,onReasoning,'a',onEvent);
 
-test('導入前のプロンプト・指示・推論設定・4項目に理由区分だけを追加する',()=>{
+test('導入前のプロンプト・指示・推論設定・4項目に理由区分と返金の符号指示だけを追加する',()=>{
  assert.equal(original.revision,'d5ab87407c9e279b102abba127e22064e5a8deac');
  const request=statementRequest([],categories,'要確認','その他');
  const item=request.options.text.format.schema.properties.entries.items;
  assert.deepEqual(item.properties.review_reason,{type:'string',enum:['purchase_unknown','merchant_unknown','multiple_categories','none']});
  assert.deepEqual(item.required,['spent_on','title','category','amount','review_reason']);
- const extension=request.content.splice(1,1)[0];
+ const [extension,sign]=request.content.splice(1,2);
+ assert.equal(sign.type,'input_text');assert.equal(sign.text,refundSignInstruction);
+ for(const notation of ['△','▲','1,200-','(1,200)','赤字','取消','返品','キャンセル料'])assert.ok(sign.text.includes(notation),notation);
+ assert.match(sign.text,/負の整数/);assert.match(sign.text,/相殺・削除せず/);
  assert.match(extension.text,/分類できた場合はnone/);assert.match(extension.text,/理由を創作しない/);assert.match(extension.text,/分類できる明細を「要確認」に変更しない/);
  delete item.properties.review_reason;item.required.pop();
  assert.deepEqual(request,original.request);
@@ -55,6 +58,7 @@ test('通常の画面は理由付き68行を一回だけ取り込み、店舗補
   for(const key of ['reasoning','instructions'])assert.deepEqual(input[key],original.request.options[key]);
   assert.ok(input.text.format.schema.properties.entries.items.required.includes('review_reason'));
   assert.match(input.input[0].content[1].text,/review_reason/);
+  assert.equal(input.input[0].content[2].text,refundSignInstruction);
   assert.equal(options.gateway.skipCache,true);assert.equal(options.gateway.collectLog,false);
   return stream(result);
  });
@@ -82,6 +86,15 @@ test('分類済みの行を全件完了前に表示し、現在のゲージ用�
  assert.ok(progress.some(p=>p.entries.length===1&&p.phase==='reading'&&p.activity.text.includes('1件完了')));
  assert.equal(progress.at(-1).phase,'checking');assert.equal(progress.at(-1).checkedTotal,100);
  assert.ok(!JSON.stringify(previews).includes('private reasoning'));
+});
+
+test('返金のマイナス額を符号付きのまま受け渡し、合計から差し引く',async t=>{
+ const result={confirmed_total:2000,entries:[{...row(1),amount:3200},{...row(2),title:'架空店2 返品',amount:-1200}]};
+ await setup(t,async()=>stream(result));
+ const seen=[],progress=[];
+ const actual=await runStatementImport({demo:false,signal:new AbortController().signal,onProgress:value=>progress.push(value),analyze:(onEntry,onReasoning,onEvent)=>start(entry=>{seen.push(entry);onEntry(entry);},undefined,onEvent,onReasoning)});
+ assert.deepEqual(actual,result);assert.deepEqual(seen.map(e=>e.amount),[3200,-1200]);
+ assert.equal(progress.at(-1).checkedTotal,2000);
 });
 
 test('非ストリームでも同じプロンプトを一回使い、費目名称変更に追従する',async t=>{
