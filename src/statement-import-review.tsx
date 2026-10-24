@@ -1,10 +1,10 @@
 import { broadMerchant, validRule, reviewReasons, rowTotal, type SourceTotal } from './import-policy';
 import { ImportSourcePreview, ImportOriginalFiles } from './import-source';
 import type { StatementFile } from './statement-files';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
-import type { CategoryAppearance, EntryDraft, SharedCard } from './domain';
+import { nextMonth, type CategoryAppearance, type EntryDraft, type SharedCard } from './domain';
 import { allCategoryAppearances, categoryAppearance, fallbackCategory, isReviewCategory } from './category-appearance';
 import { displayColor } from './display-color';
 import { ImportEntryLine } from './statement-import-content';
@@ -12,8 +12,12 @@ import { entryKey } from './import-peel-store';
 import { sortByEntrySort, type ListSort } from './entry-sort';
 import { moveRow } from './reorder-motion';
 import { reducedMotion } from './cartoon-motion';
+import { SegmentSelection } from './segment-selection';
+import { haptic } from './haptics';
 
-export type ImportDraft={due_month:string;card_id:string;title:string;confirmed_total:number;entries:EntryDraft[];demo:boolean;source_total?:SourceTotal|null;total_alternative?:SourceTotal;total_manual?:boolean};
+const monthLabel=(month:string)=>`${Number(month.slice(5))}月`;
+
+export type ImportDraft={due_month:string;card_id:string;title:string;confirmed_total:number;entries:EntryDraft[];demo:boolean;source_total?:SourceTotal|null;total_alternative?:SourceTotal;total_manual?:boolean;carry_to_next?:boolean};
 export function withDraftEntries(draft:ImportDraft,entries:EntryDraft[]):ImportDraft {return {...draft,entries,...(draft.source_total===null&&!draft.total_manual?{confirmed_total:rowTotal(entries)}:{})};}
 export const ARRIVAL_SORT:ListSort={key:null,dateAscending:false,amountAscending:false};
 export const unresolvedEntries=(entries:EntryDraft[],settings:CategoryAppearance[])=>entries.filter(entry=>reviewReasons(entry,fallbackCategory(settings)).length>0).length;
@@ -43,14 +47,26 @@ function bounceAction(){
 // The read rows stay in the order they arrived (newest on top). Rows that
 // need a decision lift out one by one and fly into "確認が必要" above the
 // list; picking a category stamps the row and sends it back to its place.
-export function ImportReview({draft,cards,settings,busy,checked,onChange,onChecked,files=[],sort=ARRIVAL_SORT,intro=false,onIntroDone}:{
+export function ImportReview({draft,cards,settings,busy,checked,onChange,onChecked,onCarry,files=[],sort=ARRIVAL_SORT,intro=false,onIntroDone}:{
   files?:StatementFile[];draft:ImportDraft;cards:SharedCard[];settings:CategoryAppearance[];busy:boolean;checked:boolean;
-  onChange:(draft:ImportDraft)=>void;onChecked:(checked:boolean)=>void;sort?:ListSort;intro?:boolean;onIntroDone?:()=>void;
+  onChange:(draft:ImportDraft)=>void;onChecked:(checked:boolean)=>void;onCarry?:(carry:boolean)=>void;sort?:ListSort;intro?:boolean;onIntroDone?:()=>void;
 }) {
   const reviewCategory=fallbackCategory(settings);
   const keyed=draft.entries.map((entry,index)=>({entry,index,key:entryKey(entry,index),spent_on:entry.spent_on,amount:entry.amount}));
   const needsReview=(entry:EntryDraft)=>reviewReasons(entry,reviewCategory).length>0;
-  const boxable=needsReview;
+  // A row the user adds is theirs to fill in; it stays where they are editing it.
+  const boxable=(entry:EntryDraft)=>!entry.manual&&needsReview(entry);
+  const added=useRef<string|null>(null);
+  // Bring a row the user just added into view, already open for typing.
+  useEffect(()=>{
+    const key=added.current;
+    if(!key||editing!==key)return;
+    const row=root.current?.querySelector<HTMLElement>(rowSelector(key));
+    if(!row)return;
+    added.current=null;
+    row.querySelector<HTMLInputElement>('.import-review-editor input')?.focus({preventScroll:true});
+    row.scrollIntoView({block:'start',behavior:reducedMotion()?'auto':'smooth'});
+  });
   const arrival=[...keyed].reverse();
   const rank=new Map(arrival.map((item,k)=>[item.key,k]));
   const ordered=sortByEntrySort(arrival,sort,(a,b)=>rank.get(a.key)!-rank.get(b.key)!);
@@ -68,9 +84,9 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
   const total=draft.entries.reduce((sum,entry)=>sum+entry.amount,0);
   const matches=total===draft.confirmed_total;
   const categories=allCategoryAppearances(settings);
-  const unresolved=keyed.filter(({entry})=>needsReview(entry));
+  const unresolved=keyed.filter(({entry})=>boxable(entry));
   const unresolvedAmount=unresolved.reduce((sum,{entry})=>sum+Math.abs(entry.amount),0);
-  const blocked=draft.entries.some(entry=>isReviewCategory(entry.category,settings)||!entry.title||!entry.amount||entry.import_meta?.amount_uncertain);
+  const blocked=draft.entries.some(entry=>!entry.category||isReviewCategory(entry.category,settings)||!entry.title||!entry.amount||entry.import_meta?.amount_uncertain);
   const boxRows=inBox.map(key=>keyed.find(item=>item.key===key)).filter(item=>!!item);
   const listRows=ordered.filter(item=>!inBox.includes(item.key));
   const inBoxNow=useRef(inBox);inBoxNow.current=inBox;
@@ -252,7 +268,7 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
           <label className="field"><span>利用日</span><input type="date" value={entry.spent_on} onChange={event=>update(index,{spent_on:event.target.value})}/></label>
           <label className="field"><span>金額（円）</span><input type="number" inputMode="decimal" step="1" value={entry.amount||''} onChange={event=>update(index,{amount:Number(event.target.value)})}/></label>
         </div>
-        <label className="field"><span>費目</span><select value={entry.category} onChange={event=>chooseCategory(index,event.target.value)}>{categories.map(({category})=><option key={category}>{category}</option>)}</select></label>
+        <label className="field"><span>費目</span><select value={entry.category} onChange={event=>chooseCategory(index,event.target.value)}>{!entry.category&&<option value="" disabled>費目を選ぶ</option>}{categories.map(({category})=><option key={category}>{category}</option>)}</select></label>
         {entry.import_meta&&<div className="import-rule-opt-in"><p className="subtle">費目の修正は今回の明細だけに適用します。</p>
           {broadMerchant(entry.title)&&!entry.import_meta.context?<p className="subtle">このお店は購入内容が分かる場合だけ自動分類ルールを作れます。</p>:<>
             <label><input type="checkbox" checked={!!entry.import_meta.remember_rule} disabled={isReviewCategory(entry.category,settings)} onChange={event=>update(index,{import_meta:{...entry.import_meta!,remember_rule:event.target.checked}})}/> 今後もこの条件で分類</label>
@@ -275,13 +291,13 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
     {box!=='closed'&&<div className="import-review-sec"><span>仕分け済み <b>{draft.entries.length-inBox.length}</b>件</span><span>タップして直せます</span></div>}
     <div className="import-sorting-list import-review-list" aria-label="仕分け結果">{listRows.map(item=>row(item,'list'))}</div>
     {/* The list shows the newest read row first, so a row put at the front lands last. */}
-    <button className="import-review-add" disabled={busy} onClick={()=>{const entry={spent_on:'',title:'',amount:0,category:fallbackCategory(settings)};const key=entryKey(entry,0);setEditing(key);onChange(withDraftEntries(draft,[entry,...draft.entries]));requestAnimationFrame(()=>root.current?.querySelector(rowSelector(key))?.scrollIntoView({block:'center',behavior:reducedMotion()?'auto':'smooth'}));}}><Plus size={16}/> 明細を追加</button>
+    <button className="import-review-add" disabled={busy} onClick={()=>{const entry:EntryDraft={spent_on:'',title:'',amount:0,category:'',manual:true};const key=entryKey(entry,draft.entries.length);added.current=key;setEditing(key);onChange(withDraftEntries(draft,[...draft.entries,entry]));}}><Plus size={16}/> 明細を追加</button>
     <div className="import-review-summary" data-expanded={metadataOpen}>
     <button className="import-processing-foot import-review-total" disabled={busy} aria-label="利用合計：登録先・引落額を編集" aria-expanded={metadataOpen} aria-controls={`${id}-metadata`} onClick={()=>setMetadataOpen(!metadataOpen)}><span>利用合計</span><strong>¥{total.toLocaleString('ja-JP')}</strong><span className="import-entry-edit" aria-hidden="true">{metadataOpen?<X size={16}/>:<Pencil size={16}/>}</span></button>
     <AnimatePresence initial={false}>{metadataOpen&&<motion.div key="metadata" className="import-review-expander" {...expand}><fieldset className="import-review-editor import-review-metadata" id={`${id}-metadata`} disabled={busy}>
       <label className="field"><span>カード</span><select value={draft.card_id} onChange={event=>onChange({...draft,card_id:event.target.value})}>{cards.filter(item=>item.active).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label className="field"><span>引落月</span><input type="month" value={draft.due_month} onChange={event=>onChange({...draft,due_month:event.target.value})}/></label>
-      <label className="field"><span>カード引落額（円）</span><input type="number" inputMode="numeric" min="1" step="1" value={draft.confirmed_total||''} onChange={event=>onChange({...draft,confirmed_total:Number(event.target.value),total_manual:true})}/></label>
+      <label className="field"><span>カード引落額（円）</span><input type="number" inputMode="decimal" step="1" value={draft.confirmed_total||''} onChange={event=>onChange({...draft,confirmed_total:Number(event.target.value),total_manual:true})}/></label>
     </fieldset></motion.div>}</AnimatePresence>
     </div>
     <ImportOriginalFiles files={files}/>
@@ -289,6 +305,12 @@ export function ImportReview({draft,cards,settings,busy,checked,onChange,onCheck
     {draft.source_total===null&&<p className="import-hint">原本に照合できる合計額はありません。読み取った明細の合計と内容を確認してください。</p>}
     {draft.source_total&&draft.source_total.amount!==total&&<div className="import-review-reasons" role="status"><strong>原本の記載額との差：¥{Math.abs(draft.source_total.amount-total).toLocaleString('ja-JP')}</strong><p>「{draft.source_total.label}」は¥{draft.source_total.amount.toLocaleString('ja-JP')}、明細の合計は¥{total.toLocaleString('ja-JP')}です。再読み取り後も一致していません。原本の金額・返金や手数料・請求の対象範囲を確認してください。</p><ImportSourcePreview source={{...draft.source_total,row:0,excerpt:draft.source_total.label}} files={files}/></div>}
     {!matches&&<p className="reconcile-error" role="status">引落額と合計が一致していません。利用合計をタップして確認してください。</p>}
+    {total<0&&onCarry&&<div className="import-carry">
+      <p>マイナス分 ¥{Math.abs(total).toLocaleString('ja-JP')} を引く支払い</p>
+      <div className="appearance-control data-mode-control" role="group" aria-label="マイナス分を引く支払い" style={{'--appearance-index':draft.carry_to_next?1:0} as CSSProperties}><SegmentSelection index={draft.carry_to_next?1:0}/>
+        {[false,true].map(carry=><button type="button" key={String(carry)} disabled={busy} aria-pressed={!!draft.carry_to_next===carry} onClick={()=>{if(!!draft.carry_to_next!==carry){haptic();onCarry(carry);}}}>{carry?`${monthLabel(nextMonth(draft.due_month))}（翌月）`:`${monthLabel(draft.due_month)}（今月）`}</button>)}
+      </div>
+    </div>}
     {draft.demo&&<p className="import-review-demo">デモのため保存されません。編集は試せます。</p>}
     {settled&&<label className="confirm-line import-review-confirm" data-checked={checked}><input type="checkbox" disabled={busy||blocked||draft.entries.some(entry=>entry.import_meta?.remember_rule&&!validRule(entry))} checked={checked&&!blocked} onChange={event=>onChecked(event.target.checked)}/><span className="import-confirm-check" aria-hidden="true"><Check size={18}/></span><span>元の明細と内容・金額を確認した</span></label>}
   </div>;

@@ -44,10 +44,11 @@ test('全項目削除は保存でき、成功した明細のみを反映して�
 });
 
 test('返金を残した削除でも金額と合計の妥当性を検証する',()=>{
-  for(const amount of ['0','-1','1.5','100000001','NaN']){
+  for(const amount of ['0','1.5','100000001','NaN']){
     assert.equal(prepareStatementEdits(statements,entries,{...empty,amounts:{a:amount},deletedIds:['b']}).valid,false,amount);
   }
   assert.equal(prepareStatementEdits(statements,entries,{...empty,amounts:{b:'-500'}}).valid,true);
+  assert.equal(prepareStatementEdits(statements,entries,{...empty,amounts:{a:'-1'},deletedIds:['b']}).valid,true,'refunds may leave a negative total');
 });
 
 const {outputFiles}=await build({stdin:{contents:`

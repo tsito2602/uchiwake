@@ -55,7 +55,7 @@ npm run deploy:staging
 
 同じCloudflareアカウントにAI Gateway `uchiwake` を作成し、Unified Billingのクレジットを設定します。
 `wrangler.staging.jsonc` にAI bindingと接続先を追加済みです。Luna (`openai/gpt-6-luna`) とJev (`typesafe/jev`) を使用します。
-デプロイ前にD1のマイグレーション（追加分 `0012_import_classification.sql`）を適用してください。
+D1のマイグレーション（追加分 `0013_statement_refund_carry.sql`）を適用してください。0013は返金で合計が0円以下になる明細と、マイナス分の翌月繰り越し（`card_statements.carry_to_next`）に必要です。未適用でも画面と通常の保存は動き、マイナスの保存だけが「DBの更新が必要」と表示されます。
 Cloudflare経由の取り込み・レポートに `OPENAI_API_KEY` は不要です。旧OpenAI直接接続への切り戻しには引き続き利用できます。
 
 ## GitHub 連携による自動デプロイ

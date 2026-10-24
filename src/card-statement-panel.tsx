@@ -2,13 +2,14 @@ import { sortEntries, type EntrySort } from './entry-sort';
 import { displayColor } from './display-color';
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { ArrowRight, CreditCard, Trash2, Undo2, X } from 'lucide-react';
-import { categoryTotals, statementSettlementAmount, type CategoryAppearance, type CardEntry, type CardStatement, type Category } from './domain';
+import { categoryTotals, nextMonth, previousMonth, statementSettlementAmount, statementTotalLimit, type CategoryAppearance, type CardEntry, type CardStatement, type Category } from './domain';
 import { allCategoryAppearances, categoryAppearance } from './category-appearance';
 import { CategoryIcon } from './category-icon';
 import { CategoryChart } from './spending-charts';
 import { NumberTicker } from './number-ticker';
 import { usePanelMorph, type PanelOrigin } from './use-panel-morph';
 import { useReorderMotion } from './reorder-motion';
+import { SegmentSelection } from './segment-selection';
 
 type Props = {
   title: string;
@@ -18,6 +19,9 @@ type Props = {
   month: string;
   statements: CardStatement[];
   entries: CardEntry[];
+  carriedStatements?: CardStatement[];
+  carriedEntries?: CardEntry[];
+  onChangeCarry?: (id:string,carry:boolean) => void;
   demo: boolean;
   view: 'summary'|'details'|'edit';
   origin?: PanelOrigin;
@@ -38,8 +42,9 @@ type Props = {
 };
 
 const yen=(amount:number)=>`¥${Math.round(amount).toLocaleString('ja-JP')}`;
+const monthLabel=(month:string)=>`${Number(month.slice(5))}月`;
 
-export function CardStatementPanel({title,sort,color,categorySettings=[],month,statements,entries,demo,view,origin,closing,onClose,onExited,actionLabel,actionDisabled,busy,error,onAction,onChangeCategory,onChangeAmount,amountDraft,deletedEntryIds,onToggleDeleteEntry,onDeleteStatement}:Props) {
+export function CardStatementPanel({title,sort,color,categorySettings=[],month,statements,entries,carriedStatements=[],carriedEntries=[],onChangeCarry,demo,view,origin,closing,onClose,onExited,actionLabel,actionDisabled,busy,error,onAction,onChangeCategory,onChangeAmount,amountDraft,deletedEntryIds,onToggleDeleteEntry,onDeleteStatement}:Props) {
   const panel=useRef<HTMLElement>(null);
   usePanelMorph(panel,origin,closing,onExited,onClose);
   useReorderMotion(panel,JSON.stringify(sort),view);
@@ -51,8 +56,13 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
   const remainingEntries=cardEntries.filter(entry=>!deletedIds.has(entry.id));
   const editTotal=remainingEntries.reduce((sum,entry)=>sum+entry.amount,0);
 
-  const settlementTotal=statements.reduce((sum,item)=>sum+statementSettlementAmount(item,cardEntries,categorySettings),0);
-  const excluded=total-settlementTotal;
+  const included=statements.reduce((sum,item)=>sum+statementSettlementAmount(item,cardEntries,categorySettings),0);
+  const excluded=total-included;
+  // A negative statement can be deducted next month instead; the one carried from last month counts here.
+  const carriedOut=statements.filter(item=>item.carry_to_next).reduce((sum,item)=>sum+statementSettlementAmount(item,cardEntries,categorySettings),0);
+  const carriedIn=carriedStatements.reduce((sum,item)=>sum+statementSettlementAmount(item,carriedEntries,categorySettings),0);
+  const settlementTotal=included-carriedOut+carriedIn;
+  const carryable=view==='summary'&&!!onChangeCarry?statements.filter(item=>item.confirmed_total<0):[];
   const entryGroups=[
     {label:'精算対象',included:true},
     {label:'精算対象外',included:false}
@@ -66,7 +76,13 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
         <div className="card-panel-scroll">
           {error&&<p className="notice" role="alert">{error}</p>}
           {statements.length?<>
-            {view==='summary'&&<div className="card-panel-total"><span>精算対象額</span><strong>{yen(settlementTotal)}</strong>{excluded!==0&&<small>引落額 ¥{total.toLocaleString('ja-JP')} · 精算対象外 ¥{excluded.toLocaleString('ja-JP')}</small>}</div>}
+            {view==='summary'&&<div className="card-panel-total"><span>精算対象額</span><strong>{yen(settlementTotal)}</strong>{excluded!==0&&<small>引落額 ¥{total.toLocaleString('ja-JP')} · 精算対象外 ¥{excluded.toLocaleString('ja-JP')}</small>}{carriedOut!==0&&<small>{monthLabel(nextMonth(month))}の支払いから {yen(carriedOut)} を引きます</small>}{carriedIn!==0&&<small>{monthLabel(previousMonth(month))}から繰り越し {yen(carriedIn)}</small>}</div>}
+            {carryable.map(statement=><div className="card-panel-carry" key={statement.id}>
+              <p>{carryable.length>1?`${statement.title}の`:''}マイナス分を引く支払い</p>
+              <div className="appearance-control data-mode-control" role="group" aria-label="マイナス分を引く支払い" style={{'--appearance-index':statement.carry_to_next?1:0} as CSSProperties}><SegmentSelection index={statement.carry_to_next?1:0}/>
+                {[false,true].map(carry=><button type="button" key={String(carry)} disabled={demo||busy} aria-pressed={!!statement.carry_to_next===carry} onClick={()=>{if(!!statement.carry_to_next!==carry)onChangeCarry!(statement.id,carry);}}>{carry?`${monthLabel(nextMonth(month))}（翌月）`:`${monthLabel(month)}（今月）`}</button>)}
+              </div>
+            </div>)}
             {view==='details'&&cardEntries.length>0&&<CategoryChart data={categoryTotals(cardEntries)} settings={categorySettings} animateAmounts={false}/>}
             {view==='edit'?<div className="statement-editor">
               <div className="statement-edit-summary"><div><span>変更後の合計</span><strong>{Number.isFinite(editTotal)?<NumberTicker value={editTotal}/>: '—'}</strong></div><span>{remainingEntries.length}件</span></div>
@@ -93,7 +109,7 @@ export function CardStatementPanel({title,sort,color,categorySettings=[],month,s
                     </div>;
                   })}</div>
                   <div className="statement-edit-status statement-delete-notice" data-visible={!remaining.length} aria-hidden={!!remaining.length}><div className="statement-edit-clip"><p className="statement-edit-hint">全項目を削除すると、この明細も削除されます。</p></div></div>
-                  {remaining.length>0&&(!Number.isFinite(statementTotal)||statementTotal<=0||statementTotal>100_000_000)&&<p className="statement-entry-error" role="status">明細の合計は1円以上、1億円以下にしてください。</p>}
+                  {remaining.length>0&&(!Number.isFinite(statementTotal)||Math.abs(statementTotal)>statementTotalLimit)&&<p className="statement-entry-error" role="status">明細の合計は1億円以内にしてください。</p>}
                 </section>;
               })}
             </div>:view==='summary'?entryGroups.map(group=><section className="card-panel-statement" aria-label={group.label} key={group.label}>

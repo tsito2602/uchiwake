@@ -336,3 +336,19 @@ test('該当なしは理由として表示せず、空欄・金額0の既存の�
  const classified=review({...props,draft:{...draft,entries:[{...sample.entries[0],review_reason:'none'}]}});
  assert.ok(!classified.includes('import-review-reasons'));
 });
+
+test('合計がマイナスの確認画面では、マイナス分を引く月を選べる',()=>{
+ const entries=[{spent_on:'2026-09-02',title:'返品',category:'食費',amount:-5000},{spent_on:'2026-09-03',title:'スーパー',category:'食費',amount:1200}];
+ const negative={...draft,entries,confirmed_total:-3800,source_total:undefined};
+ const markup=review({...props,draft:negative,onCarry:()=>{}});
+ assert.ok(markup.includes('マイナス分 ¥3,800 を引く支払い'));assert.ok(markup.includes('9月（今月）'));assert.ok(markup.includes('10月（翌月）'));
+ assert.match(review({...props,draft:{...negative,carry_to_next:true},onCarry:()=>{}}),/aria-pressed="true"[^>]*>10月（翌月）/);
+ assert.ok(!review({...props,onCarry:()=>{}}).includes('を引く支払い'));
+});
+
+test('追加した明細は要確認にせず、確認ボックスへ移さない',()=>{
+ const added={...draft,entries:[...draft.entries,{spent_on:'',title:'',amount:0,category:'',manual:true}]};
+ const markup=review({...props,draft:added});
+ assert.ok(markup.includes('費目を選ぶ'));
+ assert.ok(!markup.includes('確認が必要'));
+});

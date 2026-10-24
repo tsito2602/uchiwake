@@ -187,7 +187,7 @@ test('不正な金額・重複ID・別明細の行・行の不足は保存しな
   try {
     seedStatement(db);
     const first={id:'first',category:'食費',amount:2000},second={id:'second',category:'外食費',amount:1000};
-    for(const entries of [[first],[first,first],[first,{...second,id:'other'}],[first,{...second,amount:0}],[first,{...second,amount:1.5}],[first,{...second,amount:-3000}],[first,{...second,amount:100_000_001}],[first,{...second,category:'invalid'}]]) {
+    for(const entries of [[first],[first,first],[first,{...second,id:'other'}],[first,{...second,amount:0}],[first,{...second,amount:1.5}],[{...first,amount:-100_000_000},{...second,amount:-1000}],[first,{...second,amount:100_000_001}],[first,{...second,category:'invalid'}]]) {
       assert.equal((await call('/statements/statement/entries','PUT',{revision:0,entries})).status,400);
     }
     const state=await (await call('/state?month=2026-09')).json();
@@ -227,7 +227,7 @@ test('削除IDの重複・別明細・別スペース・編集との重複・不
     for(const deleted_ids of [['second','second'],['first'],['other-entry'],['missing'],[42],'second',null]){
       assert.equal((await call('/statements/statement/entries','PUT',{revision:0,entries:[first],deleted_ids})).status,400);
     }
-    for(const entries of [[],[{...first,amount:-1}],[{...first,amount:0}],[{...first,amount:100_000_001}]]){
+    for(const entries of [[],[{...first,amount:0}],[{...first,amount:100_000_001}]]){
       assert.equal((await call('/statements/statement/entries','PUT',{revision:0,entries,deleted_ids:['second']})).status,400);
     }
     db.exec("INSERT INTO spaces(id,name,kind,owner_id) VALUES ('private','個人','personal','other'); UPDATE card_statements SET space_id='private' WHERE id='other'; UPDATE card_entries SET space_id='private' WHERE id='other-entry'");

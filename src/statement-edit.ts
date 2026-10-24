@@ -30,7 +30,7 @@ export function prepareStatementEdits(statements: CardStatement[], entries: Card
   });
   const valid = changes.every(change => change.entries.every(entry => Number.isSafeInteger(entry.amount)
     && entry.amount !== 0 && Math.abs(entry.amount) <= 100_000_000)
-    && (!change.entries.length || (change.confirmed_total > 0 && change.confirmed_total <= 100_000_000)));
+    && (!change.entries.length || (Number.isSafeInteger(change.confirmed_total) && Math.abs(change.confirmed_total) <= 100_000_000)));
   return {editedEntries, changes, valid};
 }
 
@@ -40,6 +40,7 @@ export function applyStatementEdit<T extends Pick<State, 'entries'|'statements'>
   return {...state,
     entries: state.entries.flatMap(entry => entry.statement_id !== edit.id ? [entry] : updated.has(entry.id) ? [updated.get(entry.id)!] : []),
     statements: state.statements.flatMap(statement => statement.id !== edit.id ? [statement] : edit.entries.length
-      ? [{...statement, confirmed_total: edit.confirmed_total, revision: edit.revision + 1}] : [])
+      ? [{...statement, confirmed_total: edit.confirmed_total, revision: edit.revision + 1,
+        carry_to_next: !!statement.carry_to_next && edit.confirmed_total < 0}] : [])
   };
 }
